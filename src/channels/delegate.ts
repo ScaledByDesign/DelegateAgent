@@ -203,6 +203,18 @@ class DelegateChannel implements Channel {
     const agentProfileId = this.agentProfileIds.get(jid);
     const startTime = Date.now();
 
+    // ─── Parse and forward progress events ───
+    const progressEvents = this.extractProgressEvents(text);
+    if (progressEvents.length > 0) {
+      this.forwardProgressEvents(jid, agentProfileId, progressEvents).catch(
+        (err) => console.warn('[delegate] progress forward error:', (err as Error).message)
+      );
+    }
+
+    // Strip progress tags from the user-visible message
+    const cleanText = text.replace(/<progress[^>]*>[\s\S]*?<\/progress>/g, '').trim();
+    if (!cleanText) return; // Only progress events, no user-visible content
+
     try {
       const res = await fetch(`${DELEGATE_URL}/api/agent/channel/reply`, {
         method: 'POST',
@@ -212,7 +224,7 @@ class DelegateChannel implements Channel {
         },
         body: JSON.stringify({
           jid,
-          text,
+          text: cleanText,
           ...(agentProfileId ? { agentProfileId } : {}),
           metadata: { source: 'nanoclaw' },
         }),
@@ -232,6 +244,53 @@ class DelegateChannel implements Channel {
     } catch (err: unknown) {
       captureSentryError(err, { jid, action: 'sendMessage' });
       console.warn('[delegate] sendMessage error:', (err as Error).message);
+    }
+  }
+
+  // ─── Progress Event Extraction ──────────────────────────────────────────
+
+  private extractProgressEvents(text: string): Array<{ type: string; data: Record<string, string>; message: string }> {
+    const events: Array<{ type: string; data: Record<string, string>; message: string }> = [];
+    const regex = /<progress\s+([^>]*)>([\s\S]*?)<\/progress>/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const attrs: Record<string, string> = {};
+      const attrStr = match[1];
+      const attrRegex = /(\w+)="([^"]*)"/g;
+      let attrMatch;
+      while ((attrMatch = attrRegex.exec(attrStr)) !== null) {
+        attrs[attrMatch[1]] = attrMatch[2];
+      }
+      events.push({
+        type: attrs.type || 'info',
+        data: attrs,
+        message: match[2].trim(),
+      });
+    }
+    return events;
+  }
+
+  private async forwardProgressEvents(
+    jid: string,
+    agentProfileId: string | undefined,
+    events: Array<{ type: string; data: Record<string, string>; message: string }>,
+  ): Promise<void> {
+    try {
+      await fetch(`${DELEGATE_URL}/api/agent/channel/progress`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${DELEGATE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          jid,
+          ...(agentProfileId ? { agentProfileId } : {}),
+          events,
+        }),
+        signal: AbortSignal.timeout(5_000),
+      });
+    } catch {
+      // Best-effort — don't fail the main message flow
     }
   }
 

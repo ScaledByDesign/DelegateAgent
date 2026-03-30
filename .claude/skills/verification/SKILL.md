@@ -1,46 +1,103 @@
 ---
 name: verification
-description: Verify completion claims against actual tool outputs before reporting done
+description: Self-healing verification loop — build/test after changes, auto-fix on failure, escalate after 3 attempts
 ---
 
-# Step Verification Protocol
+# Self-Healing Verification Loop
 
-Before claiming ANY work is complete, verify your claims against actual tool outputs.
+Every code change MUST go through this verification loop before being reported as complete.
 
-## Mandatory Checks
+## The Loop
 
-### "Tests pass" claim
-Before saying tests pass, verify:
-- [ ] You actually ran a test command (`npm test`, `npx vitest`, `pytest`, `cargo test`, `go test`)
-- [ ] The test output does NOT contain `FAIL`, `FAILED`, `ERROR`, `AssertionError`, or non-zero exit code
-- [ ] If you didn't run tests, say "tests not run" not "tests pass"
+```
+┌─────────────────┐
+│  1. Write Code  │
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  2. Run Build   │──── ✅ Pass ──→ Step 3
+└────────┬────────┘
+         │ ❌ Fail
+┌────────▼────────┐
+│  Analyze Error  │
+│  Fix & Re-run   │──── Loop (max 3 attempts)
+└────────┬────────┘
+         │ Still failing
+         ▼
+    🚫 Escalate
+```
 
-### "File created/modified" claim
-Before saying you created or modified a file:
-- [ ] You actually used `Write` or `Edit` tool (not just described what you'd write)
-- [ ] Read the file back to confirm it contains what you expect
+## Step-by-Step Protocol
 
-### "Committed/pushed" claim
-Before saying you committed or pushed:
-- [ ] You ran `git commit` (check exit code)
-- [ ] You ran `git push` (check exit code, look for rejection errors)
-- [ ] Run `git status` to confirm clean working tree
+### Step 1: After ANY code change, run verification
 
-### "Build succeeds" claim
-Before saying the build passes:
-- [ ] You ran the build command (`npm run build`, `tsc`, `cargo build`, `go build`)
-- [ ] The output does NOT contain errors
-- [ ] Exit code was 0
+Choose the appropriate commands based on the project:
 
-## Verification Process
-1. After completing work, list what you claim to have accomplished
-2. For EACH claim, check the tool output that proves it
-3. If any claim can't be verified, either:
-   - Run the verification command now
-   - Retract the claim and say what actually happened
+| Project Type | Build Check | Test Check |
+|-------------|-------------|------------|
+| Node.js/TS  | `npm run build` or `npx tsc --noEmit` | `npm test` |
+| Python      | `python -m py_compile file.py` | `pytest` |
+| Rust        | `cargo build` | `cargo test` |
+| Go          | `go build ./...` | `go test ./...` |
 
-## Red Flags (things that should trigger re-verification)
-- "I believe tests should pass" → you didn't run them
-- "The file should contain..." → you didn't read it back
-- "This should work" → you didn't test it
-- Claiming success after a fix without re-running verification
+### Step 2: If build/tests PASS ✅
+
+Proceed to commit and report. Include verification evidence:
+```
+✅ Verified:
+- Build: `npm run build` — exit code 0
+- Tests: `npm test` — 12 passed, 0 failed
+- Lint: `npm run lint` — no errors
+```
+
+### Step 3: If build/tests FAIL ❌
+
+**Attempt 1**: Read the FULL error output. Fix the specific issue. Re-run.
+
+**Attempt 2**: If same error persists, reconsider your approach. The error may indicate a deeper issue. Fix the root cause. Re-run.
+
+**Attempt 3**: If STILL failing, try a completely different approach. Revert if needed and try again.
+
+**After 3 failed attempts**: STOP and escalate.
+
+### Step 4: Escalation Format
+
+If verification fails after 3 attempts, report clearly:
+
+```
+🚫 Verification Failed (3 attempts exhausted)
+
+**What I tried:**
+1. [First approach and result]
+2. [Second approach and result]  
+3. [Third approach and result]
+
+**Persistent error:**
+[Exact error message]
+
+**Root cause hypothesis:**
+[Your analysis of why this is failing]
+
+**Recommended next step:**
+[What a human should look at]
+```
+
+## Mandatory Checks Before Claiming "Done"
+
+| Claim | Required Proof |
+|-------|---------------|
+| "Tests pass" | Show `npm test` output with pass count |
+| "Build succeeds" | Show `npm run build` with exit code 0 |
+| "File created" | Run `cat` or `head` on the file to confirm |
+| "Committed" | Show `git log -1 --oneline` |
+| "Pushed" | Show `git push` output (no rejection) |
+| "PR created" | Show the PR URL |
+
+## Rules
+
+1. **NEVER say "done" without running verification** — this is non-negotiable
+2. **NEVER assume a build passes** — run it and check the output
+3. **Read the FULL error** before attempting a fix — don't guess
+4. **Track your attempts** — know when to escalate vs retry
+5. **Include evidence** in your completion report — show the output
+6. If unsure what test/build command to use, check `package.json` scripts first
