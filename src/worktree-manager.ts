@@ -165,10 +165,19 @@ export function createWorktree(
       );
     } catch {
       // Branch doesn't exist — create new from base
-      run(
-        `git worktree add -b "${branchName}" "${worktreePath}" "origin/${baseBranch}"`,
-        bareClonePath
-      );
+      // In bare clones, branches are refs/heads/<name>, not refs/remotes/origin/<name>
+      // Try both patterns for compatibility
+      try {
+        run(
+          `git worktree add -b "${branchName}" "${worktreePath}" "origin/${baseBranch}"`,
+          bareClonePath
+        );
+      } catch {
+        run(
+          `git worktree add -b "${branchName}" "${worktreePath}" "${baseBranch}"`,
+          bareClonePath
+        );
+      }
     }
 
     // SECURITY: Never persist credentials to metadata — sanitize URLs
@@ -305,13 +314,21 @@ function detectDefaultBranch(bareClonePath: string): string {
     const ref = run("git symbolic-ref refs/remotes/origin/HEAD", bareClonePath);
     return ref.replace("refs/remotes/origin/", "");
   } catch {
-    // Fallback: check for main, then master
+    // Bare clones have branches at refs/heads/, not refs/remotes/origin/
+    // Try both patterns for compatibility
+    try {
+      run("git show-ref --verify refs/heads/main", bareClonePath);
+      return "main";
+    } catch {
+      // noop
+    }
     try {
       run("git show-ref --verify refs/remotes/origin/main", bareClonePath);
       return "main";
     } catch {
-      return "master";
+      // noop
     }
+    return "master";
   }
 }
 

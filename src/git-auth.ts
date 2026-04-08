@@ -27,7 +27,8 @@ export function createAskPassScript(): string {
 
 /**
  * Build the environment object for authenticated git operations.
- * Token is passed via GIT_AUTH_TOKEN env var, read by GIT_ASKPASS script.
+ * Uses a credential helper script that echoes protocol/host/username/password
+ * to git's credential subsystem. This works for bare clones and all git operations.
  */
 function buildGitAuthEnv(
   token: string,
@@ -38,8 +39,11 @@ function buildGitAuthEnv(
     GIT_TERMINAL_PROMPT: "0",
     GIT_ASKPASS: askPassScript,
     GIT_AUTH_TOKEN: token,
-    // Prevent git from using any other credential helpers
+    // Use a credential helper that provides the token
     GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "credential.helper",
+    GIT_CONFIG_VALUE_0: `!f() { echo "username=x-token"; echo "password=$GIT_AUTH_TOKEN"; }; f`,
   };
 }
 
