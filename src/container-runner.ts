@@ -254,12 +254,17 @@ async function buildContainerArgs(
     try {
       const { resolveLLMKeysFromDelegate } = await import('./credential-client.js');
       const keys = await resolveLLMKeysFromDelegate(workspaceId);
-      if (keys?.anthropicKey) {
-        args.push('-e', `ANTHROPIC_API_KEY=${keys.anthropicKey}`);
-        if (keys.anthropicBaseUrl) {
-          args.push('-e', `ANTHROPIC_BASE_URL=${keys.anthropicBaseUrl}`);
+      // Prefer system/Bifrost key for agent operations (reliable credits)
+      // Fall back to user key if no system key available
+      const anthropicKey = keys?.systemAnthropicKey || keys?.anthropicKey;
+      const anthropicBaseUrl = keys?.systemAnthropicBaseUrl || keys?.anthropicBaseUrl;
+      if (anthropicKey) {
+        args.push('-e', `ANTHROPIC_API_KEY=${anthropicKey}`);
+        if (anthropicBaseUrl) {
+          args.push('-e', `ANTHROPIC_BASE_URL=${anthropicBaseUrl}`);
         }
-        logger.info({ containerName }, 'Anthropic API key injected from workspace');
+        const source = keys?.systemAnthropicKey ? 'system/Bifrost' : 'workspace';
+        logger.info({ containerName, source }, 'Anthropic API key injected');
       }
       if (keys?.openaiKey) {
         args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);

@@ -17,7 +17,13 @@ const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || "";
 export async function resolveLLMKeysFromDelegate(
   workspaceId?: string | null,
   userId?: string | null
-): Promise<{ anthropicKey?: string; openaiKey?: string; anthropicBaseUrl?: string } | null> {
+): Promise<{
+  anthropicKey?: string;
+  openaiKey?: string;
+  anthropicBaseUrl?: string;
+  systemAnthropicKey?: string;
+  systemAnthropicBaseUrl?: string;
+} | null> {
   if (!DELEGATE_API_KEY) return null;
   try {
     const params = new URLSearchParams();
