@@ -12,7 +12,8 @@ import * as path from 'path';
 import { setupWorktreeAsync, removeWorktree, listWorktrees } from './worktree-manager.js';
 import { writeMCPConfigDirect, writeMCPConfigForGroup } from './mcp-config-generator.js';
 import { logger } from './logger.js';
-import { getAllRegisteredGroups, setRegisteredGroup } from './db.js';
+import { getAllRegisteredGroups, setRegisteredGroup, getRegisteredGroup } from './db.js';
+import { resolveTokenFromDelegate } from './credential-client.js';
 
 const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/remote-agent/groups';
 
@@ -67,6 +68,7 @@ export function startGroupAPI(): void {
             isMain: data.isMain || false,
             containerConfig: data.containerConfig || {},
             requiresTrigger: data.requiresTrigger ?? false,
+            workspaceId: data.workspaceId || undefined,
           });
           logger.info({ jid: data.jid, name: data.name }, 'Group registered via API');
           res.writeHead(201);
@@ -140,10 +142,36 @@ export function startGroupAPI(): void {
               res.end(JSON.stringify({ error: 'repoUrl required' }));
               return;
             }
+            // Per-workspace credential routing:
+            // 1. Prefer token from request body (sent by Delegate with per-workspace creds)
+            // 2. Try resolving from Delegate API using workspaceId
+            // 3. Admin-only fallback to global env var
+            let githubToken = data.githubToken;
+            if (!githubToken && !data.isAdmin) {
+              // Resolve group's workspaceId for token lookup
+              const group = getRegisteredGroup(
+                Object.keys(getAllRegisteredGroups()).find(
+                  (jid) => getAllRegisteredGroups()[jid]?.folder === folder
+                ) || ''
+              );
+              const resolved = await resolveTokenFromDelegate(
+                data.workspaceId || group?.workspaceId
+              );
+              if (resolved) {
+                githubToken = resolved;
+              }
+            }
+            if (!githubToken && data.isAdmin) {
+              githubToken = process.env.GITHUB_TOKEN;
+              if (githubToken) {
+                logger.warn({ folder }, 'Using admin global GITHUB_TOKEN fallback (deprecated for task operations)');
+              }
+            }
+
             const result = await setupWorktreeAsync(data.repoUrl, folder, {
               branch: data.branch,
               baseBranch: data.baseBranch,
-              githubToken: data.githubToken || process.env.GITHUB_TOKEN,
+              githubToken,
             });
             if (result.ok) {
               logger.info({ folder, branch: result.branch }, 'Worktree created');
@@ -228,7 +256,7 @@ export function startGroupAPI(): void {
 
           if (data.mcpServers) {
             // Direct MCP config from Delegate
-            const result = writeMCPConfigDirect(folder, data.mcpServers, data.permissions);
+            const result = writeMCPConfigDirect(folder, data.mcpServers, data.permissions, data.workspaceId);
             logger.info({ folder, servers: Object.keys(data.mcpServers).length }, 'MCP config pushed directly');
             res.writeHead(result.ok ? 200 : 500);
             res.end(JSON.stringify(result));

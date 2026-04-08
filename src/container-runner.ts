@@ -227,11 +227,17 @@ async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   agentIdentifier?: string,
+  workspaceId?: string,
 ): Promise<string[]> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
+
+  // Inject workspace context for per-workspace credential resolution
+  if (workspaceId) {
+    args.push('-e', `DELEGATE_WORKSPACE_ID=${workspaceId}`);
+  }
 
   // OneCLI gateway handles credential injection — containers never see real secrets.
   // The gateway intercepts HTTPS traffic and injects API keys or OAuth tokens.
@@ -296,6 +302,7 @@ export async function runContainerAgent(
     mounts,
     containerName,
     agentIdentifier,
+    group.workspaceId,
   );
 
   logger.debug(

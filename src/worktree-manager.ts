@@ -12,6 +12,7 @@ import crypto from "crypto";
 import { execSync, exec } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { runGitWithToken, sanitizeGitUrl, sanitizeBareCloneRemote } from "./git-auth.js";
 
 const REPOS_DIR = process.env.REPOS_DIR || "/opt/remote-agent/repos";
 const GROUPS_DIR = process.env.GROUPS_DIR || "/opt/remote-agent/groups";
@@ -88,29 +89,35 @@ export function ensureBareClone(repoUrl: string, githubToken?: string): string {
   const hash = repoHash(repoUrl);
   const bareDir = path.join(REPOS_DIR, hash);
 
-  // Inject token for HTTPS clones if available
-  let authedUrl = repoUrl;
-  if (githubToken && repoUrl.startsWith("https://")) {
-    const url = new URL(repoUrl);
-    url.username = "x-token";
-    url.password = githubToken;
-    authedUrl = url.toString();
-  }
+  // SECURITY: Never embed tokens in URLs — use GIT_ASKPASS for auth
+  const cleanUrl = sanitizeGitUrl(repoUrl);
 
   if (fs.existsSync(path.join(bareDir, "HEAD"))) {
-    // Already cloned — fetch latest
+    // Already cloned — sanitize any legacy embedded tokens in remote URL
+    sanitizeBareCloneRemote(bareDir, cleanUrl);
+
+    // Fetch latest with per-operation token via GIT_ASKPASS
     try {
-      run(`git fetch --all --prune`, bareDir);
+      if (githubToken) {
+        runGitWithToken(`git fetch --all --prune`, githubToken, bareDir);
+      } else {
+        run(`git fetch --all --prune`, bareDir);
+      }
     } catch (e) {
       // Fetch failures are non-fatal; we still have the local clone
-      console.error(`[worktree] Fetch failed for ${repoUrl}: ${e}`);
+      // SECURITY: sanitize URL in error output
+      console.error(`[worktree] Fetch failed for ${sanitizeGitUrl(repoUrl)}: ${(e as Error).message}`);
     }
   } else {
-    // Fresh bare clone
-    run(`git clone --bare "${authedUrl}" "${bareDir}"`);
+    // Fresh bare clone — always use clean URL with GIT_ASKPASS
+    if (githubToken) {
+      runGitWithToken(`git clone --bare "${cleanUrl}" "${bareDir}"`, githubToken);
+    } else {
+      run(`git clone --bare "${cleanUrl}" "${bareDir}"`);
+    }
 
     // Store the original URL (without token) as metadata
-    fs.writeFileSync(path.join(bareDir, "delegate-repo-url"), repoUrl);
+    fs.writeFileSync(path.join(bareDir, "delegate-repo-url"), cleanUrl);
   }
 
   return bareDir;
@@ -164,22 +171,21 @@ export function createWorktree(
       );
     }
 
+    // SECURITY: Never persist credentials to metadata — sanitize URLs
+    const meta = {
+      folder,
+      branch: branchName,
+      baseBranch,
+      worktreePath,
+      bareClonePath,
+      repoUrl: sanitizeGitUrl(readRepoUrl(bareClonePath)),
+      createdAt: new Date().toISOString(),
+    };
+
     // Write metadata
     fs.writeFileSync(
       path.join(groupDir, "worktree-meta.json"),
-      JSON.stringify(
-        {
-          folder,
-          branch: branchName,
-          baseBranch,
-          worktreePath,
-          bareClonePath,
-          repoUrl: readRepoUrl(bareClonePath),
-          createdAt: new Date().toISOString(),
-        },
-        null,
-        2
-      )
+      JSON.stringify(meta, null, 2)
     );
 
     return { ok: true, worktreePath, branch: branchName, bareClonePath };

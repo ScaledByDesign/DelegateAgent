@@ -70,14 +70,20 @@ async function fetchWorkspaceMCPServers(
  * Build the built-in Delegate MCP server config.
  * This server provides token resolution, git auth, failure tracking, etc.
  */
-function buildDelegateMCPConfig(): MCPServerConfig {
+function buildDelegateMCPConfig(workspaceId?: string): MCPServerConfig {
+  const env: Record<string, string> = {
+    DELEGATE_URL,
+    DELEGATE_API_TOKEN,
+    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    NODE_ENV: process.env.NODE_ENV || "production",
+  };
+  if (workspaceId) {
+    env.DELEGATE_WORKSPACE_ID = workspaceId;
+  }
   return {
     command: "node",
     args: ["/opt/nanoclaw/mcp/delegate-mcp-server.js"],
-    env: {
-      DELEGATE_URL,
-      DELEGATE_API_TOKEN,
-    },
+    env,
   };
 }
 
@@ -121,8 +127,8 @@ export async function generateMCPConfig(
 ): Promise<ClaudeSettingsMCP> {
   const mcpServers: ClaudeSettingsMCP = {};
 
-  // 1. Built-in Delegate MCP server (always present)
-  mcpServers["delegate"] = buildDelegateMCPConfig();
+  // 1. Built-in Delegate MCP server (always present, with workspace context)
+  mcpServers["delegate"] = buildDelegateMCPConfig(workspaceId);
 
   // 2. Workspace MCP servers from Delegate UI
   if (workspaceId) {
@@ -230,12 +236,13 @@ export async function writeMCPConfigForGroup(
 export function writeMCPConfigDirect(
   folder: string,
   mcpConfig: ClaudeSettingsMCP,
-  permissions?: { allow: string[]; deny: string[] }
+  permissions?: { allow: string[]; deny: string[] },
+  workspaceId?: string
 ): { ok: boolean; path?: string; error?: string } {
   try {
     const merged: ClaudeSettingsMCP = {
-      // Always include the built-in Delegate MCP server
-      delegate: buildDelegateMCPConfig(),
+      // Always include the built-in Delegate MCP server (with workspace context)
+      delegate: buildDelegateMCPConfig(workspaceId),
       ...mcpConfig,
     };
 

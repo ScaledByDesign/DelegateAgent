@@ -69,7 +69,7 @@ export function generateToolsMd(appUrl: string): string {
 - Skills: /opt/nanoclaw/skills/
 - Context files: /opt/nanoclaw/context/
 - Node.js, git, tmux available
-- Git configured with credentials (if GITHUB_TOKEN set)
+- Git auth via delegate_git_auth MCP tool (per-workspace credentials — never use $GITHUB_TOKEN directly)
 
 # Available Skills
 (compact registry — populated dynamically at prompt assembly time)
