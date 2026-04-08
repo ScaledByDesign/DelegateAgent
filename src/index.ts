@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { startGroupAPI } from "./group-api.js";
 import path from 'path';
 
 import { OneCLI } from '@onecli-sh/sdk';
@@ -63,7 +64,6 @@ import {
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
-import { startGroupAPI } from './group-api.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -342,7 +342,7 @@ async function runAgent(
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
-  const sessionId = sessions[group.folder];
+  const sessionId = undefined; // DELEGATE-PATCH: always start fresh
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
@@ -373,9 +373,9 @@ async function runAgent(
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
-        if (output.newSessionId) {
-          sessions[group.folder] = output.newSessionId;
-          setSession(group.folder, output.newSessionId);
+        if (false && output.newSessionId) { // DELEGATE-PATCH: disabled
+          sessions[group.folder] = output.newSessionId!;
+          setSession(group.folder, output.newSessionId!);
         }
         await onOutput(output);
       }
@@ -397,9 +397,9 @@ async function runAgent(
       wrappedOnOutput,
     );
 
-    if (output.newSessionId) {
-      sessions[group.folder] = output.newSessionId;
-      setSession(group.folder, output.newSessionId);
+    if (false && output.newSessionId) { // DISABLED: never persist sessions — each run starts fresh
+      sessions[group.folder] = output.newSessionId!;
+      setSession(group.folder, output.newSessionId!);
     }
 
     if (output.status === 'error') {
@@ -728,10 +728,6 @@ async function main(): Promise<void> {
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
-
-  // Start Group + Context HTTP API (Delegate integration)
-  startGroupAPI();
-
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');
     process.exit(1);
@@ -746,7 +742,18 @@ const isDirectRun =
 
 if (isDirectRun) {
   main().catch((err) => {
-    logger.error({ err }, 'Failed to start RemoteAgent');
+    logger.error({ err }, 'Failed to start NanoClaw');
     process.exit(1);
   });
+}
+
+// ─── DELEGATE PATCH: Group Registration HTTP API ───
+// Exposes POST /api/groups on a configurable port so Delegate can register
+// task-specific groups at runtime. The Delegate channel groupSyncInterval
+// discovers new groups and starts polling them.
+import http from "http";
+
+
+if (isDirectRun) {
+  startGroupAPI();
 }

@@ -8,7 +8,7 @@
 # Bifrost listens on localhost:4000 (systemd binary).
 # NanoClaw group API listens on localhost:3001.
 #
-# Credentials: admin / <bcrypt hash>
+# Credentials: admin / ***ROTATED-2026-05-11***
 # To change password: caddy hash-password --plaintext "newpassword"
 {
 	email admin@delegate.ws
@@ -36,7 +36,7 @@ gateway.delegate.ws {
 		path / /api/governance/* /workspace/* /_next/* /favicon.ico
 	}
 	basic_auth @admin {
-		admin <BCRYPT_HASH>
+		admin ***ROTATED-2026-05-11***
 	}
 
 	# Allowed without auth: /anthropic/*, /openai/*, /health, /v1/*
@@ -72,11 +72,10 @@ gateway.delegate.ws {
 agent.delegate.ws {
 	import security_headers
 
-	# Group registration API — Bearer token auth (no basic auth)
-	@groupapi {
-		path /api/groups
-	}
-	handle @groupapi {
+	# Agent Group API — Bearer token auth (no basic auth)
+	# Proxies all /api/* paths to NanoClaw group API on port 3001
+	# Includes: /api/groups, /api/context/*, /api/worktree/*, /api/mcp-config/*, /api/health
+	handle /api/* {
 		reverse_proxy localhost:3001
 	}
 
@@ -88,16 +87,14 @@ agent.delegate.ws {
 
 	# Everything else behind basic auth
 	@protected {
-		not path /api/groups
+		not path /api/*
 		not path /health
 	}
 	basic_auth @protected {
-		admin <BCRYPT_HASH>
+		admin ***ROTATED-2026-05-11***
 	}
 
-	handle /api/* {
-		respond "NanoClaw v5 uses polling. Use Delegate endpoints." 410
-	}
+
 
 	handle {
 		header Content-Type "text/html; charset=utf-8"
