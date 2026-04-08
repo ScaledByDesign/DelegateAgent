@@ -248,36 +248,39 @@ async function buildContainerArgs(
   if (onecliApplied) {
     logger.info({ containerName }, 'OneCLI gateway config applied');
   } else {
-    // OneCLI not available — resolve LLM keys from Delegate API per-workspace
-    // This is the multi-tenant SaaS path: each workspace has their own API keys
-    logger.warn({ containerName }, 'OneCLI not reachable — resolving LLM keys from Delegate API');
-    try {
-      const { resolveLLMKeysFromDelegate } = await import('./credential-client.js');
-      const keys = await resolveLLMKeysFromDelegate(workspaceId);
-      // Prefer system/Bifrost key for agent operations (reliable credits)
-      // Fall back to user key if no system key available
-      const anthropicKey = keys?.systemAnthropicKey || keys?.anthropicKey;
-      const anthropicBaseUrl = keys?.systemAnthropicBaseUrl || keys?.anthropicBaseUrl;
-      if (anthropicKey) {
-        args.push('-e', `ANTHROPIC_API_KEY=${anthropicKey}`);
-        if (anthropicBaseUrl) {
-          args.push('-e', `ANTHROPIC_BASE_URL=${anthropicBaseUrl}`);
+    // OneCLI not available — route through Bifrost AI gateway for load balancing,
+    // key rotation, and failover. Bifrost runs on the host at port 4000.
+    // Container reaches host via host.docker.internal (added by hostGatewayArgs).
+    const BIFROST_URL = process.env.BIFROST_URL || 'http://localhost:4000';
+    const BIFROST_KEY = process.env.ANTHROPIC_API_KEY; // Bifrost key (sk-bf-...)
+
+    if (BIFROST_KEY) {
+      // Route through Bifrost — handles key rotation, rate limits, failover
+      args.push('-e', `ANTHROPIC_API_KEY=${BIFROST_KEY}`);
+      // Container can't reach localhost:4000 — use host.docker.internal
+      const containerBifrostUrl = BIFROST_URL.replace('localhost', 'host.docker.internal')
+        .replace('127.0.0.1', 'host.docker.internal');
+      args.push('-e', `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`);
+      logger.info({ containerName }, 'Anthropic routed through Bifrost AI gateway');
+    } else {
+      // No Bifrost — resolve per-workspace keys from Delegate API
+      logger.warn({ containerName }, 'No Bifrost key — resolving LLM keys from Delegate API');
+      try {
+        const { resolveLLMKeysFromDelegate } = await import('./credential-client.js');
+        const keys = await resolveLLMKeysFromDelegate(workspaceId);
+        const anthropicKey = keys?.anthropicKey;
+        if (anthropicKey) {
+          args.push('-e', `ANTHROPIC_API_KEY=${anthropicKey}`);
+          if (keys?.anthropicBaseUrl) {
+            args.push('-e', `ANTHROPIC_BASE_URL=${keys.anthropicBaseUrl}`);
+          }
+          logger.info({ containerName }, 'Anthropic API key injected from workspace');
         }
-        const source = keys?.systemAnthropicKey ? 'system/Bifrost' : 'workspace';
-        logger.info({ containerName, source }, 'Anthropic API key injected');
-      }
-      if (keys?.openaiKey) {
-        args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
-      }
-    } catch (e) {
-      logger.error({ containerName, err: (e as Error).message }, 'Failed to resolve LLM keys');
-      // Fall back to process env if available (admin/dev scenario)
-      if (process.env.ANTHROPIC_API_KEY) {
-        args.push('-e', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`);
-        if (process.env.ANTHROPIC_BASE_URL) {
-          args.push('-e', `ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL}`);
+        if (keys?.openaiKey) {
+          args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
         }
-        logger.warn({ containerName }, 'Using admin env fallback for Anthropic key');
+      } catch (e) {
+        logger.error({ containerName, err: (e as Error).message }, 'Failed to resolve LLM keys');
       }
     }
   }
