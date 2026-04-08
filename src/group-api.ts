@@ -15,7 +15,7 @@ import { logger } from './logger.js';
 import { getAllRegisteredGroups, setRegisteredGroup, getRegisteredGroup } from './db.js';
 import { resolveTokenFromDelegate } from './credential-client.js';
 
-const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/remote-agent/groups';
+const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/nanoclaw/groups';
 
 export function startGroupAPI(): void {
   const PORT = parseInt(process.env.GROUP_API_PORT || '3001', 10);
@@ -109,7 +109,7 @@ export function startGroupAPI(): void {
           fs.renameSync(tmpPath, claudePath);
 
           // Also ensure the session dir has .claude settings
-          const sessionsDir = process.env.SESSIONS_DIR || '/opt/remote-agent/data/sessions';
+          const sessionsDir = process.env.SESSIONS_DIR || '/opt/nanoclaw/data/sessions';
           const sessionClaudeDir = path.join(sessionsDir, folder, '.claude');
           if (!fs.existsSync(sessionClaudeDir)) {
             fs.mkdirSync(sessionClaudeDir, { recursive: true });
@@ -286,7 +286,7 @@ export function startGroupAPI(): void {
     if (req.method === 'GET' && req.url === '/api/health') {
       let gitSha = 'unknown';
       try {
-        gitSha = fs.readFileSync('/opt/remote-agent/.git/refs/heads/main', 'utf-8').trim().slice(0, 8);
+        gitSha = fs.readFileSync('/opt/nanoclaw/.git/refs/heads/main', 'utf-8').trim().slice(0, 8);
       } catch {}
       const worktreeCount = (() => {
         try {

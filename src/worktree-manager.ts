@@ -3,8 +3,8 @@
 // an isolated git worktree from a shared bare clone.
 //
 // Layout:
-//   /opt/remote-agent/repos/<repo-hash>/      ← shared bare clone
-//   /opt/remote-agent/groups/<folder>/workspace/ ← per-task worktree
+//   /opt/nanoclaw/repos/<repo-hash>/      ← shared bare clone
+//   /opt/nanoclaw/groups/<folder>/workspace/ ← per-task worktree
 //
 // This module is used by the Group API on the RemoteAgent droplet.
 
@@ -14,8 +14,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { runGitWithToken, sanitizeGitUrl, sanitizeBareCloneRemote } from "./git-auth.js";
 
-const REPOS_DIR = process.env.REPOS_DIR || "/opt/remote-agent/repos";
-const GROUPS_DIR = process.env.GROUPS_DIR || "/opt/remote-agent/groups";
+const REPOS_DIR = process.env.REPOS_DIR || "/opt/nanoclaw/repos";
+const GROUPS_DIR = process.env.GROUPS_DIR || "/opt/nanoclaw/groups";
 
 export interface WorktreeInfo {
   folder: string;
