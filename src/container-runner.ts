@@ -248,10 +248,33 @@ async function buildContainerArgs(
   if (onecliApplied) {
     logger.info({ containerName }, 'OneCLI gateway config applied');
   } else {
-    logger.warn(
-      { containerName },
-      'OneCLI gateway not reachable — container will have no credentials',
-    );
+    // OneCLI not available — resolve LLM keys from Delegate API per-workspace
+    // This is the multi-tenant SaaS path: each workspace has their own API keys
+    logger.warn({ containerName }, 'OneCLI not reachable — resolving LLM keys from Delegate API');
+    try {
+      const { resolveLLMKeysFromDelegate } = await import('./credential-client.js');
+      const keys = await resolveLLMKeysFromDelegate(workspaceId);
+      if (keys?.anthropicKey) {
+        args.push('-e', `ANTHROPIC_API_KEY=${keys.anthropicKey}`);
+        if (keys.anthropicBaseUrl) {
+          args.push('-e', `ANTHROPIC_BASE_URL=${keys.anthropicBaseUrl}`);
+        }
+        logger.info({ containerName }, 'Anthropic API key injected from workspace');
+      }
+      if (keys?.openaiKey) {
+        args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
+      }
+    } catch (e) {
+      logger.error({ containerName, err: (e as Error).message }, 'Failed to resolve LLM keys');
+      // Fall back to process env if available (admin/dev scenario)
+      if (process.env.ANTHROPIC_API_KEY) {
+        args.push('-e', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`);
+        if (process.env.ANTHROPIC_BASE_URL) {
+          args.push('-e', `ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL}`);
+        }
+        logger.warn({ containerName }, 'Using admin env fallback for Anthropic key');
+      }
+    }
   }
 
   // Runtime-specific args for host gateway resolution
