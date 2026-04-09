@@ -173,7 +173,26 @@ export function startGroupAPI(): void {
               baseBranch: data.baseBranch,
               githubToken,
             });
-            if (result.ok) {
+            if (result.ok && result.worktreePath) {
+              // Configure git credential helper inside the worktree so the agent can push
+              try {
+                const { configureWorktreeGitAuth } = await import('./git-auth.js');
+                const group = getRegisteredGroup(
+                  Object.keys(getAllRegisteredGroups()).find(
+                    (jid) => getAllRegisteredGroups()[jid]?.folder === folder
+                  ) || ''
+                );
+                const wsId = data.workspaceId || group?.workspaceId;
+                if (wsId) {
+                  configureWorktreeGitAuth(result.worktreePath, wsId);
+                  logger.info({ folder, workspaceId: wsId }, 'Git credential helper configured in worktree');
+                }
+              } catch (authErr: any) {
+                logger.warn({ folder, error: authErr.message }, 'Failed to configure git auth in worktree (non-fatal)');
+              }
+              logger.info({ folder, branch: result.branch }, 'Worktree created');
+              res.writeHead(201);
+            } else if (result.ok) {
               logger.info({ folder, branch: result.branch }, 'Worktree created');
               res.writeHead(201);
             } else {
