@@ -170,7 +170,7 @@ echo "password=$TOKEN"
 `;
 
   const helperPath = path.join(worktreePath, ".git-credential-helper.sh");
-  fs.writeFileSync(helperPath, helperScript, { mode: 0o700 });
+  fs.writeFileSync(helperPath, helperScript, { mode: 0o755 }); // world-executable for container user
 
   // Configure local git to use this credential helper
   // Use a relative path so it works both on host and inside container
@@ -186,13 +186,20 @@ echo "password=$TOKEN"
       }
     );
 
-    // Also set user for commits
+    // Set user for commits
     execSync(`git config --local user.email "agent@delegate.ws"`, {
       cwd: worktreePath, encoding: "utf-8", timeout: 5000,
     });
     execSync(`git config --local user.name "Delegate Agent"`, {
       cwd: worktreePath, encoding: "utf-8", timeout: 5000,
     });
+
+    // Write a .gitconfig for the container user (node, uid 1000)
+    // so safe.directory is set when the container mounts this worktree
+    const sessionsDir = process.env.SESSIONS_DIR || "/opt/nanoclaw/data/sessions";
+    const sessionGitconfig = path.join(sessionsDir, path.basename(path.dirname(worktreePath)), ".gitconfig");
+    fs.mkdirSync(path.dirname(sessionGitconfig), { recursive: true });
+    fs.writeFileSync(sessionGitconfig, "[safe]\n\tdirectory = *\n");
   } catch {
     // Non-fatal
   }

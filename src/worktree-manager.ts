@@ -124,21 +124,28 @@ export function ensureBareClone(repoUrl: string, githubToken?: string): string {
 }
 
 /**
- * Create a git worktree for a specific task group.
- * Creates a new branch `agent/<folder>` from the default branch.
+ * Create a standalone git clone for a specific task group.
+ * Uses the bare clone as a local reference for faster cloning, then checks
+ * out a new branch. This produces a standalone .git directory that works
+ * inside Docker containers without mounting the bare clone.
  */
 export function createWorktree(
   bareClonePath: string,
   folder: string,
-  opts?: { branch?: string; baseBranch?: string }
+  opts?: { branch?: string; baseBranch?: string; githubToken?: string }
 ): WorktreeResult {
   const groupDir = path.join(GROUPS_DIR, folder);
   const worktreePath = path.join(groupDir, "workspace");
 
   // Already exists?
   if (fs.existsSync(worktreePath) && fs.existsSync(path.join(worktreePath, ".git"))) {
-    const branch = run("git rev-parse --abbrev-ref HEAD", worktreePath);
-    return { ok: true, worktreePath, branch, bareClonePath };
+    try {
+      const branch = run("git rev-parse --abbrev-ref HEAD", worktreePath);
+      return { ok: true, worktreePath, branch, bareClonePath };
+    } catch {
+      // .git exists but is broken — remove and recreate
+      fs.rmSync(worktreePath, { recursive: true, force: true });
+    }
   }
 
   // Ensure parent dir exists
@@ -154,30 +161,25 @@ export function createWorktree(
   const branchName = opts?.branch || `agent/${folder}`;
 
   try {
-    // Create a new branch from the base branch
-    // First check if branch already exists
-    try {
-      run(`git show-ref --verify refs/heads/${branchName}`, bareClonePath);
-      // Branch exists — just create worktree from it
-      run(
-        `git worktree add "${worktreePath}" "${branchName}"`,
-        bareClonePath
+    const repoUrl = readRepoUrl(bareClonePath);
+    const cleanUrl = sanitizeGitUrl(repoUrl);
+
+    // Clone using bare repo as local reference (fast) + set remote to real URL
+    // This creates a standalone .git directory that works in containers
+    if (opts?.githubToken) {
+      runGitWithToken(
+        `git clone --reference "${bareClonePath}" --dissociate "${cleanUrl}" "${worktreePath}"`,
+        opts.githubToken
       );
+    } else {
+      run(`git clone --reference "${bareClonePath}" --dissociate "${cleanUrl}" "${worktreePath}"`);
+    }
+
+    // Create and checkout the branch
+    try {
+      run(`git checkout "${branchName}"`, worktreePath);
     } catch {
-      // Branch doesn't exist — create new from base
-      // In bare clones, branches are refs/heads/<name>, not refs/remotes/origin/<name>
-      // Try both patterns for compatibility
-      try {
-        run(
-          `git worktree add -b "${branchName}" "${worktreePath}" "origin/${baseBranch}"`,
-          bareClonePath
-        );
-      } catch {
-        run(
-          `git worktree add -b "${branchName}" "${worktreePath}" "${baseBranch}"`,
-          bareClonePath
-        );
-      }
+      run(`git checkout -b "${branchName}" "origin/${baseBranch}"`, worktreePath);
     }
 
     // SECURITY: Never persist credentials to metadata — sanitize URLs
@@ -187,7 +189,7 @@ export function createWorktree(
       baseBranch,
       worktreePath,
       bareClonePath,
-      repoUrl: sanitizeGitUrl(readRepoUrl(bareClonePath)),
+      repoUrl: cleanUrl,
       createdAt: new Date().toISOString(),
     };
 

@@ -165,6 +165,17 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Mount .gitconfig for safe.directory setting (enables git in worktrees owned by root)
+  const gitconfigPath = path.join(groupSessionsDir, '.gitconfig');
+  if (!fs.existsSync(gitconfigPath)) {
+    fs.writeFileSync(gitconfigPath, "[safe]\n\tdirectory = *\n");
+  }
+  mounts.push({
+    hostPath: gitconfigPath,
+    containerPath: '/home/node/.gitconfig',
+    readonly: true,
+  });
+
   // Per-group IPC namespace: each group gets its own IPC directory
   // This prevents cross-group privilege escalation via IPC
   const groupIpcDir = resolveGroupIpcPath(group.folder);
