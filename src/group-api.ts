@@ -324,6 +324,16 @@ export function startGroupAPI(): void {
   });
 
   server.listen(PORT, () => {
-    logger.info({ port: PORT }, 'Group + Context API listening');
+    // Plain-text line first — unmistakable in journalctl even if pino
+    // structured output is filtered or pretty-printer isn't attached.
+    // If you ever see the service running without this line, the deployed
+    // dist is stale and Delegate cannot register task JIDs.
+    console.log(`[group-api] listening on :${PORT}`);
+    logger.info({ port: PORT, tokens: VALID_TOKENS.length }, 'Group + Context API listening');
+  });
+
+  server.on('error', (err) => {
+    console.error(`[group-api] FAILED TO BIND :${PORT} — ${err.message}`);
+    logger.error({ err, port: PORT }, 'Group API failed to bind — Delegate cannot register JIDs');
   });
 }

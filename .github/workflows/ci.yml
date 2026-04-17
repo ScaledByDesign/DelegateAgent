@@ -21,5 +21,8 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Build (catches missing imports, stale startGroupAPI wiring, etc.)
+        run: npm run build
+
       - name: Tests
         run: npx vitest run
