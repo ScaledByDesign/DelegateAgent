@@ -1,12 +1,24 @@
-// NanoClaw Sentry initialization — preloaded via node --require ./sentry-init.cjs
-// This file is copied to /opt/nanoclaw/sentry-init.cjs on the droplet.
+// DelegateAgent Sentry initialization — preloaded via `node --require ./sentry-init.cjs`.
+// Copied to /opt/delegate-agent/sentry-init.cjs on the droplet.
+//
+// `@sentry/node` is an OPTIONAL dependency — if it's not installed (e.g. after
+// `npm ci --omit=optional` or during local dev without Sentry), this file
+// no-ops gracefully instead of blocking startup.
 
-const Sentry = require('@sentry/node');
+let Sentry;
+try {
+  Sentry = require('@sentry/node');
+} catch (err) {
+  console.warn('[sentry] @sentry/node not installed — error tracking disabled');
+  // No-op globals so other modules that look for __SENTRY__ don't crash
+  global.__SENTRY__ = null;
+  return;
+}
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || 'https://0f29fb05ca9953ee4b13beaab96be4c6@o137686.ingest.us.sentry.io/4511129079775232',
   environment: process.env.NODE_ENV || 'production',
-  serverName: 'nanoclaw-' + (process.env.NANOCLAW_GROUP || 'main'),
+  serverName: 'delegate-agent-' + (process.env.DELEGATE_AGENT_GROUP || process.env.NANOCLAW_GROUP || 'main'),
 
   tracesSampleRate: 0.2,
   includeLocalVariables: true,
@@ -15,7 +27,7 @@ Sentry.init({
 
   initialScope: {
     tags: {
-      service: 'nanoclaw',
+      service: 'delegate-agent',
       droplet_ip: process.env.DROPLET_IP || 'unknown',
     },
   },
@@ -89,4 +101,4 @@ process.on('unhandledRejection', (reason) => {
 // ─── Expose Sentry for other modules ───
 global.__SENTRY__ = Sentry;
 
-console.log('[sentry] NanoClaw error tracking initialized (Bifrost monitor active)');
+console.log('[sentry] DelegateAgent error tracking initialized (Bifrost monitor active)');
