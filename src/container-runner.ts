@@ -1,5 +1,5 @@
 /**
- * Container Runner for NanoClaw
+ * Container Runner for DelegateAgent
  * Spawns agent execution in containers and handles IPC
  */
 import { ChildProcess, spawn } from 'child_process';
@@ -31,8 +31,8 @@ import { RegisteredGroup } from './types.js';
 const onecli = new OneCLI({ url: ONECLI_URL });
 
 // Sentinel markers for robust output parsing (must match agent-runner)
-const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
-const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
+const OUTPUT_START_MARKER = '---DELEGATE_AGENT_OUTPUT_START---';
+const OUTPUT_END_MARKER = '---DELEGATE_AGENT_OUTPUT_END---';
 
 export interface ContainerInput {
   prompt: string;
@@ -168,7 +168,7 @@ function buildVolumeMounts(
   // Mount .gitconfig for safe.directory setting (enables git in worktrees owned by root)
   const gitconfigPath = path.join(groupSessionsDir, '.gitconfig');
   if (!fs.existsSync(gitconfigPath)) {
-    fs.writeFileSync(gitconfigPath, "[safe]\n\tdirectory = *\n");
+    fs.writeFileSync(gitconfigPath, '[safe]\n\tdirectory = *\n');
   }
   mounts.push({
     hostPath: gitconfigPath,
@@ -261,11 +261,16 @@ async function buildContainerArgs(
   const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
   const DELEGATE_API_KEY_ENV = process.env.DELEGATE_API_KEY || '';
   const BIFROST_URL = process.env.BIFROST_URL || 'http://localhost:4000';
-  const containerBifrostUrl = BIFROST_URL.replace('localhost', 'host.docker.internal')
-    .replace('127.0.0.1', 'host.docker.internal');
+  const containerBifrostUrl = BIFROST_URL.replace(
+    'localhost',
+    'host.docker.internal',
+  ).replace('127.0.0.1', 'host.docker.internal');
 
   // Always inject Delegate API context so containers can resolve tokens at runtime
-  args.push('-e', `DELEGATE_URL=${DELEGATE_URL.replace('localhost', 'host.docker.internal')}`);
+  args.push(
+    '-e',
+    `DELEGATE_URL=${DELEGATE_URL.replace('localhost', 'host.docker.internal')}`,
+  );
   if (DELEGATE_API_KEY_ENV) {
     args.push('-e', `DELEGATE_API_KEY=${DELEGATE_API_KEY_ENV}`);
   }
@@ -275,7 +280,8 @@ async function buildContainerArgs(
   // Tier 1: Per-workspace keys from Delegate API (preferred for multi-tenant SaaS)
   if (workspaceId) {
     try {
-      const { resolveLLMKeysFromDelegate } = await import('./credential-client.js');
+      const { resolveLLMKeysFromDelegate } =
+        await import('./credential-client.js');
       const keys = await resolveLLMKeysFromDelegate(workspaceId);
 
       if (keys?.anthropicKey) {
@@ -285,16 +291,25 @@ async function buildContainerArgs(
         if (keys.anthropicBaseUrl) {
           args.push('-e', `ANTHROPIC_BASE_URL=${keys.anthropicBaseUrl}`);
         } else {
-          args.push('-e', `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`);
+          args.push(
+            '-e',
+            `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`,
+          );
         }
         credentialsResolved = true;
-        logger.info({ containerName, workspaceId }, 'LLM keys resolved from workspace integration');
+        logger.info(
+          { containerName, workspaceId },
+          'LLM keys resolved from workspace integration',
+        );
       }
       if (keys?.openaiKey) {
         args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
       }
     } catch (e) {
-      logger.warn({ containerName, err: (e as Error).message }, 'Workspace LLM key resolution failed — falling back');
+      logger.warn(
+        { containerName, err: (e as Error).message },
+        'Workspace LLM key resolution failed — falling back',
+      );
     }
   }
 
@@ -316,9 +331,15 @@ async function buildContainerArgs(
     if (BIFROST_KEY) {
       args.push('-e', `ANTHROPIC_API_KEY=${BIFROST_KEY}`);
       args.push('-e', `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`);
-      logger.warn({ containerName }, 'Using static Bifrost key — no workspace-specific credentials resolved');
+      logger.warn(
+        { containerName },
+        'Using static Bifrost key — no workspace-specific credentials resolved',
+      );
     } else {
-      logger.error({ containerName }, 'No credentials available — container will have no LLM access');
+      logger.error(
+        { containerName },
+        'No credentials available — container will have no LLM access',
+      );
     }
   }
 
@@ -361,7 +382,7 @@ export async function runContainerAgent(
 
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
-  const containerName = `nanoclaw-${safeName}-${Date.now()}`;
+  const containerName = `delegate-agent-${safeName}-${Date.now()}`;
   // Main group uses the default OneCLI agent; others use their own agent.
   const agentIdentifier = input.isMain
     ? undefined

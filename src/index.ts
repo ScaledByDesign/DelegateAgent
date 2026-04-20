@@ -1,5 +1,10 @@
+import { migrateLegacyConfigDir } from './config.js';
+
+// MUST run before any code that reads resolved config paths (mount allowlist, etc.)
+migrateLegacyConfigDir();
+
 import fs from 'fs';
-import { startGroupAPI } from "./group-api.js";
+import { startGroupAPI } from './group-api.js';
 import path from 'path';
 
 import { OneCLI } from '@onecli-sh/sdk';
@@ -373,7 +378,8 @@ async function runAgent(
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
-        if (false && output.newSessionId) { // DELEGATE-PATCH: disabled
+        if (false && output.newSessionId) {
+          // DELEGATE-PATCH: disabled
           sessions[group.folder] = output.newSessionId!;
           setSession(group.folder, output.newSessionId!);
         }
@@ -397,7 +403,8 @@ async function runAgent(
       wrappedOnOutput,
     );
 
-    if (false && output.newSessionId) { // DISABLED: never persist sessions — each run starts fresh
+    if (false && output.newSessionId) {
+      // DISABLED: never persist sessions — each run starts fresh
       sessions[group.folder] = output.newSessionId!;
       setSession(group.folder, output.newSessionId!);
     }
@@ -424,7 +431,7 @@ async function startMessageLoop(): Promise<void> {
   }
   messageLoopRunning = true;
 
-  logger.info(`NanoClaw running (default trigger: ${DEFAULT_TRIGGER})`);
+  logger.info(`DelegateAgent running (default trigger: ${DEFAULT_TRIGGER})`);
 
   while (true) {
     try {
@@ -742,7 +749,7 @@ const isDirectRun =
 
 if (isDirectRun) {
   main().catch((err) => {
-    logger.error({ err }, 'Failed to start NanoClaw');
+    logger.error({ err }, 'Failed to start DelegateAgent');
     process.exit(1);
   });
 }
@@ -751,8 +758,7 @@ if (isDirectRun) {
 // Exposes POST /api/groups on a configurable port so Delegate can register
 // task-specific groups at runtime. The Delegate channel groupSyncInterval
 // discovers new groups and starts polling them.
-import http from "http";
-
+import http from 'http';
 
 if (isDirectRun) {
   startGroupAPI();

@@ -1,8 +1,46 @@
+import fs from 'node:fs';
 import os from 'os';
 import path from 'path';
 
 import { readEnvFile } from './env.js';
 import { isValidTimezone } from './timezone.js';
+
+/**
+ * Read env var with optional legacy fallback. Logs a deprecation warning if the fallback is used.
+ * @example getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN'])
+ */
+export function getEnvWithFallback(
+  primary: string,
+  legacy: string[] = [],
+): string | undefined {
+  const primaryVal = process.env[primary];
+  if (primaryVal) return primaryVal;
+  for (const name of legacy) {
+    const val = process.env[name];
+    if (val) {
+      console.warn(
+        `[DEPRECATION] env var ${name} is deprecated; rename to ${primary}. See docs/UPSTREAM-SYNC.md.`,
+      );
+      return val;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * One-shot migration: move ~/.config/nanoclaw → ~/.config/delegate-agent if the
+ * legacy dir exists and the new one does not. Safe to call multiple times.
+ * Must run BEFORE any config load that reads the resolved paths.
+ */
+export function migrateLegacyConfigDir(): void {
+  const home = os.homedir();
+  const legacy = path.join(home, '.config/nanoclaw');
+  const current = path.join(home, '.config/delegate-agent');
+  if (fs.existsSync(legacy) && !fs.existsSync(current)) {
+    fs.renameSync(legacy, current);
+    console.log(`[MIGRATION] moved ${legacy} → ${current}`);
+  }
+}
 
 // Read config values from .env (falls back to process.env).
 const envConfig = readEnvFile([
@@ -28,13 +66,13 @@ const HOME_DIR = process.env.HOME || os.homedir();
 export const MOUNT_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
-  'nanoclaw',
+  'delegate-agent',
   'mount-allowlist.json',
 );
 export const SENDER_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
-  'nanoclaw',
+  'delegate-agent',
   'sender-allowlist.json',
 );
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
@@ -42,7 +80,7 @@ export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 
 export const CONTAINER_IMAGE =
-  process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
+  process.env.CONTAINER_IMAGE || 'delegate-agent:latest';
 export const CONTAINER_TIMEOUT = parseInt(
   process.env.CONTAINER_TIMEOUT || '1800000',
   10,
