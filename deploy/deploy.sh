@@ -1,7 +1,29 @@
 #!/bin/bash
 set -euo pipefail
 
-# ─── NanoClaw Agent — One-Command Deploy ──────────────────────────────────────
+# --- Rebrand migration (idempotent, safe to run multiple times) ---
+# Move /opt/nanoclaw → /opt/delegate-agent, leave legacy symlink for one release.
+if [ -d /opt/nanoclaw ] && [ ! -L /opt/nanoclaw ] && [ ! -d /opt/delegate-agent ]; then
+  mv /opt/nanoclaw /opt/delegate-agent
+  ln -s /opt/delegate-agent /opt/nanoclaw
+  echo "[migrate] moved /opt/nanoclaw → /opt/delegate-agent (legacy symlink retained)"
+fi
+
+# Systemd unit migration (idempotent)
+if systemctl list-unit-files | grep -q '^nanoclaw\.service'; then
+  systemctl stop nanoclaw.service 2>/dev/null || true
+  systemctl disable nanoclaw.service 2>/dev/null || true
+  rm -f /etc/systemd/system/nanoclaw.service
+  systemctl daemon-reload
+fi
+if [ ! -L /etc/systemd/system/delegate-agent.service ]; then
+  ln -sf /opt/delegate-agent/deploy/delegate-agent.service /etc/systemd/system/delegate-agent.service
+  systemctl daemon-reload
+  systemctl enable delegate-agent.service
+fi
+# --- End rebrand migration ---
+
+# ─── DelegateAgent — One-Command Deploy ───────────────────────────────────────
 #
 # Usage:
 #   ./deploy/deploy.sh                    # Full deploy (build + push + restart)
@@ -11,14 +33,14 @@ set -euo pipefail
 # Prerequisites:
 #   - SSH access to droplet (root@$DROPLET_IP)
 #   - Docker installed on droplet
-#   - /opt/nanoclaw/.env populated on droplet (see deploy/env.example)
+#   - /opt/delegate-agent/.env populated on droplet (see deploy/env.example)
 #
 # First-time setup: run ./deploy/deploy.sh --init
 # ──────────────────────────────────────────────────────────────────────────────
 
 DROPLET_IP="${DELEGATE_AGENT_IP:-159.89.226.182}"
 SSH_USER="root"
-REMOTE_DIR="/opt/nanoclaw"
+REMOTE_DIR="/opt/delegate-agent"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
@@ -79,7 +101,7 @@ init_droplet() {
     fi
 
     # Create directories
-    mkdir -p /opt/nanoclaw /opt/bifrost /opt/nanoclaw/data /opt/nanoclaw/store /opt/nanoclaw/groups
+    mkdir -p /opt/delegate-agent /opt/bifrost /opt/delegate-agent/data /opt/delegate-agent/store /opt/delegate-agent/groups
 
     # Add swap if missing (prevents OOM on agent builds)
     if [ ! -f /swapfile ]; then
@@ -132,10 +154,10 @@ build_container() {
 install_services() {
   log "Installing systemd services..."
   ssh "$SSH_USER@$DROPLET_IP" bash <<REMOTE
-    cp $REMOTE_DIR/deploy/nanoclaw.service /etc/systemd/system/
+    cp $REMOTE_DIR/deploy/delegate-agent.service /etc/systemd/system/
     cp $REMOTE_DIR/deploy/bifrost.service /etc/systemd/system/
     systemctl daemon-reload
-    systemctl enable nanoclaw bifrost caddy
+    systemctl enable delegate-agent bifrost caddy
 REMOTE
 }
 
@@ -145,16 +167,16 @@ install_configs() {
   log "Installing Caddy + Bifrost configs..."
   ssh "$SSH_USER@$DROPLET_IP" bash <<'REMOTE'
     # Caddy
-    if [ -f /opt/nanoclaw/deploy/Caddyfile ]; then
-      cp /opt/nanoclaw/deploy/Caddyfile /etc/caddy/Caddyfile
+    if [ -f /opt/delegate-agent/deploy/Caddyfile ]; then
+      cp /opt/delegate-agent/deploy/Caddyfile /etc/caddy/Caddyfile
       systemctl reload caddy 2>/dev/null || systemctl restart caddy
     fi
 
     # Bifrost — expand env vars in template
-    if [ -f /opt/nanoclaw/deploy/bifrost-config.template.json ] && [ -f /opt/nanoclaw/.env ]; then
-      source /opt/nanoclaw/.env
+    if [ -f /opt/delegate-agent/deploy/bifrost-config.template.json ] && [ -f /opt/delegate-agent/.env ]; then
+      source /opt/delegate-agent/.env
       export ANTHROPIC_API_KEY OPENAI_API_KEY
-      envsubst < /opt/nanoclaw/deploy/bifrost-config.template.json > /opt/bifrost/config.json
+      envsubst < /opt/delegate-agent/deploy/bifrost-config.template.json > /opt/bifrost/config.json
       echo "[configs] Bifrost config generated"
     fi
 REMOTE
@@ -167,11 +189,11 @@ restart_services() {
   ssh "$SSH_USER@$DROPLET_IP" bash <<'REMOTE'
     systemctl restart bifrost
     sleep 2
-    systemctl restart nanoclaw
+    systemctl restart delegate-agent
     sleep 3
 
     echo "=== Service Status ==="
-    systemctl is-active nanoclaw && echo "nanoclaw: ✓" || echo "nanoclaw: ✗"
+    systemctl is-active delegate-agent && echo "delegate-agent: ✓" || echo "delegate-agent: ✗"
     systemctl is-active bifrost && echo "bifrost: ✓" || echo "bifrost: ✗"
     systemctl is-active caddy && echo "caddy: ✓" || echo "caddy: ✗"
 
@@ -180,8 +202,8 @@ restart_services() {
     free -m | head -3
 
     echo ""
-    echo "=== NanoClaw Logs ==="
-    journalctl -u nanoclaw --no-pager -n 5
+    echo "=== DelegateAgent Logs ==="
+    journalctl -u delegate-agent --no-pager -n 5
 REMOTE
 }
 
@@ -191,9 +213,9 @@ health_check() {
   log "Running health checks..."
   ssh "$SSH_USER@$DROPLET_IP" bash <<'REMOTE'
     echo "Services:"
-    for svc in nanoclaw bifrost caddy; do
+    for svc in delegate-agent bifrost caddy; do
       status=$(systemctl is-active $svc 2>/dev/null || echo "inactive")
-      printf "  %-12s %s\n" "$svc" "$status"
+      printf "  %-14s %s\n" "$svc" "$status"
     done
 
     echo ""
@@ -210,8 +232,8 @@ health_check() {
     docker ps --format '  {{.Names}} | {{.Status}}' 2>/dev/null || echo "  no containers"
 
     echo ""
-    echo "NanoClaw:"
-    journalctl -u nanoclaw --no-pager -n 3 --since "1 min ago" 2>/dev/null || echo "  no recent logs"
+    echo "DelegateAgent:"
+    journalctl -u delegate-agent --no-pager -n 3 --since "1 min ago" 2>/dev/null || echo "  no recent logs"
 REMOTE
 }
 
@@ -225,7 +247,7 @@ case "${1:-full}" in
     build_container
     install_services
     install_configs
-    warn "IMPORTANT: Create /opt/nanoclaw/.env on the droplet. See deploy/env.example"
+    warn "IMPORTANT: Create /opt/delegate-agent/.env on the droplet. See deploy/env.example"
     warn "Then run: ./deploy/deploy.sh --restart"
     ;;
   --push-only)
