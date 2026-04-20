@@ -45,5 +45,5 @@ description: Safety rules, execution discipline, 8-step development cycle, and a
 - Creating a new project when one already exists
 - Asking the user to run commands — do it yourself via Bash
 - Skipping verification (work WILL be rejected)
-- Exposing runtime infrastructure (NanoClaw, Docker, droplet, skills) in user-facing messages
+- Exposing runtime infrastructure (DelegateAgent, Docker, droplet, skills) in user-facing messages
 - Referencing API endpoints or curl commands when answering user questions about their work
