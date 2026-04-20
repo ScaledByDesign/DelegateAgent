@@ -1,5 +1,5 @@
-// ─── Delegate Channel for NanoClaw ───
-// Implements the NanoClaw Channel interface to connect to Delegate's
+// ─── Delegate Channel for DelegateAgent ───
+// Implements the DelegateAgent Channel interface to connect to Delegate's
 // task, conversation, and agent-scoped messaging system.
 //
 // JID format:
@@ -9,27 +9,35 @@
 //
 // Auth: Bearer token (DELEGATE_API_KEY env var)
 //
-// This file is injected into NanoClaw at deploy time via cloud-init.
-// It becomes src/channels/delegate.ts in the NanoClaw codebase.
+// This file ships as src/channels/delegate.ts in the DelegateAgent repo
+// (fork of upstream NanoClaw). Before the rebrand it was injected into
+// upstream NanoClaw at deploy time via cloud-init.
 
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from 'fs';
+import * as path from 'path';
 import { registerChannel, type ChannelOpts } from './registry.js';
 import type { Channel } from '../types.js';
 
-const POLL_INTERVAL = parseInt(process.env.DELEGATE_POLL_INTERVAL || '15000', 10);
-const DELEGATE_URL = (process.env.DELEGATE_URL || 'https://delegate.ws').replace(/\/$/, '');
+const POLL_INTERVAL = parseInt(
+  process.env.DELEGATE_POLL_INTERVAL || '15000',
+  10,
+);
+const DELEGATE_URL = (
+  process.env.DELEGATE_URL || 'https://delegate.ws'
+).replace(/\/$/, '');
 const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || '';
 
-const CURSOR_FILE_PATH = process.env.DELEGATE_CURSOR_PATH || "/opt/nanoclaw/data/delegate-cursors.json";
+const CURSOR_FILE_PATH =
+  process.env.DELEGATE_CURSOR_PATH ||
+  '/opt/delegate-agent/data/delegate-cursors.json';
 const CURSOR_SAVE_DEBOUNCE_MS = 10_000; // Write at most every 10s
 const CURSOR_STALENESS_MS = 60 * 60 * 1000; // 1 hour — ignore cursor files older than this
 const SEEN_IDS_CAP = 200; // Reduced from 2000 for file storage efficiency
 
 interface CursorStore {
-  cursors: Record<string, string>;    // jid -> lastSeen ISO timestamp
-  seenIds: Record<string, string[]>;  // jid -> last 200 message IDs
-  updatedAt: string;                  // ISO timestamp of last write
+  cursors: Record<string, string>; // jid -> lastSeen ISO timestamp
+  seenIds: Record<string, string[]>; // jid -> last 200 message IDs
+  updatedAt: string; // ISO timestamp of last write
 }
 
 // ─── Sentry (optional — available when @sentry/node is installed) ────────────
@@ -44,7 +52,7 @@ try {
 function captureSentryError(err: unknown, context: Record<string, string>) {
   if (!Sentry) return;
   Sentry.withScope((scope: any) => {
-    scope.setTag('component', 'nanoclaw-channel');
+    scope.setTag('component', 'delegate-agent-channel');
     for (const [k, v] of Object.entries(context)) scope.setTag(k, v);
     Sentry.captureException(err);
   });
@@ -52,29 +60,41 @@ function captureSentryError(err: unknown, context: Record<string, string>) {
 
 function sentryBreadcrumb(message: string, data?: Record<string, unknown>) {
   if (!Sentry) return;
-  Sentry.addBreadcrumb({ category: 'nanoclaw', message, data, level: 'info' });
+  Sentry.addBreadcrumb({
+    category: 'delegate-agent',
+    message,
+    data,
+    level: 'info',
+  });
 }
 
 // ─── Sentry Cron Monitor (heartbeat — alerts when polling stops) ─────────────
 
-const CRON_SLUG = 'nanoclaw-delegate-poll';
+const CRON_SLUG = 'delegate-agent-poll';
 let cronCheckinId: string | null = null;
 
 function cronCheckIn(status: 'in_progress' | 'ok' | 'error') {
   if (!Sentry?.captureCheckIn) return;
   try {
     if (status === 'in_progress') {
-      cronCheckinId = Sentry.captureCheckIn({
+      cronCheckinId = Sentry.captureCheckIn(
+        {
+          monitorSlug: CRON_SLUG,
+          status,
+        },
+        {
+          schedule: { type: 'interval', value: 30, unit: 'second' },
+          checkinMargin: 10,
+          maxRuntime: 30,
+          timezone: 'UTC',
+        },
+      );
+    } else if (cronCheckinId) {
+      Sentry.captureCheckIn({
+        checkInId: cronCheckinId,
         monitorSlug: CRON_SLUG,
         status,
-      }, {
-        schedule: { type: 'interval', value: 30, unit: 'second' },
-        checkinMargin: 10,
-        maxRuntime: 30,
-        timezone: 'UTC',
       });
-    } else if (cronCheckinId) {
-      Sentry.captureCheckIn({ checkInId: cronCheckinId, monitorSlug: CRON_SLUG, status });
       cronCheckinId = null;
     }
   } catch {
@@ -87,9 +107,9 @@ function cronCheckIn(status: 'in_progress' | 'ok' | 'error') {
 interface PollMessage {
   id: string;
   text: string;
-  role: string;        // 'user' | 'assistant' | 'system'
-  sender?: string;     // display name / email
-  timestamp: string;   // ISO-8601
+  role: string; // 'user' | 'assistant' | 'system'
+  sender?: string; // display name / email
+  timestamp: string; // ISO-8601
   isAI: boolean;
 }
 
@@ -144,7 +164,9 @@ class DelegateChannel implements Channel {
       for (const [jid, ids] of Object.entries(restored.seenIds)) {
         this.seenIds.set(jid, new Set(ids));
       }
-      console.log(`[delegate-channel] Restored cursors for ${Object.keys(restored.cursors).length} JIDs from file`);
+      console.log(
+        `[delegate-channel] Restored cursors for ${Object.keys(restored.cursors).length} JIDs from file`,
+      );
     }
 
     const groups = this.opts.registeredGroups();
@@ -166,7 +188,7 @@ class DelegateChannel implements Channel {
     this.connected = true;
 
     // Listen for dynamic group registration (POST /api/groups at runtime)
-    // NanoClaw's registerGroup() doesn't notify channels, so we poll for
+    // DelegateAgent's registerGroup() doesn't notify channels, so we poll for
     // new groups on a slow interval and start polling any new delegate: JIDs.
     this.groupSyncInterval = setInterval(() => {
       try {
@@ -207,12 +229,18 @@ class DelegateChannel implements Channel {
     const progressEvents = this.extractProgressEvents(text);
     if (progressEvents.length > 0) {
       this.forwardProgressEvents(jid, agentProfileId, progressEvents).catch(
-        (err) => console.warn('[delegate] progress forward error:', (err as Error).message)
+        (err) =>
+          console.warn(
+            '[delegate] progress forward error:',
+            (err as Error).message,
+          ),
       );
     }
 
     // Strip progress tags from the user-visible message
-    const cleanText = text.replace(/<progress[^>]*>[\s\S]*?<\/progress>/g, '').trim();
+    const cleanText = text
+      .replace(/<progress[^>]*>[\s\S]*?<\/progress>/g, '')
+      .trim();
     if (!cleanText) return; // Only progress events, no user-visible content
 
     try {
@@ -226,7 +254,7 @@ class DelegateChannel implements Channel {
           jid,
           text: cleanText,
           ...(agentProfileId ? { agentProfileId } : {}),
-          metadata: { source: 'nanoclaw' },
+          metadata: { source: 'delegate-agent' },
         }),
         signal: AbortSignal.timeout(10_000),
       });
@@ -235,11 +263,20 @@ class DelegateChannel implements Channel {
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        captureSentryError(new Error(`Reply HTTP ${res.status}: ${errText.slice(0, 200)}`), { jid, action: 'sendMessage' });
-        console.warn(`[delegate] Reply failed for ${jid}: HTTP ${res.status} (${latencyMs}ms)`);
+        captureSentryError(
+          new Error(`Reply HTTP ${res.status}: ${errText.slice(0, 200)}`),
+          { jid, action: 'sendMessage' },
+        );
+        console.warn(
+          `[delegate] Reply failed for ${jid}: HTTP ${res.status} (${latencyMs}ms)`,
+        );
       } else {
         this.repliesSent++;
-        sentryBreadcrumb('channel.reply', { jid, latencyMs, totalReplies: this.repliesSent });
+        sentryBreadcrumb('channel.reply', {
+          jid,
+          latencyMs,
+          totalReplies: this.repliesSent,
+        });
       }
     } catch (err: unknown) {
       captureSentryError(err, { jid, action: 'sendMessage' });
@@ -249,8 +286,14 @@ class DelegateChannel implements Channel {
 
   // ─── Progress Event Extraction ──────────────────────────────────────────
 
-  private extractProgressEvents(text: string): Array<{ type: string; data: Record<string, string>; message: string }> {
-    const events: Array<{ type: string; data: Record<string, string>; message: string }> = [];
+  private extractProgressEvents(
+    text: string,
+  ): Array<{ type: string; data: Record<string, string>; message: string }> {
+    const events: Array<{
+      type: string;
+      data: Record<string, string>;
+      message: string;
+    }> = [];
     const regex = /<progress\s+([^>]*)>([\s\S]*?)<\/progress>/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
@@ -273,7 +316,11 @@ class DelegateChannel implements Channel {
   private async forwardProgressEvents(
     jid: string,
     agentProfileId: string | undefined,
-    events: Array<{ type: string; data: Record<string, string>; message: string }>,
+    events: Array<{
+      type: string;
+      data: Record<string, string>;
+      message: string;
+    }>,
   ): Promise<void> {
     try {
       await fetch(`${DELEGATE_URL}/api/agent/channel/progress`, {
@@ -325,7 +372,10 @@ class DelegateChannel implements Channel {
     this.seenIds.clear();
     this.pollFailures.clear();
     this.connected = false;
-    sentryBreadcrumb('channel.disconnect', { messagesDelivered: this.messagesDelivered, repliesSent: this.repliesSent });
+    sentryBreadcrumb('channel.disconnect', {
+      messagesDelivered: this.messagesDelivered,
+      repliesSent: this.repliesSent,
+    });
     console.log('[delegate] Channel disconnected');
   }
 
@@ -340,7 +390,7 @@ class DelegateChannel implements Channel {
   private loadCursors(): CursorStore | null {
     try {
       if (!fs.existsSync(CURSOR_FILE_PATH)) return null;
-      const raw = fs.readFileSync(CURSOR_FILE_PATH, "utf-8");
+      const raw = fs.readFileSync(CURSOR_FILE_PATH, 'utf-8');
       const store: CursorStore = JSON.parse(raw);
       const age = Date.now() - new Date(store.updatedAt).getTime();
       if (age > CURSOR_STALENESS_MS) return null; // Too old — start fresh
@@ -357,18 +407,21 @@ class DelegateChannel implements Channel {
       const store: CursorStore = {
         cursors: Object.fromEntries(this.lastSeen),
         seenIds: Object.fromEntries(
-          Array.from(this.seenIds.entries()).map(([jid, set]) => [jid, [...set].slice(-SEEN_IDS_CAP)])
+          Array.from(this.seenIds.entries()).map(([jid, set]) => [
+            jid,
+            [...set].slice(-SEEN_IDS_CAP),
+          ]),
         ),
         updatedAt: new Date().toISOString(),
       };
       const dir = path.dirname(CURSOR_FILE_PATH);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const tmpPath = CURSOR_FILE_PATH + ".tmp";
+      const tmpPath = CURSOR_FILE_PATH + '.tmp';
       fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2));
       fs.renameSync(tmpPath, CURSOR_FILE_PATH);
     } catch (err) {
       // Log but don't crash — persistence is best-effort
-      console.error("[delegate-channel] Failed to write cursors:", err);
+      console.error('[delegate-channel] Failed to write cursors:', err);
     }
   }
 
@@ -422,7 +475,11 @@ class DelegateChannel implements Channel {
         const failures = (this.pollFailures.get(jid) ?? 0) + 1;
         this.pollFailures.set(jid, failures);
         if (failures === 1 || failures % 100 === 0) {
-          captureSentryError(new Error(`Poll HTTP ${res.status}`), { jid, action: 'poll', failures: String(failures) });
+          captureSentryError(new Error(`Poll HTTP ${res.status}`), {
+            jid,
+            action: 'poll',
+            failures: String(failures),
+          });
         }
         console.warn(`[delegate] Poll HTTP ${res.status} for ${jid}`);
         return;
@@ -435,7 +492,11 @@ class DelegateChannel implements Channel {
       const failures = (this.pollFailures.get(jid) ?? 0) + 1;
       this.pollFailures.set(jid, failures);
       if (failures === 5 || failures % 100 === 0) {
-        captureSentryError(err, { jid, action: 'poll', failures: String(failures) });
+        captureSentryError(err, {
+          jid,
+          action: 'poll',
+          failures: String(failures),
+        });
       }
       return;
     }
@@ -466,7 +527,7 @@ class DelegateChannel implements Channel {
         if (first !== undefined) seen.delete(first);
       }
 
-      // Route to NanoClaw orchestrator (NewMessage format)
+      // Route to DelegateAgent orchestrator (NewMessage format)
       this.opts.onMessage(jid, {
         id: msg.id,
         chat_jid: jid,
@@ -482,12 +543,17 @@ class DelegateChannel implements Channel {
 
     if (delivered > 0) {
       this.messagesDelivered += delivered;
-      sentryBreadcrumb('channel.poll.delivered', { jid, delivered, latencyMs, totalDelivered: this.messagesDelivered });
+      sentryBreadcrumb('channel.poll.delivered', {
+        jid,
+        delivered,
+        latencyMs,
+        totalDelivered: this.messagesDelivered,
+      });
     }
   }
 }
 
-// ─── Self-register at module load (NanoClaw barrel-import pattern) ────────────
+// ─── Self-register at module load (DelegateAgent barrel-import pattern) ─────
 
 registerChannel('delegate', (opts: ChannelOpts) => {
   if (!DELEGATE_API_KEY) {

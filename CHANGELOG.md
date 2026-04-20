@@ -1,8 +1,12 @@
 # Changelog
 
-All notable changes to NanoClaw will be documented in this file.
+All notable changes to DelegateAgent will be documented in this file.
 
 For detailed release notes, see the [full changelog on the documentation site](https://docs.nanoclaw.dev/changelog).
+
+## [Unreleased]
+
+- **Rebrand**: project renamed from NanoClaw to DelegateAgent (forked from [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw)). All user-facing surfaces, docs, service units, filesystem paths (`~/.config/delegate-agent/`), container image tag (`delegate-agent:latest`), env var (`DELEGATE_AGENT_TOKEN`), and skill directory (`.claude/skills/update-delegate-agent/`) now use the new name. Back-compat fallback reads `NANOCLAW_TOKEN` and `~/.config/nanoclaw/` on upgrade.
 
 ## [1.2.35] - 2026-03-26
 

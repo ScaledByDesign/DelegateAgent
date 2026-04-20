@@ -3,10 +3,10 @@
 #
 # Services:
 #   gateway.delegate.ws — Bifrost AI Gateway (LLM proxy + VK management)
-#   agent.delegate.ws   — NanoClaw agent server (status page + group API)
+#   agent.delegate.ws   — DelegateAgent agent server (status page + group API)
 #
 # Bifrost listens on localhost:4000 (systemd binary).
-# NanoClaw group API listens on localhost:3001.
+# DelegateAgent group API listens on localhost:3001.
 #
 # Credentials: admin / DelegateGW2026
 # To change password: caddy hash-password --plaintext "newpassword"
@@ -68,12 +68,12 @@ gateway.delegate.ws {
 	}
 }
 
-# ── NanoClaw Agent Server ──
+# ── DelegateAgent Agent Server ──
 agent.delegate.ws {
 	import security_headers
 
 	# Agent Group API — Bearer token auth (no basic auth)
-	# Proxies all /api/* paths to NanoClaw group API on port 3001
+	# Proxies all /api/* paths to DelegateAgent group API on port 3001
 	# Includes: /api/groups, /api/context/*, /api/worktree/*, /api/mcp-config/*, /api/health
 	handle /api/* {
 		reverse_proxy localhost:3001
@@ -82,7 +82,7 @@ agent.delegate.ws {
 	# Health endpoint — no auth
 	handle /health {
 		header Content-Type application/json
-		respond `{"service":"nanoclaw","status":"ok","version":"v5","mode":"poll"}` 200
+		respond `{"service":"delegate-agent","status":"ok","version":"v5","mode":"poll"}` 200
 	}
 
 	# Everything else behind basic auth
@@ -98,7 +98,7 @@ agent.delegate.ws {
 
 	handle {
 		header Content-Type "text/html; charset=utf-8"
-		respond `<!DOCTYPE html><html><head><title>NanoClaw</title><style>body{font-family:system-ui;background:#0a0a0a;color:#e5e5e5;max-width:600px;margin:60px auto;padding:20px}h1{font-size:1.5rem;border-bottom:1px solid #333;padding-bottom:12px}.i{background:#111;border:1px solid #222;border-radius:8px;padding:16px;margin:12px 0}.l{color:#888;font-size:.85rem}a{color:#60a5fa}code{background:#1a1a1a;padding:2px 6px;border-radius:4px;font-size:.9rem}</style></head><body><h1>NanoClaw Agent Orchestrator</h1><div class=i><div class=l>Architecture</div><div>v5 polling-based + group registration API (port 3001)</div></div><div class=i><div class=l>Channel</div><div>Polls <code>delegate.ws/api/agent/channel/poll</code></div></div><div class=i><div class=l>Bifrost Gateway</div><div><a href=https://gateway.delegate.ws/health>gateway.delegate.ws</a></div></div><div class=i><div class=l>Server</div><div><code>159.89.226.182</code></div></div></body></html>` 200
+		respond `<!DOCTYPE html><html><head><title>DelegateAgent</title><style>body{font-family:system-ui;background:#0a0a0a;color:#e5e5e5;max-width:600px;margin:60px auto;padding:20px}h1{font-size:1.5rem;border-bottom:1px solid #333;padding-bottom:12px}.i{background:#111;border:1px solid #222;border-radius:8px;padding:16px;margin:12px 0}.l{color:#888;font-size:.85rem}a{color:#60a5fa}code{background:#1a1a1a;padding:2px 6px;border-radius:4px;font-size:.9rem}</style></head><body><h1>DelegateAgent Orchestrator</h1><div class=i><div class=l>Architecture</div><div>v5 polling-based + group registration API (port 3001)</div></div><div class=i><div class=l>Channel</div><div>Polls <code>delegate.ws/api/agent/channel/poll</code></div></div><div class=i><div class=l>Bifrost Gateway</div><div><a href=https://gateway.delegate.ws/health>gateway.delegate.ws</a></div></div><div class=i><div class=l>Server</div><div><code>159.89.226.182</code></div></div></body></html>` 200
 	}
 
 	log {
