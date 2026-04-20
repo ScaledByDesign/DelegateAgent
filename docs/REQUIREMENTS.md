@@ -1,6 +1,6 @@
-# NanoClaw Requirements
+# DelegateAgent Requirements
 
-Original requirements and design decisions from the project creator.
+Original requirements and design decisions from the upstream project (qwibitai/nanoclaw), preserved as context for this fork.
 
 ---
 
@@ -8,7 +8,7 @@ Original requirements and design decisions from the project creator.
 
 This is a lightweight, secure alternative to OpenClaw (formerly ClawBot). That project became a monstrosity - 4-5 different processes running different gateways, endless configuration files, endless integrations. It's a security nightmare where agents don't run in isolated processes; there's all kinds of leaky workarounds trying to prevent them from accessing parts of the system they shouldn't. It's impossible for anyone to realistically understand the whole codebase. When you run it you're kind of just yoloing it.
 
-NanoClaw gives you the core functionality without that mess.
+DelegateAgent (forked from qwibitai/nanoclaw) gives you the core functionality without that mess.
 
 ---
 
@@ -32,7 +32,7 @@ No configuration sprawl. If you want different behavior, modify the code. The co
 
 ### AI-Native Development
 
-I don't need an installation wizard - Claude Code guides the setup. I don't need a monitoring dashboard - I ask Claude Code what's happening. I don't need elaborate logging UIs - I ask Claude to read the logs. I don't need debugging tools - I describe the problem and Claude fixes it.
+No installation wizard — Claude Code guides the setup. No monitoring dashboard — ask Claude Code what's happening. No elaborate logging UIs — ask Claude to read the logs. No debugging tools — describe the problem and Claude fixes it.
 
 The codebase assumes you have an AI collaborator. It doesn't need to be excessively self-documenting or self-debugging because Claude is always there.
 
@@ -134,7 +134,7 @@ A personal Claude assistant accessible via messaging, with minimal custom code.
 
 ### Scheduler
 - Built-in scheduler runs on the host, spawns containers for task execution
-- Custom `nanoclaw` MCP server (inside container) provides scheduling tools
+- Custom `delegate-agent` MCP server (inside container) provides scheduling tools
 - Tools: `schedule_task`, `list_tasks`, `pause_task`, `resume_task`, `cancel_task`, `send_message`
 - Tasks stored in SQLite with run history
 - Scheduler loop checks for due tasks every minute
@@ -163,7 +163,7 @@ A personal Claude assistant accessible via messaging, with minimal custom code.
 ### Skills
 - `/setup` - Install dependencies, configure channels, start services
 - `/customize` - General-purpose skill for adding capabilities
-- `/update-nanoclaw` - Pull upstream changes, merge with customizations
+- `/update-delegate-agent` - Pull upstream changes, merge with customizations
 
 ### Deployment
 - Runs on macOS (launchd), Linux (systemd), or Windows (WSL2)
@@ -184,4 +184,4 @@ These are the creator's settings, stored here for reference:
 
 ## Project Name
 
-**NanoClaw** - A reference to Clawdbot (now OpenClaw).
+**DelegateAgent** — This fork is rebranded from NanoClaw (a reference to Clawdbot/OpenClaw) for use in the Delegate workspace platform.
