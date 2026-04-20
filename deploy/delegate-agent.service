@@ -1,5 +1,5 @@
 [Unit]
-Description=NanoClaw Agent Orchestrator
+Description=DelegateAgent Orchestrator
 After=network.target docker.service
 Requires=docker.service
 
@@ -9,20 +9,20 @@ Environment=PLAYWRIGHT_CHROMIUM_SANDBOX=0
 Environment=CHROME_FLAGS=--no-sandbox
 Type=simple
 User=root
-WorkingDirectory=/opt/nanoclaw
+WorkingDirectory=/opt/delegate-agent
 # Run delegate patch before every start — survives npm run build
 ExecStart=/usr/bin/node --require ./sentry-init.cjs dist/index.js
 Restart=always
 RestartSec=10
 StartLimitInterval=60
 StartLimitBurst=3
-EnvironmentFile=/opt/nanoclaw/.env
+EnvironmentFile=/opt/delegate-agent/.env
 Environment=NODE_ENV=production
 # UMask 0000: IPC files created by root are world-writable so containers (uid 1001) can unlink them
 UMask=0000
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=nanoclaw
+SyslogIdentifier=delegate-agent
 
 [Install]
 WantedBy=multi-user.target

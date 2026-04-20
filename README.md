@@ -1,6 +1,6 @@
-# RemoteAgent
+# DelegateAgent
 
-> Private fork of [NanoClaw](https://github.com/qwibitai/nanoclaw) — a fully controlled agent orchestrator for the Delegate workspace platform.
+> DelegateAgent for use in the Delegate workspace platform. Forked from [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) — upstream-sync map at `docs/UPSTREAM-SYNC.md`.
 
 ## What's Different
 
@@ -15,18 +15,18 @@ This fork adds Delegate-specific customizations as first-class committed code:
 
 ## Deployment
 
-RemoteAgent droplets are provisioned via Delegate's cloud-init system:
+DelegateAgent droplets are provisioned via Delegate's cloud-init system:
 
 ```typescript
 // In Delegate's deployment config:
-generateNanoClawCloudInit({
-  repoUrl: "https://github.com/ScaledByDesign/remote-agent.git",
+generateDelegateAgentCloudInit({
+  repoUrl: "https://github.com/ScaledByDesign/delegate-agent.git",
   // ... other config
 });
 ```
 
 The droplet will:
-1. Clone this repo to `/opt/remote-agent`
+1. Clone this repo to `/opt/delegate-agent`
 2. Build and start the service
 3. Install a 60-second cron job for auto-updates
 
@@ -51,7 +51,7 @@ The HTTP API on port 3001 provides:
 | `/api/context/:folder` | POST | Push CLAUDE.md to group folder |
 | `/api/health` | GET | Git SHA + uptime |
 
-All endpoints require `Authorization: Bearer <token>` using either `DELEGATE_API_KEY` or `NANOCLAW_TOKEN`.
+All endpoints require `Authorization: Bearer <token>` using either `DELEGATE_API_KEY` or `DELEGATE_AGENT_TOKEN` (or the legacy `NANOCLAW_TOKEN` for one release).
 
 ## Development
 
@@ -64,3 +64,7 @@ npm start
 ## License
 
 Private — ScaledByDesign internal use only.
+
+## Upstream
+
+Forked from [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) — upstream-sync map at `docs/UPSTREAM-SYNC.md`.

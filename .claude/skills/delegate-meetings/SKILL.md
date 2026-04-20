@@ -6,7 +6,7 @@ description: Access meetings, transcripts, action items, and AI-powered meeting 
 # Delegate Meetings API
 
 All endpoints use NextAuth session auth — these are user-session endpoints, not agent-token endpoints.
-The agent must operate under the user's session context (via the NanoClaw channel USER_ID header) or use a session cookie forwarded by the Delegate proxy.
+The agent must operate under the user's session context (via the DelegateAgent channel USER_ID header) or use a session cookie forwarded by the Delegate proxy.
 
 For direct HTTP calls from agent code, use:
 ```

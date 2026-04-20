@@ -1,13 +1,13 @@
 ---
-name: update-nanoclaw
-description: Efficiently bring upstream NanoClaw updates into a customized install, with preview, selective cherry-pick, and low token usage.
+name: update-delegate-agent
+description: Efficiently bring upstream NanoClaw updates into a customized DelegateAgent install, with preview, selective cherry-pick, and low token usage.
 ---
 
 # About
 
-Your NanoClaw fork drifts from upstream as you customize it. This skill pulls upstream changes into your install without losing your modifications.
+Your DelegateAgent fork drifts from upstream as you customize it. This skill pulls upstream changes into your install without losing your modifications.
 
-Run `/update-nanoclaw` in Claude Code.
+Run `/update-delegate-agent` in Claude Code.
 
 ## How it works
 
@@ -50,7 +50,7 @@ Only opens files with actual conflicts. Uses `git log`, `git diff`, and `git sta
 ---
 
 # Goal
-Help a user with a customized NanoClaw install safely incorporate upstream changes without a fresh reinstall and without blowing tokens.
+Help a user with a customized DelegateAgent install safely incorporate upstream changes without a fresh reinstall and without blowing tokens.
 
 # Operating principles
 - Never proceed with a dirty working tree.
@@ -231,11 +231,11 @@ Tell the user:
 - To rollback: `git reset --hard <backup-tag-from-step-1>`
 - Backup branch also exists: `backup/pre-update-<HASH>-<TIMESTAMP>`
 - Restart the service to apply changes:
-  - If using launchd: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist && launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist`
+  - If using launchd: `launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist && launchctl load ~/Library/LaunchAgents/com.delegate-agent.plist`
   - If running manually: restart `npm run dev`
 
 
 ## Diagnostics
 
-1. Use the Read tool to read `.claude/skills/update-nanoclaw/diagnostics.md`.
+1. Use the Read tool to read `.claude/skills/update-delegate-agent/diagnostics.md`.
 2. Follow every step in that file before finishing.

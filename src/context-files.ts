@@ -1,5 +1,5 @@
-// ─── NanoClaw Context File Generators ───
-// Generates SOUL.md, AGENTS.md, TOOLS.md, MEMORY.md for droplet /opt/nanoclaw/context/
+// ─── DelegateAgent Context File Generators ───
+// Generates SOUL.md, AGENTS.md, TOOLS.md, MEMORY.md for droplet /opt/delegate-agent/context/
 // Used by cloud-init generation AND hot-patch client.
 
 export interface SkillSummary {
@@ -10,7 +10,7 @@ export interface SkillSummary {
 
 export function generateSoulMd(): string {
   return `# Agent Identity
-You are an autonomous coding agent running inside NanoClaw.
+You are an autonomous coding agent running inside DelegateAgent.
 
 ## Communication Style
 - Be genuinely helpful, not performatively helpful.
@@ -44,7 +44,7 @@ export function generateAgentsMd(): string {
 - NEVER summarize what was built in previous sessions — read the files and continue.
 
 ## Development Cycle
-1. CHECK MEMORY — Read /opt/nanoclaw/context/MEMORY.md + search memory API
+1. CHECK MEMORY — Read /opt/delegate-agent/context/MEMORY.md + search memory API
 2. GET BEARINGS — ls workspace, git status, read existing code
 3. PLAN — 2-3 sentences max, then start coding
 4. IMPLEMENT — Write/Edit tools for code, Bash for commands, commit often
@@ -66,14 +66,14 @@ export function generateAgentsMd(): string {
 export function generateToolsMd(appUrl: string): string {
   return `# Environment
 - Workspace: /workspace
-- Skills: /opt/nanoclaw/skills/
-- Context files: /opt/nanoclaw/context/
+- Skills: /opt/delegate-agent/skills/
+- Context files: /opt/delegate-agent/context/
 - Node.js, git, tmux available
 - Git auth via delegate_git_auth MCP tool (per-workspace credentials — never use $GITHUB_TOKEN directly)
 
 # Available Skills
 (compact registry — populated dynamically at prompt assembly time)
-To use a skill: cat /opt/nanoclaw/skills/<key>/SKILL.md
+To use a skill: cat /opt/delegate-agent/skills/<key>/SKILL.md
 
 # API Endpoints (Auth: -H "Authorization: Bearer $DELEGATE_API_TOKEN")
 
@@ -107,11 +107,13 @@ export function generateMemoryMd(): string {
 }
 
 /** Generate all 4 files as a Record for cloud-init or hot-patch */
-export function generateAllContextFiles(appUrl: string): Record<string, string> {
+export function generateAllContextFiles(
+  appUrl: string,
+): Record<string, string> {
   return {
-    "SOUL.md": generateSoulMd(),
-    "AGENTS.md": generateAgentsMd(),
-    "TOOLS.md": generateToolsMd(appUrl),
-    "MEMORY.md": generateMemoryMd(),
+    'SOUL.md': generateSoulMd(),
+    'AGENTS.md': generateAgentsMd(),
+    'TOOLS.md': generateToolsMd(appUrl),
+    'MEMORY.md': generateMemoryMd(),
   };
 }

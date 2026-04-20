@@ -16,7 +16,7 @@ curl -s -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
 
 ## Create an Agent Scheduled Task
 
-This is the main way to schedule recurring agent work. The cron engine injects a message into NanoClaw at the scheduled interval.
+This is the main way to schedule recurring agent work. The cron engine injects a message into DelegateAgent at the scheduled interval.
 
 ```bash
 curl -s -X POST "$DELEGATE_URL/api/cron/jobs" \
@@ -51,7 +51,7 @@ curl -s -X POST "$DELEGATE_URL/api/cron/jobs" \
 
 | Handler | Purpose |
 |---------|---------|
-| `built-in:agent-task` | Inject prompt into NanoClaw for agent execution |
+| `built-in:agent-task` | Inject prompt into DelegateAgent for agent execution |
 | `http` | Call any HTTP endpoint |
 | `ai-prompt` | Stream an AI chat response |
 

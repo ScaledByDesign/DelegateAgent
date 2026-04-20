@@ -1,5 +1,5 @@
 {
-  "name": "nanoclaw",
+  "name": "delegate-agent",
   "version": "1.2.42",
   "description": "Personal Claude assistant. Lightweight, secure, customizable.",
   "type": "module",

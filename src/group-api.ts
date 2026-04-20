@@ -3,31 +3,43 @@
 // and POST /api/mcp-config/:folder on a configurable port so Delegate can register
 // task-specific groups at runtime, push context, manage worktrees, and inject MCP config.
 //
-// This file is appended to NanoClaw/RemoteAgent's src/index.ts at deploy time.
-// It uses NanoClaw's internal registerGroup() and getAllRegisteredGroups().
+// This file is appended to DelegateAgent/RemoteAgent's src/index.ts at deploy time.
+// It uses DelegateAgent's internal registerGroup() and getAllRegisteredGroups().
 
 import http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { setupWorktreeAsync, removeWorktree, listWorktrees } from './worktree-manager.js';
-import { writeMCPConfigDirect, writeMCPConfigForGroup } from './mcp-config-generator.js';
+import {
+  setupWorktreeAsync,
+  removeWorktree,
+  listWorktrees,
+} from './worktree-manager.js';
+import {
+  writeMCPConfigDirect,
+  writeMCPConfigForGroup,
+} from './mcp-config-generator.js';
 import { logger } from './logger.js';
-import { getAllRegisteredGroups, setRegisteredGroup, getRegisteredGroup } from './db.js';
+import {
+  getAllRegisteredGroups,
+  setRegisteredGroup,
+  getRegisteredGroup,
+} from './db.js';
 import { resolveTokenFromDelegate } from './credential-client.js';
+import { getEnvWithFallback } from './config.js';
 
-const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/nanoclaw/groups';
+const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/delegate-agent/groups';
 
 export function startGroupAPI(): void {
   const PORT = parseInt(process.env.GROUP_API_PORT || '3001', 10);
   const VALID_TOKENS = [
     process.env.DELEGATE_API_KEY,
-    process.env.NANOCLAW_TOKEN,
+    getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN']),
   ].filter(Boolean) as string[];
 
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
 
-    // Auth: accept any valid Delegate/NanoClaw token
+    // Auth: accept any valid Delegate/DelegateAgent token
     const auth = req.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
     if (!auth || !VALID_TOKENS.includes(auth)) {
       res.writeHead(401);
@@ -44,7 +56,9 @@ export function startGroupAPI(): void {
 
     if (req.method === 'POST' && req.url === '/api/groups') {
       let body = '';
-      req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
       req.on('end', () => {
         try {
           const data = JSON.parse(body);
@@ -56,7 +70,9 @@ export function startGroupAPI(): void {
           const existing = getAllRegisteredGroups();
           if (existing[data.jid]) {
             res.writeHead(409);
-            res.end(JSON.stringify({ ok: true, existing: true, jid: data.jid }));
+            res.end(
+              JSON.stringify({ ok: true, existing: true, jid: data.jid }),
+            );
             return;
           }
           const folder = data.folder || data.jid.replace(/[^a-zA-Z0-9-]/g, '-');
@@ -70,7 +86,10 @@ export function startGroupAPI(): void {
             requiresTrigger: data.requiresTrigger ?? false,
             workspaceId: data.workspaceId || undefined,
           });
-          logger.info({ jid: data.jid, name: data.name }, 'Group registered via API');
+          logger.info(
+            { jid: data.jid, name: data.name },
+            'Group registered via API',
+          );
           res.writeHead(201);
           res.end(JSON.stringify({ ok: true, jid: data.jid }));
         } catch (err: any) {
@@ -88,7 +107,9 @@ export function startGroupAPI(): void {
     if (req.method === 'POST' && contextMatch) {
       const folder = decodeURIComponent(contextMatch[1]);
       let body = '';
-      req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
       req.on('end', () => {
         try {
           const data = JSON.parse(body);
@@ -109,15 +130,21 @@ export function startGroupAPI(): void {
           fs.renameSync(tmpPath, claudePath);
 
           // Also ensure the session dir has .claude settings
-          const sessionsDir = process.env.SESSIONS_DIR || '/opt/nanoclaw/data/sessions';
+          const sessionsDir =
+            process.env.SESSIONS_DIR || '/opt/delegate-agent/data/sessions';
           const sessionClaudeDir = path.join(sessionsDir, folder, '.claude');
           if (!fs.existsSync(sessionClaudeDir)) {
             fs.mkdirSync(sessionClaudeDir, { recursive: true });
           }
 
-          logger.info({ folder, size: data.claudeMd.length }, 'Context pushed to group folder');
+          logger.info(
+            { folder, size: data.claudeMd.length },
+            'Context pushed to group folder',
+          );
           res.writeHead(200);
-          res.end(JSON.stringify({ ok: true, folder, size: data.claudeMd.length }));
+          res.end(
+            JSON.stringify({ ok: true, folder, size: data.claudeMd.length }),
+          );
         } catch (err: any) {
           res.writeHead(400);
           res.end(JSON.stringify({ error: err.message }));
@@ -133,7 +160,9 @@ export function startGroupAPI(): void {
 
       if (req.method === 'POST') {
         let body = '';
-        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
         req.on('end', async () => {
           try {
             const data = JSON.parse(body);
@@ -151,11 +180,11 @@ export function startGroupAPI(): void {
               // Resolve group's workspaceId for token lookup
               const group = getRegisteredGroup(
                 Object.keys(getAllRegisteredGroups()).find(
-                  (jid) => getAllRegisteredGroups()[jid]?.folder === folder
-                ) || ''
+                  (jid) => getAllRegisteredGroups()[jid]?.folder === folder,
+                ) || '',
               );
               const resolved = await resolveTokenFromDelegate(
-                data.workspaceId || group?.workspaceId
+                data.workspaceId || group?.workspaceId,
               );
               if (resolved) {
                 githubToken = resolved;
@@ -164,7 +193,10 @@ export function startGroupAPI(): void {
             if (!githubToken && data.isAdmin) {
               githubToken = process.env.GITHUB_TOKEN;
               if (githubToken) {
-                logger.warn({ folder }, 'Using admin global GITHUB_TOKEN fallback (deprecated for task operations)');
+                logger.warn(
+                  { folder },
+                  'Using admin global GITHUB_TOKEN fallback (deprecated for task operations)',
+                );
               }
             }
 
@@ -176,24 +208,37 @@ export function startGroupAPI(): void {
             if (result.ok && result.worktreePath) {
               // Configure git credential helper inside the worktree so the agent can push
               try {
-                const { configureWorktreeGitAuth } = await import('./git-auth.js');
+                const { configureWorktreeGitAuth } =
+                  await import('./git-auth.js');
                 const group = getRegisteredGroup(
                   Object.keys(getAllRegisteredGroups()).find(
-                    (jid) => getAllRegisteredGroups()[jid]?.folder === folder
-                  ) || ''
+                    (jid) => getAllRegisteredGroups()[jid]?.folder === folder,
+                  ) || '',
                 );
                 const wsId = data.workspaceId || group?.workspaceId;
                 if (wsId) {
                   configureWorktreeGitAuth(result.worktreePath, wsId);
-                  logger.info({ folder, workspaceId: wsId }, 'Git credential helper configured in worktree');
+                  logger.info(
+                    { folder, workspaceId: wsId },
+                    'Git credential helper configured in worktree',
+                  );
                 }
               } catch (authErr: any) {
-                logger.warn({ folder, error: authErr.message }, 'Failed to configure git auth in worktree (non-fatal)');
+                logger.warn(
+                  { folder, error: authErr.message },
+                  'Failed to configure git auth in worktree (non-fatal)',
+                );
               }
-              logger.info({ folder, branch: result.branch }, 'Worktree created');
+              logger.info(
+                { folder, branch: result.branch },
+                'Worktree created',
+              );
               res.writeHead(201);
             } else if (result.ok) {
-              logger.info({ folder, branch: result.branch }, 'Worktree created');
+              logger.info(
+                { folder, branch: result.branch },
+                'Worktree created',
+              );
               res.writeHead(201);
             } else {
               res.writeHead(500);
@@ -218,7 +263,9 @@ export function startGroupAPI(): void {
 
         if (!bareClonePath) {
           res.writeHead(404);
-          res.end(JSON.stringify({ error: 'No worktree found for this folder' }));
+          res.end(
+            JSON.stringify({ error: 'No worktree found for this folder' }),
+          );
           return;
         }
 
@@ -255,9 +302,13 @@ export function startGroupAPI(): void {
           try {
             const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
             worktrees.push(meta);
-          } catch { /* no worktree for this group */ }
+          } catch {
+            /* no worktree for this group */
+          }
         }
-      } catch { /* GROUPS_DIR doesn't exist yet */ }
+      } catch {
+        /* GROUPS_DIR doesn't exist yet */
+      }
       res.writeHead(200);
       res.end(JSON.stringify({ worktrees }));
       return;
@@ -268,15 +319,25 @@ export function startGroupAPI(): void {
     if (req.method === 'POST' && mcpMatch) {
       const folder = decodeURIComponent(mcpMatch[1]);
       let body = '';
-      req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
       req.on('end', async () => {
         try {
           const data = JSON.parse(body);
 
           if (data.mcpServers) {
             // Direct MCP config from Delegate
-            const result = writeMCPConfigDirect(folder, data.mcpServers, data.permissions, data.workspaceId);
-            logger.info({ folder, servers: Object.keys(data.mcpServers).length }, 'MCP config pushed directly');
+            const result = writeMCPConfigDirect(
+              folder,
+              data.mcpServers,
+              data.permissions,
+              data.workspaceId,
+            );
+            logger.info(
+              { folder, servers: Object.keys(data.mcpServers).length },
+              'MCP config pushed directly',
+            );
             res.writeHead(result.ok ? 200 : 500);
             res.end(JSON.stringify(result));
           } else if (data.workspaceId) {
@@ -286,12 +347,21 @@ export function startGroupAPI(): void {
               extraServers: data.extraServers,
               permissions: data.permissions,
             });
-            logger.info({ folder, workspaceId: data.workspaceId, serverCount: result.serverCount }, 'MCP config generated from workspace');
+            logger.info(
+              {
+                folder,
+                workspaceId: data.workspaceId,
+                serverCount: result.serverCount,
+              },
+              'MCP config generated from workspace',
+            );
             res.writeHead(result.ok ? 200 : 500);
             res.end(JSON.stringify(result));
           } else {
             res.writeHead(400);
-            res.end(JSON.stringify({ error: 'mcpServers or workspaceId required' }));
+            res.end(
+              JSON.stringify({ error: 'mcpServers or workspaceId required' }),
+            );
           }
         } catch (err: any) {
           res.writeHead(400);
@@ -305,17 +375,35 @@ export function startGroupAPI(): void {
     if (req.method === 'GET' && req.url === '/api/health') {
       let gitSha = 'unknown';
       try {
-        gitSha = fs.readFileSync('/opt/nanoclaw/.git/refs/heads/main', 'utf-8').trim().slice(0, 8);
+        gitSha = fs
+          .readFileSync('/opt/delegate-agent/.git/refs/heads/main', 'utf-8')
+          .trim()
+          .slice(0, 8);
       } catch {}
       const worktreeCount = (() => {
         try {
           return fs.readdirSync(GROUPS_DIR).filter((f) => {
-            try { return fs.existsSync(path.join(GROUPS_DIR, f, 'worktree-meta.json')); } catch { return false; }
+            try {
+              return fs.existsSync(
+                path.join(GROUPS_DIR, f, 'worktree-meta.json'),
+              );
+            } catch {
+              return false;
+            }
           }).length;
-        } catch { return 0; }
+        } catch {
+          return 0;
+        }
       })();
       res.writeHead(200);
-      res.end(JSON.stringify({ ok: true, gitSha, uptime: process.uptime(), worktreeCount }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          gitSha,
+          uptime: process.uptime(),
+          worktreeCount,
+        }),
+      );
       return;
     }
 
@@ -329,11 +417,17 @@ export function startGroupAPI(): void {
     // If you ever see the service running without this line, the deployed
     // dist is stale and Delegate cannot register task JIDs.
     console.log(`[group-api] listening on :${PORT}`);
-    logger.info({ port: PORT, tokens: VALID_TOKENS.length }, 'Group + Context API listening');
+    logger.info(
+      { port: PORT, tokens: VALID_TOKENS.length },
+      'Group + Context API listening',
+    );
   });
 
   server.on('error', (err) => {
     console.error(`[group-api] FAILED TO BIND :${PORT} — ${err.message}`);
-    logger.error({ err, port: PORT }, 'Group API failed to bind — Delegate cannot register JIDs');
+    logger.error(
+      { err, port: PORT },
+      'Group API failed to bind — Delegate cannot register JIDs',
+    );
   });
 }
