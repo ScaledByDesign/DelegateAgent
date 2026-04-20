@@ -52,7 +52,7 @@ try {
 function captureSentryError(err: unknown, context: Record<string, string>) {
   if (!Sentry) return;
   Sentry.withScope((scope: any) => {
-    scope.setTag('component', 'nanoclaw-channel');
+    scope.setTag('component', 'delegate-agent-channel');
     for (const [k, v] of Object.entries(context)) scope.setTag(k, v);
     Sentry.captureException(err);
   });
@@ -60,12 +60,17 @@ function captureSentryError(err: unknown, context: Record<string, string>) {
 
 function sentryBreadcrumb(message: string, data?: Record<string, unknown>) {
   if (!Sentry) return;
-  Sentry.addBreadcrumb({ category: 'nanoclaw', message, data, level: 'info' });
+  Sentry.addBreadcrumb({
+    category: 'delegate-agent',
+    message,
+    data,
+    level: 'info',
+  });
 }
 
 // ─── Sentry Cron Monitor (heartbeat — alerts when polling stops) ─────────────
 
-const CRON_SLUG = 'nanoclaw-delegate-poll';
+const CRON_SLUG = 'delegate-agent-poll';
 let cronCheckinId: string | null = null;
 
 function cronCheckIn(status: 'in_progress' | 'ok' | 'error') {
@@ -249,7 +254,7 @@ class DelegateChannel implements Channel {
           jid,
           text: cleanText,
           ...(agentProfileId ? { agentProfileId } : {}),
-          metadata: { source: 'nanoclaw' },
+          metadata: { source: 'delegate-agent' },
         }),
         signal: AbortSignal.timeout(10_000),
       });

@@ -1,4 +1,4 @@
-# NanoClaw + Bifrost Deployment Guide
+# DelegateAgent + Bifrost Deployment Guide
 
 ## Architecture
 
@@ -6,9 +6,9 @@
 ┌─────────────────────────────────────────────────┐
 │  DigitalOcean Droplet (159.89.226.182)          │
 │                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │ NanoClaw │  │ Bifrost  │  │ Caddy (TLS)  │  │
-│  │ :3001    │  │ :4000    │  │ :443         │  │
+│  ┌──────────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ DelegateAgent│  │ Bifrost  │  │ Caddy (TLS)  │  │
+│  │ :3001        │  │ :4000    │  │ :443         │  │
 │  └────┬─────┘  └────┬─────┘  └──────┬───────┘  │
 │       │              │               │          │
 │       │  localhost    │  localhost    │  HTTPS   │
@@ -38,8 +38,8 @@
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/ScaledByDesign/remote-agent.git /opt/nanoclaw
-cd /opt/nanoclaw
+git clone https://github.com/ScaledByDesign/delegate-agent.git /opt/delegate-agent
+cd /opt/delegate-agent
 
 # 2. Install dependencies
 npm ci
@@ -52,7 +52,7 @@ cp deploy/env.example .env
 npm run build
 
 # 5. Install systemd services
-cp deploy/nanoclaw.service /etc/systemd/system/
+cp deploy/delegate-agent.service /etc/systemd/system/
 cp deploy/bifrost.service /etc/systemd/system/
 systemctl daemon-reload
 
@@ -69,12 +69,12 @@ envsubst < deploy/bifrost-config.template.json > /opt/bifrost/config.json
 
 # 8. Start services
 systemctl start bifrost
-systemctl start nanoclaw
-systemctl enable bifrost nanoclaw
+systemctl start delegate-agent
+systemctl enable bifrost delegate-agent
 
 # 9. Verify
 curl -s http://localhost:4000/health   # Bifrost
-curl -s https://agent.delegate.ws/health  # NanoClaw via Caddy
+curl -s https://agent.delegate.ws/health  # DelegateAgent via Caddy
 ```
 
 ## Environment Variables
@@ -85,8 +85,8 @@ curl -s https://agent.delegate.ws/health  # NanoClaw via Caddy
 | `ANTHROPIC_BASE_URL` | Bifrost Anthropic proxy | `http://localhost:4000/anthropic` |
 | `OPENAI_API_KEY` | OpenAI key (for Bifrost provider) | `sk-proj-...` |
 | `DELEGATE_URL` | Delegate app URL | `https://delegate.ws` |
-| `DELEGATE_API_KEY` | Token for channel auth (matches Vercel NANOCLAW_TOKEN) | `0ab6b3d9...` |
-| `NANOCLAW_TOKEN` | Same as DELEGATE_API_KEY | `0ab6b3d9...` |
+| `DELEGATE_API_KEY` | Token for channel auth (matches Vercel `DELEGATE_AGENT_TOKEN`) | `0ab6b3d9...` |
+| `DELEGATE_AGENT_TOKEN` | Same as DELEGATE_API_KEY (legacy: `NANOCLAW_TOKEN` still accepted for one release) | `0ab6b3d9...` |
 | `GITHUB_TOKEN` | Admin fallback only — workspace tokens resolved from Delegate DB | `ghp_...` |
 | `BIFROST_URL` | Bifrost health check endpoint | `http://localhost:4000` |
 
@@ -100,7 +100,7 @@ On the Delegate side (Vercel):
 
 ### 1. Vercel Environment Variables
 ```
-NANOCLAW_TOKEN=<same as DELEGATE_API_KEY on droplet>
+DELEGATE_AGENT_TOKEN=<same as DELEGATE_API_KEY on droplet>
 INNGEST_BASE_URL=https://inngest.delegate.ws
 INNGEST_EVENT_KEY=<from Inngest server>
 INNGEST_SIGNING_KEY=signkey-prod-<from Inngest server>
@@ -123,7 +123,7 @@ Enable the Inngest pipeline via the Super Admin System panel:
 3. Webhook auto-registration happens on OAuth connect
 
 ### 5. Agent Profile
-Ensure an active `AgentProfile` exists with `adapterType: nanoclaw` for the workspace owner.
+Ensure an active `AgentProfile` exists with `adapterType: delegate_agent` for the workspace owner.
 
 ## Sentry → GitHub Pipeline Flow
 
@@ -131,7 +131,7 @@ Ensure an active `AgentProfile` exists with `adapterType: nanoclaw` for the work
 1. Sentry alert fires webhook → /api/webhooks/sentry
 2. Webhook emits Inngest event: sentry/alert.triggered
 3. Inngest function: create-task → auto-delegate → wait-for-pr → auto-review
-4. NanoClaw polls /api/agent/channel/poll → picks up agent message
+4. DelegateAgent polls /api/agent/channel/poll → picks up agent message
 5. Container spawns → Claude Code fixes the bug → opens PR
 6. Reply endpoint detects PR URL → advances stage to pr_opened
 7. GitHub webhook (or Inngest event) triggers auto-review
@@ -142,14 +142,14 @@ Ensure an active `AgentProfile` exists with `adapterType: nanoclaw` for the work
 
 - **Inngest Dashboard**: https://inngest.delegate.ws (basic auth)
 - **WebOS Sentry Pipeline app**: Kanban board showing all pipeline stages
-- **NanoClaw logs**: `journalctl -u nanoclaw -f`
+- **DelegateAgent logs**: `journalctl -u delegate-agent -f`
 - **Bifrost logs**: `journalctl -u bifrost -f`
 
 ## Polling Intervals
 
 | Component | Interval | Purpose |
 |-----------|----------|---------|
-| NanoClaw → Delegate poll | 15s | Check for new agent messages |
+| DelegateAgent → Delegate poll | 15s | Check for new agent messages |
 | Inngest cron functions | 1-5m | Background jobs |
 | Sentry pipeline timeout | 2h | Max wait for PR creation |
 | Agent message pipeline | 5m | Max wait for agent reply |
@@ -162,5 +162,5 @@ Ensure an active `AgentProfile` exists with `adapterType: nanoclaw` for the work
 | "throttled: true" on poll | Verify MAX_CONCURRENT_POLLS removed from poll endpoint |
 | Bifrost health fails | Check `BIFROST_URL=http://localhost:4000` in .env |
 | Agent doesn't pick up messages | Check registered groups: `sqlite3 store/messages.db 'SELECT jid FROM registered_groups'` |
-| Container doesn't spawn | Check Docker: `docker ps -a`, check image: `docker images nanoclaw-agent` |
+| Container doesn't spawn | Check Docker: `docker ps -a`, check image: `docker images delegate-agent` |
 | Pipeline stuck at "delegated" | Agent reply must flow through `/api/agent/channel/reply` to advance stages |
