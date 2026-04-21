@@ -8,11 +8,11 @@ const OUTPUT_END_MARKER = '---DELEGATE_AGENT_OUTPUT_END---';
 
 // Mock config
 vi.mock('./config.js', () => ({
-  CONTAINER_IMAGE: 'nanoclaw-agent:latest',
+  CONTAINER_IMAGE: 'delegateagent:latest',
   CONTAINER_MAX_OUTPUT_SIZE: 10485760,
   CONTAINER_TIMEOUT: 1800000, // 30min
-  DATA_DIR: '/tmp/nanoclaw-test-data',
-  GROUPS_DIR: '/tmp/nanoclaw-test-groups',
+  DATA_DIR: '/tmp/delegateagent-test-data',
+  GROUPS_DIR: '/tmp/delegateagent-test-groups',
   IDLE_TIMEOUT: 1800000, // 30min
   ONECLI_API_KEY: '',
   ONECLI_URL: 'http://localhost:10254',
