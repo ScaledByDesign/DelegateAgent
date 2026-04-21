@@ -16,6 +16,16 @@
 #     with `nanoclaw` arguments are SKIPPED — server-side Sentry grouping relies
 #     on those tag names; rewriting them breaks dashboards.
 #
+# JS identifier safety (fixed 2026-04-21):
+#   - `nanoclaw` as a JS object key, property access, variable declaration, or
+#     other BARE identifier position is PRESERVED as-is. Hyphenated tokens
+#     like `delegate-agent` are invalid JS identifiers (parser reads as
+#     `delegate MINUS agent`). Specific places this rule matters:
+#       * `mcpServers: { nanoclaw: { ... } }` — MCP wire name, upstream contract
+#       * `mcp__nanoclaw__*` — MCP tool allowlist glob
+#       * Any `foo.nanoclaw.bar` chain, `nanoclaw(...)` call, `let nanoclaw = ...`
+#     These are identifier contexts, not prose. They stay.
+#
 set -euo pipefail
 
 DRY_RUN=0
@@ -46,7 +56,21 @@ PERL_REWRITE='
   # NOTE: NANOCLAW_TOKEN env var rewrite intentionally NOT done here — every
   # remaining occurrence is a legitimate legacy-fallback reference (CHANGELOG,
   # deprecation notices, test cases). The env-var rename landed in PR #1.
+  #
+  # Context-aware rename:
+  #   - JS identifier context (object key, call, member access, MCP namespace):
+  #     `nanoclaw` → `delegateagent` (single word, valid JS identifier, valid
+  #     MCP server / tool-prefix token).
+  #   - All other prose / path / service-unit contexts:
+  #     `nanoclaw` → `delegate-agent` (hyphenated external brand).
+  #
+  # Detection: `nanoclaw:` (object key), `nanoclaw(` (call),
+  # `nanoclaw.` (member access), `mcp__nanoclaw__` (MCP tool glob) —
+  # all resolve to the single-word form first; everything else resolves
+  # to the hyphen form.
   s{(?<![-_/.a-zA-Z0-9])NanoClaw(?!(\.git|-agent|\.tar|/))}{DelegateAgent}g;
+  s{(?<![-_/.a-zA-Z0-9])mcp__nanoclaw__}{mcp__delegateagent__}g;
+  s{(?<![-_/.a-zA-Z0-9])nanoclaw(?=(:|\(|\.))}{delegateagent}g;
   s{(?<![-_/.a-zA-Z0-9])nanoclaw(?!(\.git|-agent|\.tar|/))}{delegate-agent}g;
 '
 
