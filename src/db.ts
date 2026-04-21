@@ -128,9 +128,7 @@ function createSchema(database: Database.Database): void {
 
   // Add workspace_id column if it doesn't exist (migration for per-workspace credential routing)
   try {
-    database.exec(
-      `ALTER TABLE registered_groups ADD COLUMN workspace_id TEXT`,
-    );
+    database.exec(`ALTER TABLE registered_groups ADD COLUMN workspace_id TEXT`);
   } catch {
     /* column already exists */
   }

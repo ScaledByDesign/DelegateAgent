@@ -4,10 +4,10 @@
 // Used by the orchestrator for git operations (clone, fetch) when
 // the token wasn't provided in the request body.
 
-import { sanitizeGitUrl } from "./git-auth.js";
+import { sanitizeGitUrl } from './git-auth.js';
 
-const DELEGATE_URL = process.env.DELEGATE_URL || "https://delegate.ws";
-const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || "";
+const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
+const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || '';
 
 /**
  * Resolve LLM API keys for a workspace (Anthropic, OpenAI, etc.)
@@ -16,7 +16,7 @@ const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || "";
  */
 export async function resolveLLMKeysFromDelegate(
   workspaceId?: string | null,
-  userId?: string | null
+  userId?: string | null,
 ): Promise<{
   anthropicKey?: string;
   openaiKey?: string;
@@ -27,21 +27,21 @@ export async function resolveLLMKeysFromDelegate(
   if (!DELEGATE_API_KEY) return null;
   try {
     const params = new URLSearchParams();
-    if (workspaceId) params.set("workspaceId", workspaceId);
-    if (userId) params.set("userId", userId);
+    if (workspaceId) params.set('workspaceId', workspaceId);
+    if (userId) params.set('userId', userId);
     const res = await fetch(
       `${DELEGATE_URL}/api/agent/integrations/llm-keys?${params}`,
       {
         headers: { Authorization: `Bearer ${DELEGATE_API_KEY}` },
         signal: AbortSignal.timeout(5000),
-      }
+      },
     );
     if (!res.ok) return null;
     const data: any = await res.json();
     return data?.data || null;
   } catch (e) {
     console.error(
-      `[credential-client] LLM key resolution failed: ${(e as Error).message}`
+      `[credential-client] LLM key resolution failed: ${(e as Error).message}`,
     );
     return null;
   }
@@ -53,7 +53,7 @@ export async function resolveLLMKeysFromDelegate(
  */
 export async function resolveTokenFromDelegate(
   workspaceId?: string | null,
-  provider: string = "github"
+  provider: string = 'github',
 ): Promise<string | null> {
   if (!workspaceId || !DELEGATE_API_KEY) return null;
   try {
@@ -62,7 +62,7 @@ export async function resolveTokenFromDelegate(
       {
         headers: { Authorization: `Bearer ${DELEGATE_API_KEY}` },
         signal: AbortSignal.timeout(5000),
-      }
+      },
     );
     if (!res.ok) return null;
     const data: any = await res.json();
@@ -70,7 +70,7 @@ export async function resolveTokenFromDelegate(
   } catch (e) {
     // SECURITY: never log full URLs (could contain tokens in other contexts)
     console.error(
-      `[credential-client] Token resolution failed for workspace ${workspaceId}: ${(e as Error).message}`
+      `[credential-client] Token resolution failed for workspace ${workspaceId}: ${(e as Error).message}`,
     );
     return null;
   }
