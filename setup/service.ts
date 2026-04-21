@@ -77,7 +77,7 @@ function setupLaunchd(
     homeDir,
     'Library',
     'LaunchAgents',
-    'com.nanoclaw.plist',
+    'com.delegate-agent.plist',
   );
   fs.mkdirSync(path.dirname(plistPath), { recursive: true });
 
@@ -86,7 +86,7 @@ function setupLaunchd(
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.nanoclaw</string>
+    <string>com.delegate-agent</string>
     <key>ProgramArguments</key>
     <array>
         <string>${nodePath}</string>
@@ -106,9 +106,9 @@ function setupLaunchd(
         <string>${homeDir}</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>${projectRoot}/logs/nanoclaw.log</string>
+    <string>${projectRoot}/logs/delegate-agent.log</string>
     <key>StandardErrorPath</key>
-    <string>${projectRoot}/logs/nanoclaw.error.log</string>
+    <string>${projectRoot}/logs/delegate-agent.error.log</string>
 </dict>
 </plist>`;
 
@@ -128,7 +128,7 @@ function setupLaunchd(
   let serviceLoaded = false;
   try {
     const output = execSync('launchctl list', { encoding: 'utf-8' });
-    serviceLoaded = output.includes('com.nanoclaw');
+    serviceLoaded = output.includes('com.delegate-agent');
   } catch {
     // launchctl list failed
   }
@@ -213,7 +213,7 @@ function setupSystemd(
   let systemctlPrefix: string;
 
   if (runningAsRoot) {
-    unitPath = '/etc/systemd/system/nanoclaw.service';
+    unitPath = '/etc/systemd/system/delegate-agent.service';
     systemctlPrefix = 'systemctl';
     logger.info('Running as root — installing system-level systemd unit');
   } else {
@@ -246,8 +246,8 @@ RestartSec=5
 KillMode=process
 Environment=HOME=${homeDir}
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:${homeDir}/.local/bin
-StandardOutput=append:${projectRoot}/logs/nanoclaw.log
-StandardError=append:${projectRoot}/logs/nanoclaw.error.log
+StandardOutput=append:${projectRoot}/logs/delegate-agent.log
+StandardError=append:${projectRoot}/logs/delegate-agent.error.log
 
 [Install]
 WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
@@ -352,12 +352,12 @@ function setupNohupFallback(
     '',
     'echo "Starting DelegateAgent..."',
     `nohup ${JSON.stringify(nodePath)} ${JSON.stringify(projectRoot + '/dist/index.js')} \\`,
-    `  >> ${JSON.stringify(projectRoot + '/logs/nanoclaw.log')} \\`,
-    `  2>> ${JSON.stringify(projectRoot + '/logs/nanoclaw.error.log')} &`,
+    `  >> ${JSON.stringify(projectRoot + '/logs/delegate-agent.log')} \\`,
+    `  2>> ${JSON.stringify(projectRoot + '/logs/delegate-agent.error.log')} &`,
     '',
     `echo $! > ${JSON.stringify(pidFile)}`,
     'echo "DelegateAgent started (PID $!)"',
-    `echo "Logs: tail -f ${projectRoot}/logs/nanoclaw.log"`,
+    `echo "Logs: tail -f ${projectRoot}/logs/delegate-agent.log"`,
   ];
   const wrapper = lines.join('\n') + '\n';
 

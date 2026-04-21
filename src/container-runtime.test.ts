@@ -93,25 +93,24 @@ describe('ensureContainerRuntimeRunning', () => {
 
 describe('cleanupOrphans', () => {
   it('stops orphaned delegate-agent containers', () => {
-    // docker ps returns container names, one per line
-    mockExecSync.mockReturnValueOnce(
-      'delegate-agent-group1-111\nnanoclaw-group2-222\n',
-    );
+    // Impl makes TWO ps calls — one per prefix (delegate-agent- + legacy nanoclaw-)
+    mockExecSync.mockReturnValueOnce('delegate-agent-group1-111\n'); // current ps
+    mockExecSync.mockReturnValueOnce('nanoclaw-group2-222\n'); // legacy ps
     // stop calls succeed
     mockExecSync.mockReturnValue('');
 
     cleanupOrphans();
 
-    // ps + 2 stop calls
-    expect(mockExecSync).toHaveBeenCalledTimes(3);
+    // 2 ps + 2 stop calls
+    expect(mockExecSync).toHaveBeenCalledTimes(4);
     expect(mockExecSync).toHaveBeenNthCalledWith(
-      2,
+      3,
       `${CONTAINER_RUNTIME_BIN} stop -t 1 delegate-agent-group1-111`,
       { stdio: 'pipe' },
     );
     expect(mockExecSync).toHaveBeenNthCalledWith(
-      3,
-      `${CONTAINER_RUNTIME_BIN} stop -t 1 delegate-agent-group2-222`,
+      4,
+      `${CONTAINER_RUNTIME_BIN} stop -t 1 nanoclaw-group2-222`,
       { stdio: 'pipe' },
     );
     expect(logger.info).toHaveBeenCalledWith(
@@ -124,11 +123,12 @@ describe('cleanupOrphans', () => {
   });
 
   it('does nothing when no orphans exist', () => {
-    mockExecSync.mockReturnValueOnce('');
+    mockExecSync.mockReturnValueOnce(''); // current ps empty
+    mockExecSync.mockReturnValueOnce(''); // legacy ps empty
 
     cleanupOrphans();
 
-    expect(mockExecSync).toHaveBeenCalledTimes(1);
+    expect(mockExecSync).toHaveBeenCalledTimes(2);
     expect(logger.info).not.toHaveBeenCalled();
   });
 
@@ -146,7 +146,8 @@ describe('cleanupOrphans', () => {
   });
 
   it('continues stopping remaining containers when one stop fails', () => {
-    mockExecSync.mockReturnValueOnce('delegate-agent-a-1\nnanoclaw-b-2\n');
+    mockExecSync.mockReturnValueOnce('delegate-agent-a-1\n'); // current ps
+    mockExecSync.mockReturnValueOnce('nanoclaw-b-2\n'); // legacy ps
     // First stop fails
     mockExecSync.mockImplementationOnce(() => {
       throw new Error('already stopped');
@@ -156,7 +157,7 @@ describe('cleanupOrphans', () => {
 
     cleanupOrphans(); // should not throw
 
-    expect(mockExecSync).toHaveBeenCalledTimes(3);
+    expect(mockExecSync).toHaveBeenCalledTimes(4);
     expect(logger.info).toHaveBeenCalledWith(
       { count: 2, names: ['delegate-agent-a-1', 'delegate-agent-b-2'] },
       'Stopped orphaned containers',

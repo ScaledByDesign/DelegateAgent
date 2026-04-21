@@ -75,24 +75,44 @@ export function ensureContainerRuntimeRunning(): void {
   }
 }
 
-/** Kill orphaned DelegateAgent containers from previous runs. */
+/** Kill orphaned DelegateAgent containers from previous runs.
+ * Matches both `delegate-agent-` (current) and `nanoclaw-` (legacy) prefixes
+ * to clean up stragglers from pre-rebrand deployments.
+ */
 export function cleanupOrphans(): void {
   try {
-    const output = execSync(
+    const currentOut = execSync(
       `${CONTAINER_RUNTIME_BIN} ps --filter name=delegate-agent- --format '{{.Names}}'`,
       { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
     );
-    const orphans = output.trim().split('\n').filter(Boolean);
-    for (const name of orphans) {
+    const legacyOut = execSync(
+      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format '{{.Names}}'`,
+      { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
+    );
+    const names = [
+      ...currentOut.trim().split('\n').filter(Boolean),
+      // Rewrite legacy prefix names for logging consistency — the actual
+      // stopContainer call uses the original name from docker ps.
+      ...legacyOut
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((n) => n.replace(/^nanoclaw-/, 'delegate-agent-')),
+    ];
+    const rawNames = [
+      ...currentOut.trim().split('\n').filter(Boolean),
+      ...legacyOut.trim().split('\n').filter(Boolean),
+    ];
+    for (const raw of rawNames) {
       try {
-        stopContainer(name);
+        stopContainer(raw);
       } catch {
         /* already stopped */
       }
     }
-    if (orphans.length > 0) {
+    if (names.length > 0) {
       logger.info(
-        { count: orphans.length, names: orphans },
+        { count: names.length, names },
         'Stopped orphaned containers',
       );
     }
