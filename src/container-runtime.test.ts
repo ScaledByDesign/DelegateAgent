@@ -115,7 +115,10 @@ describe('cleanupOrphans', () => {
       { stdio: 'pipe' },
     );
     expect(logger.info).toHaveBeenCalledWith(
-      { count: 2, names: ['delegate-agent-group1-111', 'delegate-agent-group2-222'] },
+      {
+        count: 2,
+        names: ['delegate-agent-group1-111', 'delegate-agent-group2-222'],
+      },
       'Stopped orphaned containers',
     );
   });
