@@ -114,8 +114,10 @@ async function readStdin(): Promise<string> {
   });
 }
 
-const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
-const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
+// Must match src/container-runner.ts on the host side — protocol contract
+// for extracting agent output from the container's stdout stream.
+const OUTPUT_START_MARKER = '---DELEGATE_AGENT_OUTPUT_START---';
+const OUTPUT_END_MARKER = '---DELEGATE_AGENT_OUTPUT_END---';
 
 function writeOutput(output: ContainerOutput): void {
   console.log(OUTPUT_START_MARKER);
@@ -438,6 +440,12 @@ async function runQuery(
   for await (const message of query({
     prompt: stream,
     options: {
+      // Claude Code native binary is installed globally by the Dockerfile
+      // (`npm install -g @anthropic-ai/claude-code`). The SDK's auto-resolver
+      // looks for a platform-specific path (`.../claude-agent-sdk-linux-x64-musl/claude`)
+      // which doesn't exist on glibc-based node:22-slim. Point at the global bin.
+      pathToClaudeCodeExecutable:
+        process.env.CLAUDE_CODE_EXECUTABLE_PATH || '/usr/local/bin/claude',
       cwd: '/workspace/group',
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
