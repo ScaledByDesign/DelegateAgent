@@ -109,11 +109,15 @@ export async function startRemoteControl(
 
   let proc;
   try {
-    proc = spawn('claude', ['remote-control', '--name', 'DelegateAgent Remote'], {
-      cwd,
-      stdio: ['pipe', stdoutFd, stderrFd],
-      detached: true,
-    });
+    proc = spawn(
+      'claude',
+      ['remote-control', '--name', 'DelegateAgent Remote'],
+      {
+        cwd,
+        stdio: ['pipe', stdoutFd, stderrFd],
+        detached: true,
+      },
+    );
   } catch (err: any) {
     fs.closeSync(stdoutFd);
     fs.closeSync(stderrFd);
