@@ -39,6 +39,7 @@ import {
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
+  deleteSession,
   getAllTasks,
   getLastBotMessageTimestamp,
   getMessagesSince,
@@ -66,6 +67,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import { startSessionCleanup } from './session-cleanup.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -347,7 +349,7 @@ async function runAgent(
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
-  const sessionId = undefined; // DELEGATE-PATCH: always start fresh
+  const sessionId = sessions[group.folder];
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
@@ -378,10 +380,9 @@ async function runAgent(
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
-        if (false && output.newSessionId) {
-          // DELEGATE-PATCH: disabled
-          sessions[group.folder] = output.newSessionId!;
-          setSession(group.folder, output.newSessionId!);
+        if (output.newSessionId) {
+          sessions[group.folder] = output.newSessionId;
+          setSession(group.folder, output.newSessionId);
         }
         await onOutput(output);
       }
@@ -403,13 +404,32 @@ async function runAgent(
       wrappedOnOutput,
     );
 
-    if (false && output.newSessionId) {
-      // DISABLED: never persist sessions — each run starts fresh
-      sessions[group.folder] = output.newSessionId!;
-      setSession(group.folder, output.newSessionId!);
+    if (output.newSessionId) {
+      sessions[group.folder] = output.newSessionId;
+      setSession(group.folder, output.newSessionId);
     }
 
     if (output.status === 'error') {
+      // Detect stale/corrupt session — clear it so the next retry starts fresh.
+      // The session .jsonl can go missing after a crash mid-write, manual
+      // deletion, or disk-full. The existing backoff in group-queue.ts
+      // handles the retry; we just need to remove the broken session ID.
+      const isStaleSession =
+        sessionId &&
+        output.error &&
+        /no conversation found|ENOENT.*\.jsonl|session.*not found/i.test(
+          output.error,
+        );
+
+      if (isStaleSession) {
+        logger.warn(
+          { group: group.name, staleSessionId: sessionId, error: output.error },
+          'Stale session detected — clearing for next retry',
+        );
+        delete sessions[group.folder];
+        deleteSession(group.folder);
+      }
+
       logger.error(
         { group: group.name, error: output.error },
         'Container agent error',
@@ -431,7 +451,7 @@ async function startMessageLoop(): Promise<void> {
   }
   messageLoopRunning = true;
 
-  logger.info(`DelegateAgent running (default trigger: ${DEFAULT_TRIGGER})`);
+  logger.info(`NanoClaw running (default trigger: ${DEFAULT_TRIGGER})`);
 
   while (true) {
     try {
@@ -733,6 +753,8 @@ async function main(): Promise<void> {
       }
     },
   });
+  startSessionCleanup();
+  startGroupAPI();
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
@@ -749,17 +771,7 @@ const isDirectRun =
 
 if (isDirectRun) {
   main().catch((err) => {
-    logger.error({ err }, 'Failed to start DelegateAgent');
+    logger.error({ err }, 'Failed to start NanoClaw');
     process.exit(1);
   });
-}
-
-// ─── DELEGATE PATCH: Group Registration HTTP API ───
-// Exposes POST /api/groups on a configurable port so Delegate can register
-// task-specific groups at runtime. The Delegate channel groupSyncInterval
-// discovers new groups and starts polling them.
-import http from 'http';
-
-if (isDirectRun) {
-  startGroupAPI();
 }

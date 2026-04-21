@@ -36,9 +36,9 @@ export async function run(_args: string[]): Promise<void> {
   if (mgr === 'launchd') {
     try {
       const output = execSync('launchctl list', { encoding: 'utf-8' });
-      if (output.includes('com.delegate-agent')) {
+      if (output.includes('com.nanoclaw')) {
         // Check if it has a PID (actually running)
-        const line = output.split('\n').find((l) => l.includes('com.delegate-agent'));
+        const line = output.split('\n').find((l) => l.includes('com.nanoclaw'));
         if (line) {
           const pidField = line.trim().split(/\s+/)[0];
           service = pidField !== '-' && pidField ? 'running' : 'stopped';
@@ -50,14 +50,14 @@ export async function run(_args: string[]): Promise<void> {
   } else if (mgr === 'systemd') {
     const prefix = isRoot() ? 'systemctl' : 'systemctl --user';
     try {
-      execSync(`${prefix} is-active delegate-agent`, { stdio: 'ignore' });
+      execSync(`${prefix} is-active nanoclaw`, { stdio: 'ignore' });
       service = 'running';
     } catch {
       try {
         const output = execSync(`${prefix} list-unit-files`, {
           encoding: 'utf-8',
         });
-        if (output.includes('delegate-agent')) {
+        if (output.includes('nanoclaw')) {
           service = 'stopped';
         }
       } catch {
@@ -66,7 +66,7 @@ export async function run(_args: string[]): Promise<void> {
     }
   } else {
     // Check for nohup PID file
-    const pidFile = path.join(projectRoot, 'delegate-agent.pid');
+    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
     if (fs.existsSync(pidFile)) {
       try {
         const raw = fs.readFileSync(pidFile, 'utf-8').trim();
@@ -159,7 +159,7 @@ export async function run(_args: string[]): Promise<void> {
   let mountAllowlist = 'missing';
   if (
     fs.existsSync(
-      path.join(homeDir, '.config', 'delegate-agent', 'mount-allowlist.json'),
+      path.join(homeDir, '.config', 'nanoclaw', 'mount-allowlist.json'),
     )
   ) {
     mountAllowlist = 'configured';

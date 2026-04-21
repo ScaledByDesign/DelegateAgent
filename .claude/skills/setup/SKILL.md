@@ -1,9 +1,9 @@
 ---
 name: setup
-description: Run initial DelegateAgent setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure delegate-agent", or first-time setup requests.
+description: Run initial NanoClaw setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
 ---
 
-# DelegateAgent Setup
+# NanoClaw Setup
 
 Run setup steps automatically. Only pause when user action is required (channel authentication, configuration choices). Setup uses `bash setup.sh` for bootstrap, then `npx tsx setup/index.ts --step <name>` for all other steps. Steps emit structured status blocks to stdout. Verbose logs go to `logs/setup.log`.
 
@@ -20,7 +20,7 @@ Run:
 
 **Case A — `origin` points to `qwibitai/nanoclaw` (user cloned directly):**
 
-The user cloned instead of forking. AskUserQuestion: "You cloned DelegateAgent directly. We recommend forking so you can push your customizations. Would you like to set up a fork?"
+The user cloned instead of forking. AskUserQuestion: "You cloned NanoClaw directly. We recommend forking so you can push your customizations. Would you like to set up a fork?"
 - Fork now (recommended) — walk them through it
 - Continue without fork — they'll only have local changes
 
@@ -69,6 +69,22 @@ Run `npx tsx setup/index.ts --step environment` and parse the status block.
 - If HAS_AUTH=true → WhatsApp is already configured, note for step 5
 - If HAS_REGISTERED_GROUPS=true → note existing config, offer to skip or reconfigure
 - Record APPLE_CONTAINER and DOCKER values for step 3
+
+### OpenClaw Migration Detection
+
+Check for an existing OpenClaw installation:
+
+```bash
+ls -d ~/.openclaw 2>/dev/null || ls -d ~/.clawdbot 2>/dev/null
+```
+
+If a directory is found, AskUserQuestion:
+
+1. **Migrate now** — "Import identity, credentials, and settings from OpenClaw before continuing setup."
+2. **Fresh start** — "Skip migration and set up NanoClaw from scratch."
+3. **Migrate later** — "Continue setup now, run `/migrate-from-openclaw` anytime later."
+
+If "Migrate now": invoke `/migrate-from-openclaw`, then return here and continue at step 2a (Timezone).
 
 ## 2a. Timezone
 
@@ -146,14 +162,14 @@ grep -q '.local/bin' ~/.zshrc 2>/dev/null || echo 'export PATH="$HOME/.local/bin
 
 Then re-verify with `onecli version`.
 
-Point the CLI at the local OneCLI instance (it defaults to the cloud service otherwise):
+Point the CLI at the local OneCLI instance, the ONECLI_URL was output from the install script above:
 ```bash
-onecli config set api-host http://127.0.0.1:10254
+onecli config set api-host ${ONECLI_URL}
 ```
 
 Ensure `.env` has the OneCLI URL (create the file if it doesn't exist):
 ```bash
-grep -q 'ONECLI_URL' .env 2>/dev/null || echo 'ONECLI_URL=http://127.0.0.1:10254' >> .env
+grep -q 'ONECLI_URL' .env 2>/dev/null || echo 'ONECLI_URL=${ONECLI_URL}' >> .env
 ```
 
 Check if a secret already exists:
@@ -178,7 +194,7 @@ Then stop and wait for the user to confirm they have the token. Do NOT proceed u
 
 Once they confirm, they register it with OneCLI. AskUserQuestion with two options:
 
-1. **Dashboard** — description: "Best if you have a browser on this machine. Open http://127.0.0.1:10254 and add the secret in the UI. Use type 'anthropic' and paste your token as the value."
+1. **Dashboard** — description: "Best if you have a browser on this machine. Open ${ONECLI_URL} and add the secret in the UI. Use type 'anthropic' and paste your token as the value."
 2. **CLI** — description: "Best for remote/headless servers. Run: `onecli secrets create --name Anthropic --type anthropic --value YOUR_TOKEN --host-pattern api.anthropic.com`"
 
 #### API key path
@@ -187,7 +203,7 @@ Tell the user to get an API key from https://console.anthropic.com/settings/keys
 
 Then AskUserQuestion with two options:
 
-1. **Dashboard** — description: "Best if you have a browser on this machine. Open http://127.0.0.1:10254 and add the secret in the UI."
+1. **Dashboard** — description: "Best if you have a browser on this machine. Open ${ONECLI_URL} and add the secret in the UI."
 2. **CLI** — description: "Best for remote/headless servers. Run: `onecli secrets create --name Anthropic --type anthropic --value YOUR_KEY --host-pattern api.anthropic.com`"
 
 #### After either path
@@ -265,12 +281,12 @@ AskUserQuestion: Agent access to external directories?
 ## 7. Start Service
 
 If service already running: unload first.
-- macOS: `launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist`
-- Linux: `systemctl --user stop delegate-agent` (or `systemctl stop delegate-agent` if root)
+- macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist`
+- Linux: `systemctl --user stop nanoclaw` (or `systemctl stop nanoclaw` if root)
 
 Run `npx tsx setup/index.ts --step service` and parse the status block.
 
-**If FALLBACK=wsl_no_systemd:** WSL without systemd detected. Tell user they can either enable systemd in WSL (`echo -e "[boot]\nsystemd=true" | sudo tee /etc/wsl.conf` then restart WSL) or use the generated `start-delegate-agent.sh` wrapper.
+**If FALLBACK=wsl_no_systemd:** WSL without systemd detected. Tell user they can either enable systemd in WSL (`echo -e "[boot]\nsystemd=true" | sudo tee /etc/wsl.conf` then restart WSL) or use the generated `start-nanoclaw.sh` wrapper.
 
 **If DOCKER_GROUP_STALE=true:** The user was added to the docker group after their session started — the systemd service can't reach the Docker socket. Ask user to run these two commands:
 
@@ -288,8 +304,8 @@ Replace `USERNAME` with the actual username (from `whoami`). Run the two `sudo` 
 
 **If SERVICE_LOADED=false:**
 - Read `logs/setup.log` for the error.
-- macOS: check `launchctl list | grep delegate-agent`. If PID=`-` and status non-zero, read `logs/delegate-agent.error.log`.
-- Linux: check `systemctl --user status delegate-agent`.
+- macOS: check `launchctl list | grep nanoclaw`. If PID=`-` and status non-zero, read `logs/nanoclaw.error.log`.
+- Linux: check `systemctl --user status nanoclaw`.
 - Re-run the service step after fixing.
 
 ## 8. Verify
@@ -297,26 +313,26 @@ Replace `USERNAME` with the actual username (from `whoami`). Run the two `sudo` 
 Run `npx tsx setup/index.ts --step verify` and parse the status block.
 
 **If STATUS=failed, fix each:**
-- SERVICE=stopped → `npm run build`, then restart: `launchctl kickstart -k gui/$(id -u)/com.delegate-agent` (macOS) or `systemctl --user restart delegate-agent` (Linux) or `bash start-delegate-agent.sh` (WSL nohup)
+- SERVICE=stopped → `npm run build`, then restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux) or `bash start-nanoclaw.sh` (WSL nohup)
 - SERVICE=not_found → re-run step 7
 - CREDENTIALS=missing → re-run step 4 (Docker: check `onecli secrets list`; Apple Container: check `.env` for credentials)
 - CHANNEL_AUTH shows `not_found` for any channel → re-invoke that channel's skill (e.g. `/add-telegram`)
 - REGISTERED_GROUPS=0 → re-invoke the channel skills from step 5
 - MOUNT_ALLOWLIST=missing → `npx tsx setup/index.ts --step mounts -- --empty`
 
-Tell user to test: send a message in their registered chat. Show: `tail -f logs/delegate-agent.log`
+Tell user to test: send a message in their registered chat. Show: `tail -f logs/nanoclaw.log`
 
 ## Troubleshooting
 
-**Service not starting:** Check `logs/delegate-agent.error.log`. Common: wrong Node path (re-run step 7), credential system not running (Docker: check `curl http://127.0.0.1:10254/api/health`; Apple Container: check `.env` credentials), missing channel credentials (re-invoke channel skill).
+**Service not starting:** Check `logs/nanoclaw.error.log`. Common: wrong Node path (re-run step 7), credential system not running (Docker: check `curl ${ONECLI_URL}/api/health`; Apple Container: check `.env` credentials), missing channel credentials (re-invoke channel skill).
 
 **Container agent fails ("Claude Code process exited with code 1"):** Ensure the container runtime is running — `open -a Docker` (macOS Docker), `container system start` (Apple Container), or `sudo systemctl start docker` (Linux). Check container logs in `groups/main/logs/container-*.log`.
 
-**No response to messages:** Check trigger pattern. Main channel doesn't need prefix. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/delegate-agent.log`.
+**No response to messages:** Check trigger pattern. Main channel doesn't need prefix. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/nanoclaw.log`.
 
 **Channel not connecting:** Verify the channel's credentials are set in `.env`. Channels auto-enable when their credentials are present. For WhatsApp: check `store/auth/creds.json` exists. For token-based channels: check token values in `.env`. Restart the service after any `.env` change.
 
-**Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist` | Linux: `systemctl --user stop delegate-agent`
+**Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
 
 
 ## 9. Diagnostics
