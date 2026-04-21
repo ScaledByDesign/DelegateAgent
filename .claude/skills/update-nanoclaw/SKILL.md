@@ -1,11 +1,11 @@
 ---
 name: update-nanoclaw
-description: Efficiently bring upstream NanoClaw updates into a customized install, with preview, selective cherry-pick, and low token usage.
+description: Efficiently bring upstream DelegateAgent updates into a customized install, with preview, selective cherry-pick, and low token usage.
 ---
 
 # About
 
-Your NanoClaw fork drifts from upstream as you customize it. This skill pulls upstream changes into your install without losing your modifications.
+Your DelegateAgent fork drifts from upstream as you customize it. This skill pulls upstream changes into your install without losing your modifications.
 
 Run `/update-nanoclaw` in Claude Code.
 
@@ -50,7 +50,7 @@ Only opens files with actual conflicts. Uses `git log`, `git diff`, and `git sta
 ---
 
 # Goal
-Help a user with a customized NanoClaw install safely incorporate upstream changes without a fresh reinstall and without blowing tokens.
+Help a user with a customized DelegateAgent install safely incorporate upstream changes without a fresh reinstall and without blowing tokens.
 
 # Operating principles
 - Never proceed with a dirty working tree.

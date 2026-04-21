@@ -2,17 +2,17 @@
 set -euo pipefail
 
 # --- Rebrand migration (idempotent, safe to run multiple times) ---
-# Move /opt/nanoclaw → /opt/delegate-agent, leave legacy symlink for one release.
-if [ -d /opt/nanoclaw ] && [ ! -L /opt/nanoclaw ] && [ ! -d /opt/delegate-agent ]; then
-  mv /opt/nanoclaw /opt/delegate-agent
-  ln -s /opt/delegate-agent /opt/nanoclaw
-  echo "[migrate] moved /opt/nanoclaw → /opt/delegate-agent (legacy symlink retained)"
+# Move /opt/delegate-agent → /opt/delegate-agent, leave legacy symlink for one release.
+if [ -d /opt/delegate-agent ] && [ ! -L /opt/delegate-agent ] && [ ! -d /opt/delegate-agent ]; then
+  mv /opt/delegate-agent /opt/delegate-agent
+  ln -s /opt/delegate-agent /opt/delegate-agent
+  echo "[migrate] moved /opt/delegate-agent → /opt/delegate-agent (legacy symlink retained)"
 fi
 
 # Systemd unit migration (idempotent)
-if systemctl list-unit-files | grep -q '^nanoclaw\.service'; then
-  systemctl stop nanoclaw.service 2>/dev/null || true
-  systemctl disable nanoclaw.service 2>/dev/null || true
+if systemctl list-unit-files | grep -q '^delegate-agent\.service'; then
+  systemctl stop delegate-agent.service 2>/dev/null || true
+  systemctl disable delegate-agent.service 2>/dev/null || true
   rm -f /etc/systemd/system/nanoclaw.service
   systemctl daemon-reload
 fi

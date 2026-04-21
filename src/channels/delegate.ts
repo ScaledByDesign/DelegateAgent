@@ -10,8 +10,8 @@
 // Auth: Bearer token (DELEGATE_API_KEY env var)
 //
 // This file ships as src/channels/delegate.ts in the DelegateAgent repo
-// (fork of upstream NanoClaw). Before the rebrand it was injected into
-// upstream NanoClaw at deploy time via cloud-init.
+// (fork of upstream DelegateAgent). Before the rebrand it was injected into
+// upstream DelegateAgent at deploy time via cloud-init.
 
 import * as fs from 'fs';
 import * as path from 'path';

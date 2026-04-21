@@ -1,0 +1,8 @@
+.claude/skills/add-karpathy-llm-wiki/SKILL.md
+.claude/skills/add-karpathy-llm-wiki/llm-wiki.md
+.claude/skills/migrate-from-openclaw/MIGRATE_CRONS.md
+.claude/skills/migrate-from-openclaw/SKILL.md
+.claude/skills/migrate-from-openclaw/scripts/discover-openclaw.ts
+.claude/skills/migrate-from-openclaw/scripts/extract-channel-credentials.ts
+.claude/skills/migrate-nanoclaw/SKILL.md
+.claude/skills/migrate-nanoclaw/diagnostics.md

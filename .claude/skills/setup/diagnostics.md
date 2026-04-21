@@ -20,7 +20,7 @@ Write `/tmp/nanoclaw-diagnostics.json`. No paths, usernames, hostnames, or IP ad
   "distinct_id": "<uuid>",
   "properties": {
     "success": true,
-    "nanoclaw_version": "1.2.21",
+    "delegate-agent_version": "1.2.21",
     "os_platform": "darwin",
     "arch": "arm64",
     "node_major_version": 22,

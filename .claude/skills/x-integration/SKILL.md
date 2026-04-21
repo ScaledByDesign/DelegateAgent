@@ -1,13 +1,13 @@
 ---
 name: x-integration
-description: X (Twitter) integration for NanoClaw. Post tweets, like, reply, retweet, and quote. Use for setup, testing, or troubleshooting X functionality. Triggers on "setup x", "x integration", "twitter", "post tweet", "tweet".
+description: X (Twitter) integration for DelegateAgent. Post tweets, like, reply, retweet, and quote. Use for setup, testing, or troubleshooting X functionality. Triggers on "setup x", "x integration", "twitter", "post tweet", "tweet".
 ---
 
 # X (Twitter) Integration
 
 Browser automation for X interactions via WhatsApp.
 
-> **Compatibility:** NanoClaw v1.0.0. Directory structure may change in future versions.
+> **Compatibility:** DelegateAgent v1.0.0. Directory structure may change in future versions.
 
 ## Features
 
@@ -23,7 +23,7 @@ Browser automation for X interactions via WhatsApp.
 
 Before using this skill, ensure:
 
-1. **NanoClaw is installed and running** - WhatsApp connected, service active
+1. **DelegateAgent is installed and running** - WhatsApp connected, service active
 2. **Dependencies installed**:
    ```bash
    npm ls playwright dotenv-cli || npm install playwright dotenv-cli
@@ -50,8 +50,8 @@ npx dotenv -e .env -- npx tsx .claude/skills/x-integration/scripts/setup.ts
 # 3. Rebuild host and restart service
 npm run build
 launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
-# Linux: systemctl --user restart nanoclaw
-# Verify: launchctl list | grep nanoclaw (macOS) or systemctl --user status nanoclaw (Linux)
+# Linux: systemctl --user restart delegate-agent
+# Verify: launchctl list | grep delegate-agent (macOS) or systemctl --user status delegate-agent (Linux)
 ```
 
 ## Configuration
@@ -154,7 +154,7 @@ Paths relative to project root:
 
 ### Integration Points
 
-To integrate this skill into NanoClaw, make the following modifications:
+To integrate this skill into DelegateAgent, make the following modifications:
 
 ---
 
@@ -273,13 +273,13 @@ cat data/x-auth.json  # Should show {"authenticated": true, ...}
 ```bash
 npm run build
 launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
-# Linux: systemctl --user restart nanoclaw
+# Linux: systemctl --user restart delegate-agent
 ```
 
 **Verify success:**
 ```bash
-launchctl list | grep nanoclaw  # macOS — should show PID and exit code 0 or -
-# Linux: systemctl --user status nanoclaw
+launchctl list | grep delegate-agent  # macOS — should show PID and exit code 0 or -
+# Linux: systemctl --user status delegate-agent
 ```
 
 ## Usage via WhatsApp
@@ -346,7 +346,7 @@ echo '{"content":"Test"}' | npx tsx .claude/skills/x-integration/scripts/post.ts
 ```bash
 npx dotenv -e .env -- npx tsx .claude/skills/x-integration/scripts/setup.ts
 launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
-# Linux: systemctl --user restart nanoclaw
+# Linux: systemctl --user restart delegate-agent
 ```
 
 ### Browser Lock Files

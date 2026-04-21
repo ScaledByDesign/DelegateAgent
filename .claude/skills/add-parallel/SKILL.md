@@ -1,18 +1,18 @@
 # Add Parallel AI Integration
 
-Adds Parallel AI MCP integration to NanoClaw for advanced web research capabilities.
+Adds Parallel AI MCP integration to DelegateAgent for advanced web research capabilities.
 
 ## What This Adds
 
 - **Quick Search** - Fast web lookups using Parallel Search API (free to use)
 - **Deep Research** - Comprehensive analysis using Parallel Task API (asks permission)
-- **Non-blocking Design** - Uses NanoClaw scheduler for result polling (no container blocking)
+- **Non-blocking Design** - Uses DelegateAgent scheduler for result polling (no container blocking)
 
 ## Prerequisites
 
 User must have:
 1. Parallel AI API key from https://platform.parallel.ai
-2. NanoClaw already set up and running
+2. DelegateAgent already set up and running
 3. Docker installed and running
 
 ## Implementation Steps
@@ -83,14 +83,14 @@ Update `container/agent-runner/src/index.ts`:
 Find the section where `mcpServers` is configured (around line 237-252):
 ```typescript
 const mcpServers: Record<string, any> = {
-  nanoclaw: ipcMcp
+  delegate-agent: ipcMcp
 };
 ```
 
-Add Parallel AI MCP servers after the nanoclaw server:
+Add Parallel AI MCP servers after the delegate-agent server:
 ```typescript
 const mcpServers: Record<string, any> = {
-  nanoclaw: ipcMcp
+  delegate-agent: ipcMcp
 };
 
 // Add Parallel AI MCP servers if API key is available
@@ -234,14 +234,14 @@ Rebuild the main app and restart:
 ```bash
 npm run build
 launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
-# Linux: systemctl --user restart nanoclaw
+# Linux: systemctl --user restart delegate-agent
 ```
 
 Wait 3 seconds for service to start, then verify:
 ```bash
 sleep 3
-launchctl list | grep nanoclaw  # macOS
-# Linux: systemctl --user status nanoclaw
+launchctl list | grep delegate-agent  # macOS
+# Linux: systemctl --user status delegate-agent
 ```
 
 ### 8. Test Integration
@@ -287,4 +287,4 @@ To remove Parallel AI integration:
 2. Revert changes to container-runner.ts and agent-runner/src/index.ts
 3. Remove Web Research Tools section from groups/main/CLAUDE.md
 4. Rebuild: `./container/build.sh && npm run build`
-5. Restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux)
+5. Restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart delegate-agent` (Linux)

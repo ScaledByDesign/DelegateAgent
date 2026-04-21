@@ -1,4 +1,4 @@
-# NanoClaw Documentation
+# DelegateAgent Documentation
 
 The official documentation is at **[docs.nanoclaw.dev](https://docs.nanoclaw.dev)**.
 

@@ -5,7 +5,7 @@ description: Add WhatsApp as a channel. Can replace other channels entirely or r
 
 # Add WhatsApp Channel
 
-This skill adds WhatsApp support to NanoClaw. It installs the WhatsApp channel code, dependencies, and guides through authentication, registration, and configuration.
+This skill adds WhatsApp support to DelegateAgent. It installs the WhatsApp channel code, dependencies, and guides through authentication, registration, and configuration.
 
 ## Phase 1: Pre-flight
 
@@ -267,7 +267,7 @@ Restart the service:
 launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 
 # Linux (systemd)
-systemctl --user restart nanoclaw
+systemctl --user restart delegate-agent
 
 # Linux (nohup fallback)
 bash start-nanoclaw.sh
@@ -320,7 +320,7 @@ rm -rf store/auth/ && npx tsx setup/index.ts --step whatsapp-auth -- --method qr
 
 ### "conflict" disconnection
 
-This happens when two instances connect with the same credentials. Ensure only one NanoClaw process is running:
+This happens when two instances connect with the same credentials. Ensure only one DelegateAgent process is running:
 
 ```bash
 pkill -f "node dist/index.js"
@@ -332,7 +332,7 @@ pkill -f "node dist/index.js"
 Check:
 1. Auth credentials exist: `ls store/auth/creds.json`
 3. Chat is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE '%whatsapp%' OR jid LIKE '%@g.us' OR jid LIKE '%@s.whatsapp.net'"`
-4. Service is running: `launchctl list | grep nanoclaw` (macOS) or `systemctl --user status nanoclaw` (Linux)
+4. Service is running: `launchctl list | grep delegate-agent` (macOS) or `systemctl --user status delegate-agent` (Linux)
 5. Logs: `tail -50 logs/nanoclaw.log`
 
 ### Group names not showing
@@ -357,9 +357,9 @@ npm run dev
 launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 
 # Linux:
-# systemctl --user stop nanoclaw
+# systemctl --user stop delegate-agent
 # npm run dev
-# systemctl --user start nanoclaw
+# systemctl --user start delegate-agent
 ```
 
 ## Removal
@@ -369,4 +369,4 @@ To remove WhatsApp integration:
 1. Delete auth credentials: `rm -rf store/auth/`
 2. Remove WhatsApp registrations: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE '%@g.us' OR jid LIKE '%@s.whatsapp.net'"`
 3. Sync env: `mkdir -p data/env && cp .env data/env/env`
-4. Rebuild and restart: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart nanoclaw` (Linux)
+4. Rebuild and restart: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart delegate-agent` (Linux)

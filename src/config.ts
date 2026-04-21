@@ -28,7 +28,7 @@ export function getEnvWithFallback(
 }
 
 /**
- * One-shot migration: move ~/.config/nanoclaw → ~/.config/delegate-agent if the
+ * One-shot migration: move ~/.config/delegate-agent → ~/.config/delegate-agent if the
  * legacy dir exists and the new one does not. Safe to call multiple times.
  * Must run BEFORE any config load that reads the resolved paths.
  */
@@ -67,13 +67,13 @@ const HOME_DIR = process.env.HOME || os.homedir();
 export const MOUNT_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
-  'nanoclaw',
+  'delegate-agent',
   'mount-allowlist.json',
 );
 export const SENDER_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
-  'nanoclaw',
+  'delegate-agent',
   'sender-allowlist.json',
 );
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');

@@ -1,6 +1,6 @@
 ---
 name: update-delegate-agent
-description: Efficiently bring upstream NanoClaw updates into a customized DelegateAgent install, with preview, selective cherry-pick, and low token usage.
+description: Efficiently bring upstream DelegateAgent updates into a customized DelegateAgent install, with preview, selective cherry-pick, and low token usage.
 ---
 
 # About

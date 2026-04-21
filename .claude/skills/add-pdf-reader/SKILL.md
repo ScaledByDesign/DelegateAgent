@@ -1,6 +1,6 @@
 ---
 name: add-pdf-reader
-description: Add PDF reading to NanoClaw agents. Extracts text from PDFs via pdftotext CLI. Handles WhatsApp attachments, URLs, and local files.
+description: Add PDF reading to DelegateAgent agents. Extracts text from PDFs via pdftotext CLI. Handles WhatsApp attachments, URLs, and local files.
 ---
 
 # Add PDF Reader
@@ -63,7 +63,7 @@ npx vitest run src/channels/whatsapp.test.ts
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
-# Linux: systemctl --user restart nanoclaw
+# Linux: systemctl --user restart delegate-agent
 ```
 
 ## Phase 3: Verify

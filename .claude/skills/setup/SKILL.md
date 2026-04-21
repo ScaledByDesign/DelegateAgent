@@ -1,9 +1,9 @@
 ---
 name: setup
-description: Run initial NanoClaw setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
+description: Run initial DelegateAgent setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure delegate-agent", or first-time setup requests.
 ---
 
-# NanoClaw Setup
+# DelegateAgent Setup
 
 Run setup steps automatically. Only pause when user action is required (channel authentication, configuration choices). Setup uses `bash setup.sh` for bootstrap, then `npx tsx setup/index.ts --step <name>` for all other steps. Steps emit structured status blocks to stdout. Verbose logs go to `logs/setup.log`.
 
@@ -20,7 +20,7 @@ Run:
 
 **Case A — `origin` points to `qwibitai/nanoclaw` (user cloned directly):**
 
-The user cloned instead of forking. AskUserQuestion: "You cloned NanoClaw directly. We recommend forking so you can push your customizations. Would you like to set up a fork?"
+The user cloned instead of forking. AskUserQuestion: "You cloned DelegateAgent directly. We recommend forking so you can push your customizations. Would you like to set up a fork?"
 - Fork now (recommended) — walk them through it
 - Continue without fork — they'll only have local changes
 
@@ -81,7 +81,7 @@ ls -d ~/.openclaw 2>/dev/null || ls -d ~/.clawdbot 2>/dev/null
 If a directory is found, AskUserQuestion:
 
 1. **Migrate now** — "Import identity, credentials, and settings from OpenClaw before continuing setup."
-2. **Fresh start** — "Skip migration and set up NanoClaw from scratch."
+2. **Fresh start** — "Skip migration and set up DelegateAgent from scratch."
 3. **Migrate later** — "Continue setup now, run `/migrate-from-openclaw` anytime later."
 
 If "Migrate now": invoke `/migrate-from-openclaw`, then return here and continue at step 2a (Timezone).
@@ -282,7 +282,7 @@ AskUserQuestion: Agent access to external directories?
 
 If service already running: unload first.
 - macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist`
-- Linux: `systemctl --user stop nanoclaw` (or `systemctl stop nanoclaw` if root)
+- Linux: `systemctl --user stop delegate-agent` (or `systemctl stop delegate-agent` if root)
 
 Run `npx tsx setup/index.ts --step service` and parse the status block.
 
@@ -304,8 +304,8 @@ Replace `USERNAME` with the actual username (from `whoami`). Run the two `sudo` 
 
 **If SERVICE_LOADED=false:**
 - Read `logs/setup.log` for the error.
-- macOS: check `launchctl list | grep nanoclaw`. If PID=`-` and status non-zero, read `logs/nanoclaw.error.log`.
-- Linux: check `systemctl --user status nanoclaw`.
+- macOS: check `launchctl list | grep delegate-agent`. If PID=`-` and status non-zero, read `logs/nanoclaw.error.log`.
+- Linux: check `systemctl --user status delegate-agent`.
 - Re-run the service step after fixing.
 
 ## 8. Verify
@@ -313,7 +313,7 @@ Replace `USERNAME` with the actual username (from `whoami`). Run the two `sudo` 
 Run `npx tsx setup/index.ts --step verify` and parse the status block.
 
 **If STATUS=failed, fix each:**
-- SERVICE=stopped → `npm run build`, then restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux) or `bash start-nanoclaw.sh` (WSL nohup)
+- SERVICE=stopped → `npm run build`, then restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart delegate-agent` (Linux) or `bash start-nanoclaw.sh` (WSL nohup)
 - SERVICE=not_found → re-run step 7
 - CREDENTIALS=missing → re-run step 4 (Docker: check `onecli secrets list`; Apple Container: check `.env` for credentials)
 - CHANNEL_AUTH shows `not_found` for any channel → re-invoke that channel's skill (e.g. `/add-telegram`)
@@ -332,7 +332,7 @@ Tell user to test: send a message in their registered chat. Show: `tail -f logs/
 
 **Channel not connecting:** Verify the channel's credentials are set in `.env`. Channels auto-enable when their credentials are present. For WhatsApp: check `store/auth/creds.json` exists. For token-based channels: check token values in `.env`. Restart the service after any `.env` change.
 
-**Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
+**Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop delegate-agent`
 
 
 ## 9. Diagnostics

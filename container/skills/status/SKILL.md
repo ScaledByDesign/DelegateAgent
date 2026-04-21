@@ -75,7 +75,7 @@ If no tasks exist, report "No scheduled tasks."
 Present as a clean, readable message:
 
 ```
-🔍 *NanoClaw Status*
+🔍 *DelegateAgent Status*
 
 *Session:*
 • Channel: main

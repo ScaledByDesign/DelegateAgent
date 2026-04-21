@@ -5,7 +5,7 @@ description: Add Slack as a channel. Can replace WhatsApp entirely or run alongs
 
 # Add Slack Channel
 
-This skill adds Slack support to NanoClaw, then walks through interactive setup.
+This skill adds Slack support to DelegateAgent, then walks through interactive setup.
 
 ## Phase 1: Pre-flight
 
@@ -112,7 +112,7 @@ Tell the user:
 > 2. In that channel, the channel ID is in the URL when you open it in a browser: `https://app.slack.com/client/T.../C0123456789` — the `C...` part is the channel ID
 > 3. Alternatively, right-click the channel name → **Copy link** — the channel ID is the last path segment
 >
-> The JID format for NanoClaw is: `slack:C0123456789`
+> The JID format for DelegateAgent is: `slack:C0123456789`
 
 Wait for the user to provide the channel ID.
 
@@ -157,7 +157,7 @@ tail -f logs/nanoclaw.log
 1. Check `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are set in `.env` AND synced to `data/env/env`
 2. Check channel is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'slack:%'"`
 3. For non-main channels: message must include trigger pattern
-4. Service is running: `launchctl list | grep nanoclaw`
+4. Service is running: `launchctl list | grep delegate-agent`
 
 ### Bot connected but not receiving messages
 

@@ -94,7 +94,7 @@ npm run build
 
 ### Ensure launchd PATH includes Homebrew
 
-The NanoClaw launchd service runs with a restricted PATH. `whisper-cli` and `ffmpeg` are in `/opt/homebrew/bin/` (Apple Silicon) or `/usr/local/bin/` (Intel), which may not be in the plist's PATH.
+The DelegateAgent launchd service runs with a restricted PATH. `whisper-cli` and `ffmpeg` are in `/opt/homebrew/bin/` (Apple Silicon) or `/usr/local/bin/` (Intel), which may not be in the plist's PATH.
 
 Check the current PATH:
 ```bash

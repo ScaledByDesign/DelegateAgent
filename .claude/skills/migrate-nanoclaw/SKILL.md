@@ -5,7 +5,7 @@ description: Extracts user customizations from a fork, generates a replayable mi
 
 # Context
 
-NanoClaw users fork the repo and customize it — changing config values, editing source files, modifying personas, adding skills. When upstream ships updates or refactors, `git merge` produces painful conflicts because the same core files were changed on both sides.
+DelegateAgent users fork the repo and customize it — changing config values, editing source files, modifying personas, adding skills. When upstream ships updates or refactors, `git merge` produces painful conflicts because the same core files were changed on both sides.
 
 This skill extracts the user's customizations into a migration guide — capturing both the intent (what they want) and the implementation details (how they did it, with code snippets, API calls, and specific configurations). On upgrade, it checks out clean upstream in a worktree, then reapplies customizations using the guide. No merge conflicts because there's nothing to merge.
 
@@ -109,7 +109,7 @@ If the user chose to update an existing guide rather than re-extract:
 
 Spawn a haiku sub-agent (Agent tool, model: haiku) for initial exploration:
 
-> Explore this NanoClaw fork to identify all changes from the upstream base. Run these commands and report back:
+> Explore this DelegateAgent fork to identify all changes from the upstream base. Run these commands and report back:
 >
 > 1. `git diff --name-only $BASE..HEAD` — all changed files
 > 2. `git log --oneline $BASE..HEAD` — all commits (look for skill branch merges like `Merge branch 'skill/*'`)
@@ -194,7 +194,7 @@ The guide is structured markdown that a fresh Claude session can follow to repro
 Structure:
 
 ```markdown
-# NanoClaw Migration Guide
+# DelegateAgent Migration Guide
 
 Generated: <timestamp>
 Base: <BASE hash>

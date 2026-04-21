@@ -1,11 +1,11 @@
 ---
 name: add-image-vision
-description: Add image vision to NanoClaw agents. Resizes and processes WhatsApp image attachments, then sends them to Claude as multimodal content blocks.
+description: Add image vision to DelegateAgent agents. Resizes and processes WhatsApp image attachments, then sends them to Claude as multimodal content blocks.
 ---
 
 # Image Vision Skill
 
-Adds the ability for NanoClaw agents to see and understand images sent via WhatsApp. Images are downloaded, resized with sharp, saved to the group workspace, and passed to the agent as base64-encoded multimodal content blocks.
+Adds the ability for DelegateAgent agents to see and understand images sent via WhatsApp. Images are downloaded, resized with sharp, saved to the group workspace, and passed to the agent as base64-encoded multimodal content blocks.
 
 ## Phase 1: Pre-flight
 

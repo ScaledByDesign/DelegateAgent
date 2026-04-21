@@ -1,6 +1,6 @@
 # Contributors
 
-Thanks to everyone who has contributed to DelegateAgent and the upstream NanoClaw project it is forked from!
+Thanks to everyone who has contributed to DelegateAgent and the upstream DelegateAgent project it is forked from!
 
 - [Alakazam03](https://github.com/Alakazam03) — Vaibhav Aggarwal
 - [tydev-new](https://github.com/tydev-new)

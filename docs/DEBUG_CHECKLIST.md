@@ -1,4 +1,4 @@
-# NanoClaw Debug Checklist
+# DelegateAgent Debug Checklist
 
 ## Known Issues (2026-02-08)
 
@@ -15,7 +15,7 @@ Both timers fire at the same time, so containers always exit via hard SIGKILL (c
 
 **Symptoms**: `Container exited with code 125: pull access denied for nanoclaw-agent` — the container image disappears overnight or after a few hours, even though you just built it.
 
-**Cause**: If your container runtime has Kubernetes enabled (Rancher Desktop enables it by default), the kubelet runs image garbage collection when disk usage exceeds 85%. NanoClaw containers are ephemeral (run and exit), so `nanoclaw-agent:latest` is never protected by a running container. The kubelet sees it as unused and deletes it — often overnight when no messages are being processed. Other images (docker-compose services) survive because they have long-running containers referencing them.
+**Cause**: If your container runtime has Kubernetes enabled (Rancher Desktop enables it by default), the kubelet runs image garbage collection when disk usage exceeds 85%. DelegateAgent containers are ephemeral (run and exit), so `nanoclaw-agent:latest` is never protected by a running container. The kubelet sees it as unused and deletes it — often overnight when no messages are being processed. Other images (docker-compose services) survive because they have long-running containers referencing them.
 
 **Fix**: Disable Kubernetes if you don't need it:
 ```bash
@@ -28,11 +28,11 @@ rdctl set --kubernetes-enabled=false
 
 **Diagnosis**: Check the k3s log for image GC activity:
 ```bash
-grep -i "nanoclaw" ~/Library/Logs/rancher-desktop/k3s.log
+grep -i "delegate-agent" ~/Library/Logs/rancher-desktop/k3s.log
 # Look for: "Removing image to free bytes" with the nanoclaw-agent image ID
 ```
 
-Check NanoClaw logs for image status:
+Check DelegateAgent logs for image status:
 ```bash
 grep -E "image found|image NOT found|image missing" logs/nanoclaw.log
 ```
@@ -43,14 +43,14 @@ If you need Kubernetes enabled, set `CONTAINER_IMAGE` to an image stored in a re
 
 ```bash
 # 1. Is the service running?
-launchctl list | grep nanoclaw
+launchctl list | grep delegate-agent
 # Expected: PID  0  com.nanoclaw (PID = running, "-" = not running, non-zero exit = crashed)
 
 # 2. Any running containers?
-docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
+docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep delegate-agent
 
 # 3. Any stopped/orphaned containers?
-docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
+docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep delegate-agent
 
 # 4. Recent errors in service log?
 grep -E 'ERROR|WARN' logs/nanoclaw.log | tail -20
@@ -128,7 +128,7 @@ sqlite3 store/messages.db "SELECT chat_jid, MAX(timestamp) as latest FROM messag
 grep -E 'Mount validated|Mount.*REJECTED|mount' logs/nanoclaw.log | tail -10
 
 # Verify the mount allowlist is readable
-cat ~/.config/nanoclaw/mount-allowlist.json
+cat ~/.config/delegate-agent/mount-allowlist.json
 
 # Check group's container_config in DB
 sqlite3 store/messages.db "SELECT name, container_config FROM registered_groups;"
