@@ -11,7 +11,7 @@ Works with Doom Emacs, Spacemacs, and vanilla Emacs 27.1+.
 ## What you can do with this
 
 - **Ask while coding** — open the chat buffer (`C-c n c` / `SPC N c`), ask about a function or error without leaving Emacs
-- **Code review** — select a region and send it with `nanoclaw-org-send`; the response appears as a child heading inline in your org file
+- **Code review** — select a region and send it with `delegate-agent-org-send`; the response appears as a child heading inline in your org file
 - **Meeting notes** — send an org agenda entry; get a summary or action item list back as a child node
 - **Draft writing** — send org prose; receive revisions or continuations in place
 - **Research capture** — ask a question directly in your org notes; the answer lands exactly where you need it
@@ -65,7 +65,7 @@ For any other conflict, read the conflicted file and reconcile both sides manual
 This adds:
 - `src/channels/emacs.ts` — `EmacsBridgeChannel` HTTP server (port 8766)
 - `src/channels/emacs.test.ts` — unit tests
-- `emacs/nanoclaw.el` — Emacs Lisp package (`nanoclaw-chat`, `nanoclaw-org-send`)
+- `emacs/nanoclaw.el` — Emacs Lisp package (`delegate-agent-chat`, `delegate-agent-org-send`)
 - `import './emacs.js'` appended to `src/channels/index.ts`
 
 If the merge reports conflicts, resolve them by reading the conflicted files and understanding the intent of both sides.
@@ -98,7 +98,7 @@ mkdir -p data/env && cp .env data/env/env
 
 ### Configure Emacs
 
-The `nanoclaw.el` package requires only Emacs 27.1+ built-in libraries (`url`, `json`, `org`) — no package manager setup needed.
+The `delegate-agent.el` package requires only Emacs 27.1+ built-in libraries (`url`, `json`, `org`) — no package manager setup needed.
 
 AskUserQuestion: Which Emacs distribution are you using?
 - **Doom Emacs** - config.el with map! keybindings
@@ -113,8 +113,8 @@ AskUserQuestion: Which Emacs distribution are you using?
 
 (map! :leader
       :prefix ("N" . "DelegateAgent")
-      :desc "Chat buffer"  "c" #'nanoclaw-chat
-      :desc "Send org"     "o" #'nanoclaw-org-send)
+      :desc "Chat buffer"  "c" #'delegate-agent-chat
+      :desc "Send org"     "o" #'delegate-agent-org-send)
 ```
 
 Then reload: `M-x doom/reload`
@@ -125,8 +125,8 @@ Then reload: `M-x doom/reload`
 ;; DelegateAgent — personal AI assistant channel
 (load-file "~/src/nanoclaw/emacs/nanoclaw.el")
 
-(spacemacs/set-leader-keys "aNc" #'nanoclaw-chat)
-(spacemacs/set-leader-keys "aNo" #'nanoclaw-org-send)
+(spacemacs/set-leader-keys "aNc" #'delegate-agent-chat)
+(spacemacs/set-leader-keys "aNo" #'delegate-agent-org-send)
 ```
 
 Then reload: `M-x dotspacemacs/sync-configuration-layers` or restart Emacs.
@@ -137,8 +137,8 @@ Then reload: `M-x dotspacemacs/sync-configuration-layers` or restart Emacs.
 ;; DelegateAgent — personal AI assistant channel
 (load-file "~/src/nanoclaw/emacs/nanoclaw.el")
 
-(global-set-key (kbd "C-c n c") #'nanoclaw-chat)
-(global-set-key (kbd "C-c n o") #'nanoclaw-org-send)
+(global-set-key (kbd "C-c n c") #'delegate-agent-chat)
+(global-set-key (kbd "C-c n o") #'delegate-agent-org-send)
 ```
 
 Then reload: `M-x eval-buffer` or restart Emacs.
@@ -146,20 +146,20 @@ Then reload: `M-x eval-buffer` or restart Emacs.
 If `EMACS_AUTH_TOKEN` was set, also add (any distribution):
 
 ```elisp
-(setq nanoclaw-auth-token "<your-token>")
+(setq delegate-agent-auth-token "<your-token>")
 ```
 
 If `EMACS_CHANNEL_PORT` was changed from the default, also add:
 
 ```elisp
-(setq nanoclaw-port <your-port>)
+(setq delegate-agent-port <your-port>)
 ```
 
 ### Restart DelegateAgent
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -192,7 +192,7 @@ Tell the user:
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 Look for `Emacs channel listening` at startup and `Emacs message received` when a message is sent.
@@ -213,14 +213,14 @@ Find and kill the stale process:
 lsof -ti :8766 | xargs kill -9
 ```
 
-Or change the port in `.env` (`EMACS_CHANNEL_PORT=8767`) and update `nanoclaw-port` in Emacs config.
+Or change the port in `.env` (`EMACS_CHANNEL_PORT=8767`) and update `delegate-agent-port` in Emacs config.
 
 ### No response from agent
 
 Check:
 1. DelegateAgent is running: `launchctl list | grep delegate-agent` (macOS) or `systemctl --user status delegate-agent` (Linux)
 2. Emacs group is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid = 'emacs:default'"`
-3. Logs show activity: `tail -50 logs/delegate-agent.log`
+3. Logs show activity: `tail -50 logs/nanoclaw.log`
 
 If the group is not registered, it will be created automatically on the next DelegateAgent restart.
 
@@ -229,12 +229,12 @@ If the group is not registered, it will be created automatically on the next Del
 Verify the token in Emacs matches `.env`:
 
 ```elisp
-;; M-x describe-variable RET nanoclaw-auth-token RET
+;; M-x describe-variable RET delegate-agent-auth-token RET
 ```
 
 Must exactly match `EMACS_AUTH_TOKEN` in `.env`.
 
-### nanoclaw.el not loading
+### delegate-agent.el not loading
 
 Check the path is correct:
 
@@ -250,10 +250,10 @@ If running `npm run dev` while the service is active:
 
 ```bash
 # macOS:
-launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 npm run dev
 # When done testing:
-launchctl load ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 
 # Linux:
 # systemctl --user stop delegate-agent
@@ -286,4 +286,4 @@ To remove the Emacs channel:
 3. Remove the DelegateAgent block from your Emacs config file
 4. Remove Emacs registration from SQLite: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid = 'emacs:default'"`
 5. Remove `EMACS_CHANNEL_PORT` and `EMACS_AUTH_TOKEN` from `.env` if set
-6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.delegate-agent` (macOS) or `npm run build && systemctl --user restart delegate-agent` (Linux)
+6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart delegate-agent` (Linux)

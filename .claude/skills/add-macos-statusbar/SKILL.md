@@ -37,7 +37,7 @@ If not found, tell the user:
 ### Check if already installed
 
 ```bash
-launchctl list | grep com.delegate-agent.statusbar
+launchctl list | grep com.nanoclaw.statusbar
 ```
 
 If it returns a PID (not `-`), tell the user it's already installed and skip to Phase 3 (Verify).
@@ -70,7 +70,7 @@ pwd
 echo $HOME
 ```
 
-Create `~/Library/LaunchAgents/com.delegate-agent.statusbar.plist`, substituting the actual values
+Create `~/Library/LaunchAgents/com.nanoclaw.statusbar.plist`, substituting the actual values
 for `{PROJECT_ROOT}` and `{HOME}`:
 
 ```xml
@@ -79,7 +79,7 @@ for `{PROJECT_ROOT}` and `{HOME}`:
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.delegate-agent.statusbar</string>
+    <string>com.nanoclaw.statusbar</string>
     <key>ProgramArguments</key>
     <array>
         <string>{PROJECT_ROOT}/dist/statusbar</string>
@@ -104,13 +104,13 @@ for `{PROJECT_ROOT}` and `{HOME}`:
 ### Load the service
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.delegate-agent.statusbar.plist
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.statusbar.plist
 ```
 
 ## Phase 3: Verify
 
 ```bash
-launchctl list | grep com.delegate-agent.statusbar
+launchctl list | grep com.nanoclaw.statusbar
 ```
 
 The first column should show a PID (not `-`).
@@ -127,7 +127,7 @@ Tell the user:
 ## Removal
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.delegate-agent.statusbar.plist
-rm ~/Library/LaunchAgents/com.delegate-agent.statusbar.plist
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.statusbar.plist
+rm ~/Library/LaunchAgents/com.nanoclaw.statusbar.plist
 rm dist/statusbar
 ```

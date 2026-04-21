@@ -1,11 +1,11 @@
 ---
 name: claw
-description: Install the claw CLI tool — run DelegateAgent containers from the command line without opening a chat app.
+description: Install the claw CLI tool — run DelegateAgent agent containers from the command line without opening a chat app.
 ---
 
 # claw — DelegateAgent CLI
 
-`claw` is a Python CLI that sends prompts directly to a DelegateAgent container from the terminal. It reads registered groups from the DelegateAgent database, picks up secrets from `.env`, and pipes a JSON payload into a container run — no chat app required.
+`claw` is a Python CLI that sends prompts directly to a DelegateAgent agent container from the terminal. It reads registered groups from the DelegateAgent database, picks up secrets from `.env`, and pipes a JSON payload into a container run — no chat app required.
 
 ## What it does
 
@@ -124,8 +124,8 @@ Containers run with `--rm` so they are automatically removed. If the agent crash
 
 ### Override the DelegateAgent directory
 
-If `claw` can't find your database or `.env`, set the `DELEGATE_AGENT_DIR` environment variable:
+If `claw` can't find your database or `.env`, set the `NANOCLAW_DIR` environment variable:
 
 ```bash
-export DELEGATE_AGENT_DIR=/path/to/your/delegate-agent
+export NANOCLAW_DIR=/path/to/your/nanoclaw
 ```

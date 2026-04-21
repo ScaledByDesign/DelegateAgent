@@ -49,7 +49,7 @@ npx dotenv -e .env -- npx tsx .claude/skills/x-integration/scripts/setup.ts
 
 # 3. Rebuild host and restart service
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 # Verify: launchctl list | grep delegate-agent (macOS) or systemctl --user status delegate-agent (Linux)
 ```
@@ -61,7 +61,7 @@ launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CHROME_PATH` | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` | Chrome executable path |
-| `DELEGATE_AGENT_ROOT` | `process.cwd()` | Project root directory |
+| `NANOCLAW_ROOT` | `process.cwd()` | Project root directory |
 | `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
 
 Set in `.env` file (loaded via `dotenv-cli` at runtime):
@@ -105,7 +105,7 @@ Paths relative to project root:
 |------|---------|-----|
 | `data/x-browser-profile/` | Chrome profile with X session | Ignored |
 | `data/x-auth.json` | Auth state marker | Ignored |
-| `logs/delegate-agent.log` | Service logs (contains X operation logs) | Ignored |
+| `logs/nanoclaw.log` | Service logs (contains X operation logs) | Ignored |
 
 ## Architecture
 
@@ -233,7 +233,7 @@ COPY .claude/skills/x-integration/agent.ts ./src/skills/x-integration/
 
 ## Setup
 
-All paths below are relative to project root (`DELEGATE_AGENT_ROOT`).
+All paths below are relative to project root (`NANOCLAW_ROOT`).
 
 ### 1. Check Chrome Path
 
@@ -272,7 +272,7 @@ cat data/x-auth.json  # Should show {"authenticated": true, ...}
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -345,7 +345,7 @@ echo '{"content":"Test"}' | npx tsx .claude/skills/x-integration/scripts/post.ts
 
 ```bash
 npx dotenv -e .env -- npx tsx .claude/skills/x-integration/scripts/setup.ts
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -363,10 +363,10 @@ rm -f data/x-browser-profile/SingletonCookie
 
 ```bash
 # Host logs (relative to project root)
-grep -i "x_post\|x_like\|x_reply\|handleXIpc" logs/delegate-agent.log | tail -20
+grep -i "x_post\|x_like\|x_reply\|handleXIpc" logs/nanoclaw.log | tail -20
 
 # Script errors
-grep -i "error\|failed" logs/delegate-agent.log | tail -20
+grep -i "error\|failed" logs/nanoclaw.log | tail -20
 ```
 
 ### Script Timeout

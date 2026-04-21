@@ -264,13 +264,13 @@ Restart the service:
 
 ```bash
 # macOS (launchd)
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 
 # Linux (systemd)
 systemctl --user restart delegate-agent
 
 # Linux (nohup fallback)
-bash start-delegate-agent.sh
+bash start-nanoclaw.sh
 ```
 
 ### Test the connection
@@ -286,7 +286,7 @@ Tell the user:
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 ## Troubleshooting
@@ -333,7 +333,7 @@ Check:
 1. Auth credentials exist: `ls store/auth/creds.json`
 3. Chat is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE '%whatsapp%' OR jid LIKE '%@g.us' OR jid LIKE '%@s.whatsapp.net'"`
 4. Service is running: `launchctl list | grep delegate-agent` (macOS) or `systemctl --user status delegate-agent` (Linux)
-5. Logs: `tail -50 logs/delegate-agent.log`
+5. Logs: `tail -50 logs/nanoclaw.log`
 
 ### Group names not showing
 
@@ -351,10 +351,10 @@ If running `npm run dev` while the service is active:
 
 ```bash
 # macOS:
-launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 npm run dev
 # When done testing:
-launchctl load ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 
 # Linux:
 # systemctl --user stop delegate-agent
@@ -369,4 +369,4 @@ To remove WhatsApp integration:
 1. Delete auth credentials: `rm -rf store/auth/`
 2. Remove WhatsApp registrations: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE '%@g.us' OR jid LIKE '%@s.whatsapp.net'"`
 3. Sync env: `mkdir -p data/env && cp .env data/env/env`
-4. Rebuild and restart: `npm run build && launchctl kickstart -k gui/$(id -u)/com.delegate-agent` (macOS) or `npm run build && systemctl --user restart delegate-agent` (Linux)
+4. Rebuild and restart: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart delegate-agent` (Linux)

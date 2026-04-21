@@ -27,7 +27,7 @@ grep "@onecli-sh/sdk" package.json
 
 If `@onecli-sh/sdk` appears, OneCLI is the active credential provider. Proceed with Phase 2 to replace it.
 
-If neither check matches, you may be on an older version. Run `/update-delegate-agent` first, then retry.
+If neither check matches, you may be on an older version. Run `/update-nanoclaw` first, then retry.
 
 ## Phase 2: Apply Code Changes
 
@@ -129,14 +129,14 @@ npm run build
 ```
 
 Then restart the service:
-- macOS: `launchctl kickstart -k gui/$(id -u)/com.delegate-agent`
+- macOS: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
 - Linux: `systemctl --user restart delegate-agent`
-- WSL/manual: stop and re-run `bash start-delegate-agent.sh`
+- WSL/manual: stop and re-run `bash start-nanoclaw.sh`
 
 2. Check logs for successful proxy startup:
 
 ```bash
-tail -20 logs/delegate-agent.log | grep "Credential proxy"
+tail -20 logs/nanoclaw.log | grep "Credential proxy"
 ```
 
 Expected: `Credential proxy started` with port and auth mode.

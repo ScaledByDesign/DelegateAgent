@@ -83,14 +83,14 @@ Update `container/agent-runner/src/index.ts`:
 Find the section where `mcpServers` is configured (around line 237-252):
 ```typescript
 const mcpServers: Record<string, any> = {
-  nanoclaw: ipcMcp
+  delegate-agent: ipcMcp
 };
 ```
 
 Add Parallel AI MCP servers after the delegate-agent server:
 ```typescript
 const mcpServers: Record<string, any> = {
-  nanoclaw: ipcMcp
+  delegate-agent: ipcMcp
 };
 
 // Add Parallel AI MCP servers if API key is available
@@ -233,7 +233,7 @@ Rebuild the main app and restart:
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -257,7 +257,7 @@ Tell the user to test:
 
 Check logs to verify MCP servers loaded:
 ```bash
-tail -20 logs/delegate-agent.log
+tail -20 logs/nanoclaw.log
 ```
 
 Look for: `Parallel AI MCP servers configured`
@@ -276,7 +276,7 @@ Look for: `Parallel AI MCP servers configured`
 
 **Task polling not working:**
 - Verify scheduled task was created: `sqlite3 store/messages.db "SELECT * FROM scheduled_tasks"`
-- Check task runs: `tail -f logs/delegate-agent.log | grep "scheduled task"`
+- Check task runs: `tail -f logs/nanoclaw.log | grep "scheduled task"`
 - Ensure task prompt includes proper Parallel MCP tool names
 
 ## Uninstalling
@@ -287,4 +287,4 @@ To remove Parallel AI integration:
 2. Revert changes to container-runner.ts and agent-runner/src/index.ts
 3. Remove Web Research Tools section from groups/main/CLAUDE.md
 4. Rebuild: `./container/build.sh && npm run build`
-5. Restart: `launchctl kickstart -k gui/$(id -u)/com.delegate-agent` (macOS) or `systemctl --user restart delegate-agent` (Linux)
+5. Restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart delegate-agent` (Linux)

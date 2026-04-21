@@ -75,7 +75,7 @@ All tests must pass and build must be clean before proceeding.
 
 3. Restart the service:
    ```bash
-   launchctl kickstart -k gui/$(id -u)/com.delegate-agent
+   launchctl kickstart -k gui/$(id -u)/com.nanoclaw
    ```
 
 ## Phase 4: Verify

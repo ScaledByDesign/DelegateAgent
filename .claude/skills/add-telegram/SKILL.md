@@ -115,7 +115,7 @@ Tell the user:
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -162,7 +162,7 @@ Tell the user:
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 ## Troubleshooting
@@ -185,17 +185,17 @@ Group Privacy is enabled (default). Fix:
 
 If `/chatid` doesn't work:
 - Verify token: `curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"`
-- Check bot is started: `tail -f logs/delegate-agent.log`
+- Check bot is started: `tail -f logs/nanoclaw.log`
 
 ## After Setup
 
 If running `npm run dev` while the service is active:
 ```bash
 # macOS:
-launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 npm run dev
 # When done testing:
-launchctl load ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 # Linux:
 # systemctl --user stop delegate-agent
 # npm run dev
@@ -211,4 +211,4 @@ To remove Telegram integration:
 3. Remove `TELEGRAM_BOT_TOKEN` from `.env`
 4. Remove Telegram registrations from SQLite: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE 'tg:%'"`
 5. Uninstall: `npm uninstall grammy`
-6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.delegate-agent` (macOS) or `npm run build && systemctl --user restart delegate-agent` (Linux)
+6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart delegate-agent` (Linux)

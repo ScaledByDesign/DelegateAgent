@@ -99,7 +99,7 @@ The container reads environment from `data/env/env`, not `.env` directly.
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 ```
 
 ## Phase 4: Registration
@@ -147,7 +147,7 @@ Tell the user:
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 ## Troubleshooting
@@ -180,7 +180,7 @@ If the bot logs `missing_scope` errors:
 3. **Reinstall the app** to your workspace — scope changes require reinstallation
 4. Copy the new Bot Token (it changes on reinstall) and update `.env`
 5. Sync: `mkdir -p data/env && cp .env data/env/env`
-6. Restart: `launchctl kickstart -k gui/$(id -u)/com.delegate-agent`
+6. Restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
 
 ### Getting channel ID
 

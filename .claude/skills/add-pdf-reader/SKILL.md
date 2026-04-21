@@ -62,7 +62,7 @@ npx vitest run src/channels/whatsapp.test.ts
 ### Restart service
 
 ```bash
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -82,7 +82,7 @@ Ask the agent to read a PDF from a URL. It should use `pdf-reader fetch <url>`.
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log | grep -i pdf
+tail -f logs/nanoclaw.log | grep -i pdf
 ```
 
 Look for:

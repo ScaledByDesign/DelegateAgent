@@ -109,7 +109,7 @@ The container reads environment from `data/env/env`, not `.env` directly.
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 ```
 
 ## Phase 4: Registration
@@ -159,7 +159,7 @@ Tell the user:
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 ## Troubleshooting

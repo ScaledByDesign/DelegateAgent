@@ -1,6 +1,6 @@
 # DelegateAgent Specification
 
-A personal Claude assistant with multi-channel support, persistent memory per conversation, scheduled tasks, and container-isolated agent execution. DelegateAgent is a fork of [NanoClaw](https://github.com/qwibitai/nanoclaw) (originally by qwibitai/nanoclaw).
+A personal Claude assistant with multi-channel support, persistent memory per conversation, scheduled tasks, and container-isolated agent execution.
 
 ---
 
@@ -64,7 +64,7 @@ A personal Claude assistant with multi-channel support, persistent memory per co
 │  │    • Read, Write, Edit, Glob, Grep (file operations)           │    │
 │  │    • WebSearch, WebFetch (internet access)                     │    │
 │  │    • agent-browser (browser automation)                        │    │
-│  │    • mcp__delegate-agent__* (scheduler tools via IPC)          │    │
+│  │    • mcp__nanoclaw__* (scheduler tools via IPC)                │    │
 │  │                                                                │    │
 │  └──────────────────────────────────────────────────────────────┘    │
 │                                                                       │
@@ -239,7 +239,7 @@ See existing skills (`/add-whatsapp`, `/add-telegram`, `/add-slack`, `/add-disco
 ## Folder Structure
 
 ```
-delegate-agent/
+nanoclaw/
 ├── CLAUDE.md                      # Project context for Claude Code
 ├── docs/
 │   ├── SPEC.md                    # This specification document
@@ -319,7 +319,7 @@ delegate-agent/
 │   # Note: Per-container logs are in groups/{folder}/logs/container-*.log
 │
 └── launchd/
-    └── com.delegate-agent.plist   # macOS service configuration
+    └── com.nanoclaw.plist         # macOS service configuration
 ```
 
 ---
@@ -342,7 +342,7 @@ export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 
 // Container configuration
-export const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || 'delegate-agent:latest';
+export const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
 export const CONTAINER_TIMEOUT = parseInt(process.env.CONTAINER_TIMEOUT || '1800000', 10); // 30min default
 export const IPC_POLL_INTERVAL = 1000;
 export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min — keep container alive after last result
@@ -577,7 +577,7 @@ DelegateAgent has a built-in scheduler that runs tasks as full agents in their g
 ```
 User: @Andy remind me every Monday at 9am to review the weekly metrics
 
-Claude: [calls mcp__delegate-agent__schedule_task]
+Claude: [calls mcp__nanoclaw__schedule_task]
         {
           "prompt": "Send a reminder to review weekly metrics. Be encouraging!",
           "schedule_type": "cron",
@@ -592,7 +592,7 @@ Claude: Done! I'll remind you every Monday at 9am.
 ```
 User: @Andy at 5pm today, send me a summary of today's emails
 
-Claude: [calls mcp__delegate-agent__schedule_task]
+Claude: [calls mcp__nanoclaw__schedule_task]
         {
           "prompt": "Search for today's emails, summarize the important ones, and send the summary to the group.",
           "schedule_type": "once",
@@ -652,16 +652,16 @@ When DelegateAgent starts, it:
    - Recovers any unprocessed messages from before shutdown
    - Starts the message polling loop
 
-### Service: com.delegate-agent
+### Service: com.nanoclaw
 
-**launchd/com.delegate-agent.plist:**
+**launchd/com.nanoclaw.plist:**
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "...">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.delegate-agent</string>
+    <string>com.nanoclaw</string>
     <key>ProgramArguments</key>
     <array>
         <string>{{NODE_PATH}}</string>
@@ -683,9 +683,9 @@ When DelegateAgent starts, it:
         <string>Andy</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>{{PROJECT_ROOT}}/logs/delegate-agent.log</string>
+    <string>{{PROJECT_ROOT}}/logs/nanoclaw.log</string>
     <key>StandardErrorPath</key>
-    <string>{{PROJECT_ROOT}}/logs/delegate-agent.error.log</string>
+    <string>{{PROJECT_ROOT}}/logs/nanoclaw.error.log</string>
 </dict>
 </plist>
 ```
@@ -694,19 +694,19 @@ When DelegateAgent starts, it:
 
 ```bash
 # Install service
-cp launchd/com.delegate-agent.plist ~/Library/LaunchAgents/
+cp launchd/com.nanoclaw.plist ~/Library/LaunchAgents/
 
 # Start service
-launchctl load ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 
 # Stop service
-launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 
 # Check status
 launchctl list | grep delegate-agent
 
 # View logs
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 ---
@@ -772,8 +772,8 @@ chmod 700 groups/
 
 ### Log Location
 
-- `logs/delegate-agent.log` - stdout
-- `logs/delegate-agent.error.log` - stderr
+- `logs/nanoclaw.log` - stdout
+- `logs/nanoclaw.error.log` - stderr
 
 ### Debug Mode
 

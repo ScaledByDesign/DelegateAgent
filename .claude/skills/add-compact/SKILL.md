@@ -52,7 +52,7 @@ npm run build
 ### Restart service
 
 ```bash
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -101,8 +101,8 @@ launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
 ### Validation on Fresh Clone
 
 ```bash
-git clone <your-fork> /tmp/delegate-agent-test
-cd /tmp/delegate-agent-test
+git clone <your-fork> /tmp/nanoclaw-test
+cd /tmp/nanoclaw-test
 claude  # then run /add-compact
 npm run build
 npm test

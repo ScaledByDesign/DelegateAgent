@@ -87,7 +87,7 @@ All 73 tests should pass and the build should be clean before continuing.
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent   # macOS
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw   # macOS
 # Linux: systemctl --user restart delegate-agent
 ```
 
@@ -104,7 +104,7 @@ asterisks.
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 ## Signal Skill Integration

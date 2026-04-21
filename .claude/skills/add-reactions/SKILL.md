@@ -81,7 +81,7 @@ systemctl --user restart delegate-agent
 
 macOS:
 ```bash
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 ```
 
 ### Test receiving reactions

@@ -328,12 +328,12 @@ function setupNohupFallback(
 ): void {
   logger.warn('No systemd detected — generating nohup wrapper script');
 
-  const wrapperPath = path.join(projectRoot, 'start-delegate-agent.sh');
+  const wrapperPath = path.join(projectRoot, 'start-nanoclaw.sh');
   const pidFile = path.join(projectRoot, 'delegate-agent.pid');
 
   const lines = [
     '#!/bin/bash',
-    '# start-delegate-agent.sh — Start DelegateAgent without systemd',
+    '# start-nanoclaw.sh — Start DelegateAgent without systemd',
     `# To stop: kill \\$(cat ${pidFile})`,
     '',
     'set -euo pipefail',

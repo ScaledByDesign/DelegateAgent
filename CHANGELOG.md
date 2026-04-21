@@ -4,13 +4,53 @@ All notable changes to DelegateAgent will be documented in this file.
 
 For detailed release notes, see the [full changelog on the documentation site](https://docs.nanoclaw.dev/changelog).
 
-## [Unreleased]
+## [Unreleased] — Upstream pulldown from qwibitai/nanoclaw@a81e165 (659 commits, Feb–Apr 2026)
 
-- **Rebrand**: project renamed from NanoClaw to DelegateAgent (forked from [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw)). All user-facing surfaces, docs, service units, filesystem paths (`~/.config/delegate-agent/`), container image tag (`delegate-agent:latest`), env var (`DELEGATE_AGENT_TOKEN`), and skill directory (`.claude/skills/update-delegate-agent/`) now use the new name. Back-compat fallback reads `NANOCLAW_TOKEN` and `~/.config/nanoclaw/` on upgrade.
+### Added (from upstream)
+- Agent SDK 0.2.92 upgrade: 1M token context + 200k auto-compact threshold
+- Stale session auto-prune (`src/session-cleanup.ts`) + Claude Code session recovery
+- Only-expose-auth-vars-to-containers security hardening
+- Pino → built-in logger (reduces dependency surface)
+- Script execution in ContainerInput
+- `/remote-control` command
+- Reply / quoted message context support (DB schema + types)
+- ESLint error-handling rules
+- New skills: channel-formatting, add-emacs, add-karpathy-llm-wiki
+- Workspace store mount + global memory mount for main group
+- `ONECLI_API_KEY` forwarded to OneCLI SDK for authenticated container config
+
+### Changed
+- Version bumped to 1.2.53 (collapses fork history 1.2.42–1.2.52 into this merge)
+- `package-lock.json` to be regenerated from merged `package.json` (P6)
+
+### Preserved from DelegateAgent rebrand (PR #1)
+- Package name `delegate-agent`
+- `/opt/delegate-agent` filesystem + `~/.config/delegate-agent` config
+- `DELEGATE_AGENT_TOKEN` env var (with `NANOCLAW_TOKEN` legacy fallback via `getEnvWithFallback`)
+- Sentinel markers `---DELEGATE_AGENT_OUTPUT_START/END---`
+- `src/channels/delegate.ts` with `delegate:` JID scheme
+- `src/credential-client.ts` Tier-1 per-workspace Delegate credential resolution (Tier-2 OneCLI fallback, Tier-3 static Bifrost)
+- Sentry tags (component: delegate-agent-channel, category: delegate-agent, cron: delegate-agent-poll)
+- Service units (`deploy/delegate-agent.service`, `launchd/com.delegate-agent.plist`)
+- Deploy migration block (`/opt/nanoclaw` → `/opt/delegate-agent`)
+- `workspace_id` column on `registered_groups` (per-workspace credential routing)
+- `workspaceId` field on `RegisteredGroup` type
+- `startGroupAPI()` call for group registration HTTP API
+
+### Removed
+- `.claude/skills/migrate-nanoclaw/` and `.claude/skills/migrate-from-openclaw/` — inverse-direction tooling, not relevant to our fork
+
+### Tooling
+- `scripts/apply-rename-map.sh` fixed pre-merge: URL-safety via perl negative-lookbehind, `--dry-run` flag, Sentry-tag skip (commit ba62339)
+- Per-merge policy: `docs/MERGE-POLICY-20260418.md`
+
+## [1.2.36] - 2026-03-26
+
+- [BREAKING] Replaced pino logger with built-in logger. WhatsApp users must re-merge the WhatsApp fork to pick up the Baileys logger compatibility fix: `git fetch whatsapp main && git merge whatsapp/main`. If the `whatsapp` remote is not configured: `git remote add whatsapp https://github.com/qwibitai/nanoclaw-whatsapp.git`.
 
 ## [1.2.35] - 2026-03-26
 
-- [BREAKING] OneCLI Agent Vault replaces the built-in credential proxy. Existing `.env` credentials must be migrated to the vault. Run `/init-onecli` to install OneCLI and migrate credentials.
+- [BREAKING] OneCLI Agent Vault replaces the built-in credential proxy. Check your runtime: `grep CONTAINER_RUNTIME_BIN src/container-runtime.ts` — if it shows `'container'` you are on Apple Container, if `'docker'` you are on Docker. Docker users: run `/init-onecli` to install OneCLI and migrate `.env` credentials to the vault. Apple Container users: re-merge the skill branch (`git fetch upstream skill/apple-container && git merge upstream/skill/apple-container`) then run `/convert-to-apple-container` and follow all instructions (configures credential proxy networking) — do NOT run `/init-onecli`, it requires Docker.
 
 ## [1.2.21] - 2026-03-22
 

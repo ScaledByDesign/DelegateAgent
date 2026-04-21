@@ -76,7 +76,7 @@ describe('plist generation', () => {
   it('contains the correct label', () => {
     const plist = generatePlist(
       '/usr/local/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
     );
     expect(plist).toContain('<string>com.delegate-agent</string>');
@@ -85,7 +85,7 @@ describe('plist generation', () => {
   it('uses the correct node path', () => {
     const plist = generatePlist(
       '/opt/node/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
     );
     expect(plist).toContain('<string>/opt/node/bin/node</string>');
@@ -94,16 +94,16 @@ describe('plist generation', () => {
   it('points to dist/index.js', () => {
     const plist = generatePlist(
       '/usr/local/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
     );
-    expect(plist).toContain('/home/user/delegate-agent/dist/index.js');
+    expect(plist).toContain('/home/user/nanoclaw/dist/index.js');
   });
 
   it('sets log paths', () => {
     const plist = generatePlist(
       '/usr/local/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
     );
     expect(plist).toContain('delegate-agent.log');
@@ -115,7 +115,7 @@ describe('systemd unit generation', () => {
   it('user unit uses default.target', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
       false,
     );
@@ -125,7 +125,7 @@ describe('systemd unit generation', () => {
   it('system unit uses multi-user.target', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
       true,
     );
@@ -135,7 +135,7 @@ describe('systemd unit generation', () => {
   it('contains restart policy', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
       false,
     );
@@ -146,7 +146,7 @@ describe('systemd unit generation', () => {
   it('uses KillMode=process to preserve detached children', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/home/user/delegate-agent',
+      '/home/user/nanoclaw',
       '/home/user',
       false,
     );
@@ -156,19 +156,19 @@ describe('systemd unit generation', () => {
   it('sets correct ExecStart', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/srv/delegate-agent',
+      '/srv/nanoclaw',
       '/home/user',
       false,
     );
     expect(unit).toContain(
-      'ExecStart=/usr/bin/node /srv/delegate-agent/dist/index.js',
+      'ExecStart=/usr/bin/node /srv/nanoclaw/dist/index.js',
     );
   });
 });
 
 describe('WSL nohup fallback', () => {
   it('generates a valid wrapper script', () => {
-    const projectRoot = '/home/user/delegate-agent';
+    const projectRoot = '/home/user/nanoclaw';
     const nodePath = '/usr/bin/node';
     const pidFile = path.join(projectRoot, 'delegate-agent.pid');
 

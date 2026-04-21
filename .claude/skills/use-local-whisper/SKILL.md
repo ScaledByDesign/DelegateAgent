@@ -98,20 +98,20 @@ The DelegateAgent launchd service runs with a restricted PATH. `whisper-cli` and
 
 Check the current PATH:
 ```bash
-grep -A1 'PATH' ~/Library/LaunchAgents/com.delegate-agent.plist
+grep -A1 'PATH' ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
 
 If `/opt/homebrew/bin` is missing, add it to the `<string>` value inside the `PATH` key in the plist. Then reload:
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.delegate-agent.plist
-launchctl load ~/Library/LaunchAgents/com.delegate-agent.plist
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
 
 ### Build and restart
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 ```
 
 ### Test
@@ -121,7 +121,7 @@ Send a voice note in any registered group. The agent should receive it as `[Voic
 ### Check logs
 
 ```bash
-tail -f logs/delegate-agent.log | grep -i -E "voice|transcri|whisper"
+tail -f logs/nanoclaw.log | grep -i -E "voice|transcri|whisper"
 ```
 
 Look for:
