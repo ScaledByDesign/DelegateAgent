@@ -39,11 +39,11 @@ Read the allowed tools from your SDK configuration. You always have access to:
 - **Web:** WebSearch, WebFetch
 - **Orchestration:** Task, TaskOutput, TaskStop, TeamCreate, TeamDelete, SendMessage
 - **Other:** TodoWrite, ToolSearch, Skill, NotebookEdit
-- **MCP:** mcp__nanoclaw__* (messaging, tasks, group management)
+- **MCP:** mcp__delegateagent__* (messaging, tasks, group management)
 
 ### 3. MCP server tools
 
-The DelegateAgent MCP server exposes these tools (via `mcp__nanoclaw__*` prefix):
+The DelegateAgent MCP server exposes these tools (via `mcp__delegateagent__*` prefix):
 - `send_message` — send a message to the user/group
 - `schedule_task` — schedule a recurring or one-time task
 - `list_tasks` — list scheduled tasks

@@ -64,7 +64,7 @@ A personal Claude assistant with multi-channel support, persistent memory per co
 │  │    • Read, Write, Edit, Glob, Grep (file operations)           │    │
 │  │    • WebSearch, WebFetch (internet access)                     │    │
 │  │    • agent-browser (browser automation)                        │    │
-│  │    • mcp__nanoclaw__* (scheduler tools via IPC)                │    │
+│  │    • mcp__delegateagent__* (scheduler tools via IPC)                │    │
 │  │                                                                │    │
 │  └──────────────────────────────────────────────────────────────┘    │
 │                                                                       │
@@ -577,7 +577,7 @@ DelegateAgent has a built-in scheduler that runs tasks as full agents in their g
 ```
 User: @Andy remind me every Monday at 9am to review the weekly metrics
 
-Claude: [calls mcp__nanoclaw__schedule_task]
+Claude: [calls mcp__delegateagent__schedule_task]
         {
           "prompt": "Send a reminder to review weekly metrics. Be encouraging!",
           "schedule_type": "cron",
@@ -592,7 +592,7 @@ Claude: Done! I'll remind you every Monday at 9am.
 ```
 User: @Andy at 5pm today, send me a summary of today's emails
 
-Claude: [calls mcp__nanoclaw__schedule_task]
+Claude: [calls mcp__delegateagent__schedule_task]
         {
           "prompt": "Search for today's emails, summarize the important ones, and send the summary to the group.",
           "schedule_type": "once",
