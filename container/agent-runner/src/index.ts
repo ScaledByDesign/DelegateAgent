@@ -468,20 +468,24 @@ async function runQuery(
         'ToolSearch',
         'Skill',
         'NotebookEdit',
-        'mcp__nanoclaw__*',
+        'mcp__delegateagent__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
       mcpServers: {
-        delegate-agent: {
+        // MCP server wire name is `delegateagent` (single word, no hyphen
+        // so it's a valid JS identifier + a clean `mcp__delegateagent__*`
+        // tool namespace). Tool allowlist above + MCP binary env-key
+        // readers below stay in sync.
+        delegateagent: {
           command: 'node',
           args: [mcpServerPath],
           env: {
-            NANOCLAW_CHAT_JID: containerInput.chatJid,
-            NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
-            NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
+            DELEGATEAGENT_CHAT_JID: containerInput.chatJid,
+            DELEGATEAGENT_GROUP_FOLDER: containerInput.groupFolder,
+            DELEGATEAGENT_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
       },
