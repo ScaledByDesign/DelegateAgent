@@ -1,17 +1,17 @@
-# Running DelegateAgent in Docker Sandboxes (Manual Setup)
+# Running NanoClaw in Docker Sandboxes (Manual Setup)
 
-This guide walks through setting up DelegateAgent inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) from scratch — no install script, no pre-built fork. You'll clone the upstream repo, apply the necessary patches, and have agents running in full hypervisor-level isolation.
+This guide walks through setting up NanoClaw inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) from scratch — no install script, no pre-built fork. You'll clone the upstream repo, apply the necessary patches, and have agents running in full hypervisor-level isolation.
 
 ## Architecture
 
 ```
 Host (macOS / Windows WSL)
 └── Docker Sandbox (micro VM with isolated kernel)
-    ├── DelegateAgent process (Node.js)
+    ├── NanoClaw process (Node.js)
     │   ├── Channel adapters (WhatsApp, Telegram, etc.)
     │   └── Container spawner → nested Docker daemon
     └── Docker-in-Docker
-        └── delegate-agent containers
+        └── nanoclaw-agent containers
             └── Claude Agent SDK
 ```
 
@@ -39,16 +39,16 @@ On your host machine:
 
 ```bash
 # Create a workspace directory
-mkdir -p ~/delegate-agent-workspace
+mkdir -p ~/nanoclaw-workspace
 
 # Create a shell sandbox with the workspace mounted
-docker sandbox create shell ~/delegate-agent-workspace
+docker sandbox create shell ~/nanoclaw-workspace
 ```
 
 If you're using WhatsApp, configure proxy bypass so WhatsApp's Noise protocol isn't MITM-inspected:
 
 ```bash
-docker sandbox network proxy shell-delegate-agent-workspace \
+docker sandbox network proxy shell-nanoclaw-workspace \
   --bypass-host web.whatsapp.com \
   --bypass-host "*.whatsapp.com" \
   --bypass-host "*.whatsapp.net"
@@ -58,7 +58,7 @@ Telegram does not need proxy bypass.
 
 Enter the sandbox:
 ```bash
-docker sandbox run shell-delegate-agent-workspace
+docker sandbox run shell-nanoclaw-workspace
 ```
 
 ## Step 2: Install Prerequisites
@@ -70,21 +70,21 @@ sudo apt-get update && sudo apt-get install -y build-essential python3
 npm config set strict-ssl false
 ```
 
-## Step 3: Clone and Install DelegateAgent
+## Step 3: Clone and Install NanoClaw
 
-DelegateAgent must live inside the workspace directory — Docker-in-Docker can only bind-mount from the shared workspace path.
+NanoClaw must live inside the workspace directory — Docker-in-Docker can only bind-mount from the shared workspace path.
 
 ```bash
 # Clone to home first (virtiofs can corrupt git pack files during clone)
 cd ~
-git clone https://github.com/ScaledByDesign/delegate-agent.git delegate-agent
+git clone https://github.com/qwibitai/nanoclaw.git
 
 # Replace with YOUR workspace path (the host path you passed to `docker sandbox create`)
-WORKSPACE=/Users/you/delegate-agent-workspace
+WORKSPACE=/Users/you/nanoclaw-workspace
 
 # Move into workspace so DinD mounts work
-mv delegate-agent "$WORKSPACE/delegate-agent"
-cd "$WORKSPACE/delegate-agent"
+mv nanoclaw "$WORKSPACE/nanoclaw"
+cd "$WORKSPACE/nanoclaw"
 
 # Install dependencies
 npm install
@@ -93,7 +93,7 @@ npm install https-proxy-agent
 
 ## Step 4: Apply Proxy and Sandbox Patches
 
-DelegateAgent needs several patches to work inside a Docker Sandbox. These handle proxy routing, CA certificates, and Docker-in-Docker mount restrictions.
+NanoClaw needs several patches to work inside a Docker Sandbox. These handle proxy routing, CA certificates, and Docker-in-Docker mount restrictions.
 
 ### 4a. Dockerfile — proxy args for container image build
 
@@ -160,7 +160,7 @@ if (caCertSrc) {
 
 ### 4d. Container runtime — prevent self-termination
 
-In `src/container-runtime.ts`, the `cleanupOrphans()` function matches containers by the `delegate-agent-` prefix. Inside a sandbox, the sandbox container itself may match (e.g., `delegate-agent-docker-sandbox`). Filter out the current hostname:
+In `src/container-runtime.ts`, the `cleanupOrphans()` function matches containers by the `nanoclaw-` prefix. Inside a sandbox, the sandbox container itself may match (e.g., `nanoclaw-docker-sandbox`). Filter out the current hostname:
 
 ```typescript
 // In cleanupOrphans(), filter out os.hostname() from the list of containers to stop
@@ -203,7 +203,7 @@ npm run build
 # Configure .env
 cat > .env << EOF
 TELEGRAM_BOT_TOKEN=<your-token-from-botfather>
-ASSISTANT_NAME=Andy
+ASSISTANT_NAME=nanoclaw
 ANTHROPIC_API_KEY=proxy-managed
 EOF
 mkdir -p data/env && cp .env data/env/env
@@ -212,10 +212,10 @@ mkdir -p data/env && cp .env data/env/env
 npx tsx setup/index.ts --step register \
   --jid "tg:<your-chat-id>" \
   --name "My Chat" \
-  --trigger "@Andy" \
+  --trigger "@nanoclaw" \
   --folder "telegram_main" \
   --channel telegram \
-  --assistant-name "Andy" \
+  --assistant-name "nanoclaw" \
   --is-main \
   --no-trigger-required
 ```
@@ -242,7 +242,7 @@ npm run build
 
 # Configure .env
 cat > .env << EOF
-ASSISTANT_NAME=Andy
+ASSISTANT_NAME=nanoclaw
 ANTHROPIC_API_KEY=proxy-managed
 EOF
 mkdir -p data/env && cp .env data/env/env
@@ -259,10 +259,10 @@ npx tsx src/whatsapp-auth.ts --pairing-code --phone <phone-number-no-plus>
 npx tsx setup/index.ts --step register \
   --jid "<phone>@s.whatsapp.net" \
   --name "My Chat" \
-  --trigger "@Andy" \
+  --trigger "@nanoclaw" \
   --folder "whatsapp_main" \
   --channel whatsapp \
-  --assistant-name "Andy" \
+  --assistant-name "nanoclaw" \
   --is-main \
   --no-trigger-required
 ```
@@ -316,12 +316,12 @@ npm config set strict-ssl false
 docker build \
   --build-arg http_proxy=$http_proxy \
   --build-arg https_proxy=$https_proxy \
-  -t delegate-agent:latest container/
+  -t nanoclaw-agent:latest container/
 ```
 
 ### Agent containers fail with "path not shared"
 All bind-mounted paths must be under the workspace directory. Check:
-- Is DelegateAgent cloned into the workspace? (not `/home/agent/`)
+- Is NanoClaw cloned into the workspace? (not `/home/agent/`)
 - Is the CA cert copied to the project root?
 - Has the empty `.env` shadow file been created?
 
@@ -334,7 +334,7 @@ The version fetch is returning a stale version. Make sure the proxy-aware `fetch
 ### WhatsApp "Connection failed" immediately
 Proxy bypass not configured. From the **host**, run:
 ```bash
-docker sandbox network proxy shell-delegate-agent-workspace \
+docker sandbox network proxy <sandbox-name> \
   --bypass-host web.whatsapp.com \
   --bypass-host "*.whatsapp.com" \
   --bypass-host "*.whatsapp.net"
@@ -347,13 +347,13 @@ docker sandbox network proxy shell-delegate-agent-workspace \
 ### Git clone fails with "inflate: data stream error"
 Clone to a non-workspace path first, then move:
 ```bash
-cd ~ && git clone https://github.com/ScaledByDesign/delegate-agent.git delegate-agent && mv delegate-agent /path/to/workspace/delegate-agent
+cd ~ && git clone https://github.com/qwibitai/nanoclaw.git && mv nanoclaw /path/to/workspace/nanoclaw
 ```
 
 ### WhatsApp QR code doesn't display
 Run the auth command interactively inside the sandbox (not piped through `docker sandbox exec`):
 ```bash
-docker sandbox run shell-delegate-agent-workspace
+docker sandbox run shell-nanoclaw-workspace
 # Then inside:
 npx tsx src/whatsapp-auth.ts
 ```

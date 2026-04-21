@@ -77,7 +77,7 @@ function setupLaunchd(
     homeDir,
     'Library',
     'LaunchAgents',
-    'com.delegate-agent.plist',
+    'com.nanoclaw.plist',
   );
   fs.mkdirSync(path.dirname(plistPath), { recursive: true });
 
@@ -86,7 +86,7 @@ function setupLaunchd(
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.delegate-agent</string>
+    <string>com.nanoclaw</string>
     <key>ProgramArguments</key>
     <array>
         <string>${nodePath}</string>
@@ -106,9 +106,9 @@ function setupLaunchd(
         <string>${homeDir}</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>${projectRoot}/logs/delegate-agent.log</string>
+    <string>${projectRoot}/logs/nanoclaw.log</string>
     <key>StandardErrorPath</key>
-    <string>${projectRoot}/logs/delegate-agent.error.log</string>
+    <string>${projectRoot}/logs/nanoclaw.error.log</string>
 </dict>
 </plist>`;
 
@@ -128,7 +128,7 @@ function setupLaunchd(
   let serviceLoaded = false;
   try {
     const output = execSync('launchctl list', { encoding: 'utf-8' });
-    serviceLoaded = output.includes('com.delegate-agent');
+    serviceLoaded = output.includes('com.nanoclaw');
   } catch {
     // launchctl list failed
   }
@@ -160,7 +160,7 @@ function setupLinux(
 }
 
 /**
- * Kill any orphaned delegate-agent node processes left from previous runs or debugging.
+ * Kill any orphaned nanoclaw node processes left from previous runs or debugging.
  * Prevents connection conflicts when two instances connect to the same channel simultaneously.
  */
 function killOrphanedProcesses(projectRoot: string): void {
@@ -168,7 +168,7 @@ function killOrphanedProcesses(projectRoot: string): void {
     execSync(`pkill -f '${projectRoot}/dist/index\\.js' || true`, {
       stdio: 'ignore',
     });
-    logger.info('Stopped any orphaned delegate-agent processes');
+    logger.info('Stopped any orphaned nanoclaw processes');
   } catch {
     // pkill not available or no orphans
   }
@@ -213,7 +213,7 @@ function setupSystemd(
   let systemctlPrefix: string;
 
   if (runningAsRoot) {
-    unitPath = '/etc/systemd/system/delegate-agent.service';
+    unitPath = '/etc/systemd/system/nanoclaw.service';
     systemctlPrefix = 'systemctl';
     logger.info('Running as root — installing system-level systemd unit');
   } else {
@@ -229,12 +229,12 @@ function setupSystemd(
     }
     const unitDir = path.join(homeDir, '.config', 'systemd', 'user');
     fs.mkdirSync(unitDir, { recursive: true });
-    unitPath = path.join(unitDir, 'delegate-agent.service');
+    unitPath = path.join(unitDir, 'nanoclaw.service');
     systemctlPrefix = 'systemctl --user';
   }
 
   const unit = `[Unit]
-Description=DelegateAgent Personal Assistant
+Description=NanoClaw Personal Assistant
 After=network.target
 
 [Service]
@@ -246,8 +246,8 @@ RestartSec=5
 KillMode=process
 Environment=HOME=${homeDir}
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:${homeDir}/.local/bin
-StandardOutput=append:${projectRoot}/logs/delegate-agent.log
-StandardError=append:${projectRoot}/logs/delegate-agent.error.log
+StandardOutput=append:${projectRoot}/logs/nanoclaw.log
+StandardError=append:${projectRoot}/logs/nanoclaw.error.log
 
 [Install]
 WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
@@ -263,7 +263,7 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
     );
   }
 
-  // Kill orphaned delegate-agent processes to avoid channel connection conflicts
+  // Kill orphaned nanoclaw processes to avoid channel connection conflicts
   killOrphanedProcesses(projectRoot);
 
   // Enable lingering so the user service survives SSH logout.
@@ -288,13 +288,13 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
   }
 
   try {
-    execSync(`${systemctlPrefix} enable delegate-agent`, { stdio: 'ignore' });
+    execSync(`${systemctlPrefix} enable nanoclaw`, { stdio: 'ignore' });
   } catch (err) {
     logger.error({ err }, 'systemctl enable failed');
   }
 
   try {
-    execSync(`${systemctlPrefix} start delegate-agent`, { stdio: 'ignore' });
+    execSync(`${systemctlPrefix} start nanoclaw`, { stdio: 'ignore' });
   } catch (err) {
     logger.error({ err }, 'systemctl start failed');
   }
@@ -302,7 +302,7 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
   // Verify
   let serviceLoaded = false;
   try {
-    execSync(`${systemctlPrefix} is-active delegate-agent`, { stdio: 'ignore' });
+    execSync(`${systemctlPrefix} is-active nanoclaw`, { stdio: 'ignore' });
     serviceLoaded = true;
   } catch {
     // Not active
@@ -328,12 +328,12 @@ function setupNohupFallback(
 ): void {
   logger.warn('No systemd detected — generating nohup wrapper script');
 
-  const wrapperPath = path.join(projectRoot, 'start-delegate-agent.sh');
-  const pidFile = path.join(projectRoot, 'delegate-agent.pid');
+  const wrapperPath = path.join(projectRoot, 'start-nanoclaw.sh');
+  const pidFile = path.join(projectRoot, 'nanoclaw.pid');
 
   const lines = [
     '#!/bin/bash',
-    '# start-delegate-agent.sh — Start DelegateAgent without systemd',
+    '# start-nanoclaw.sh — Start NanoClaw without systemd',
     `# To stop: kill \\$(cat ${pidFile})`,
     '',
     'set -euo pipefail',
@@ -344,20 +344,20 @@ function setupNohupFallback(
     `if [ -f ${JSON.stringify(pidFile)} ]; then`,
     `  OLD_PID=$(cat ${JSON.stringify(pidFile)} 2>/dev/null || echo "")`,
     '  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then',
-    '    echo "Stopping existing DelegateAgent (PID $OLD_PID)..."',
+    '    echo "Stopping existing NanoClaw (PID $OLD_PID)..."',
     '    kill "$OLD_PID" 2>/dev/null || true',
     '    sleep 2',
     '  fi',
     'fi',
     '',
-    'echo "Starting DelegateAgent..."',
+    'echo "Starting NanoClaw..."',
     `nohup ${JSON.stringify(nodePath)} ${JSON.stringify(projectRoot + '/dist/index.js')} \\`,
-    `  >> ${JSON.stringify(projectRoot + '/logs/delegate-agent.log')} \\`,
-    `  2>> ${JSON.stringify(projectRoot + '/logs/delegate-agent.error.log')} &`,
+    `  >> ${JSON.stringify(projectRoot + '/logs/nanoclaw.log')} \\`,
+    `  2>> ${JSON.stringify(projectRoot + '/logs/nanoclaw.error.log')} &`,
     '',
     `echo $! > ${JSON.stringify(pidFile)}`,
-    'echo "DelegateAgent started (PID $!)"',
-    `echo "Logs: tail -f ${projectRoot}/logs/delegate-agent.log"`,
+    'echo "NanoClaw started (PID $!)"',
+    `echo "Logs: tail -f ${projectRoot}/logs/nanoclaw.log"`,
   ];
   const wrapper = lines.join('\n') + '\n';
 

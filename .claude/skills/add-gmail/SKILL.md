@@ -1,11 +1,11 @@
 ---
 name: add-gmail
-description: Add Gmail integration to DelegateAgent. Can be configured as a tool (agent reads/sends emails when triggered from WhatsApp) or as a full channel (emails can trigger the agent, schedule tasks, and receive replies). Guides through GCP OAuth setup and implements the integration.
+description: Add Gmail integration to NanoClaw. Can be configured as a tool (agent reads/sends emails when triggered from WhatsApp) or as a full channel (emails can trigger the agent, schedule tasks, and receive replies). Guides through GCP OAuth setup and implements the integration.
 ---
 
 # Add Gmail Integration
 
-This skill adds Gmail support to DelegateAgent — either as a tool (read, send, search, draft) or as a full channel that polls the inbox.
+This skill adds Gmail support to NanoClaw — either as a tool (read, send, search, draft) or as a full channel that polls the inbox.
 
 ## Phase 1: Pre-flight
 
@@ -85,11 +85,27 @@ All tests must pass (including the new Gmail tests) and build must be clean befo
 ls -la ~/.gmail-mcp/ 2>/dev/null || echo "No Gmail config found"
 ```
 
-If `credentials.json` already exists, skip to "Build and restart" below.
+If `credentials.json` already exists with real tokens (not `onecli-managed` values), skip to "Build and restart" below.
 
 ### GCP Project Setup
 
-Tell the user:
+Check if OneCLI is configured:
+
+```bash
+grep -q 'ONECLI_URL=.' .env 2>/dev/null && echo "onecli" || echo "manual"
+```
+
+**If OneCLI:** Tell the user to open `${ONECLI_URL}/connections?connect=gmail` to set up their Gmail connection. The dashboard walks them through creating a Google Cloud OAuth app and authorizing it. Ask them to let you know when done.
+
+Once the user confirms, run:
+
+```bash
+onecli apps get --provider gmail
+```
+
+Check that `config.hasCredentials` is `true` or `connection` is not null. The response `hint` field has instructions and a docs URL for what stub credential files to create under `~/.gmail-mcp/`. Follow the hint — never overwrite existing files that don't contain `onecli-managed` values.
+
+**If manual:** Tell the user:
 
 > I need you to set up Google Cloud OAuth credentials:
 >
@@ -97,7 +113,7 @@ Tell the user:
 > 2. Go to **APIs & Services > Library**, search "Gmail API", click **Enable**
 > 3. Go to **APIs & Services > Credentials**, click **+ CREATE CREDENTIALS > OAuth client ID**
 >    - If prompted for consent screen: choose "External", fill in app name and email, save
->    - Application type: **Desktop app**, name: anything (e.g., "DelegateAgent Gmail")
+>    - Application type: **Desktop app**, name: anything (e.g., "NanoClaw Gmail")
 > 4. Click **DOWNLOAD JSON** and save as `gcp-oauth.keys.json`
 >
 > Where did you save the file? (Give me the full path, or paste the file contents here)
@@ -143,8 +159,8 @@ Then compile and restart:
 
 ```bash
 npm run build
-launchctl kickstart -k gui/$(id -u)/com.delegate-agent  # macOS
-# Linux: systemctl --user restart delegate-agent
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+# Linux: systemctl --user restart nanoclaw
 ```
 
 ## Phase 4: Verify
@@ -159,14 +175,14 @@ Tell the user:
 
 ### Test channel mode (Channel mode only)
 
-Tell the user to send themselves a test email. The agent should pick it up within a minute. Monitor: `tail -f logs/delegate-agent.log | grep -iE "(gmail|email)"`.
+Tell the user to send themselves a test email. The agent should pick it up within a minute. Monitor: `tail -f logs/nanoclaw.log | grep -iE "(gmail|email)"`.
 
 Once verified, offer filter customization via `AskUserQuestion` — by default, only emails in the Primary inbox trigger the agent (Promotions, Social, Updates, and Forums are excluded). The user can keep this default or narrow further by sender, label, or keywords. No code changes needed for filters.
 
 ### Check logs if needed
 
 ```bash
-tail -f logs/delegate-agent.log
+tail -f logs/nanoclaw.log
 ```
 
 ## Troubleshooting
@@ -206,7 +222,7 @@ npx -y @gongrzhe/server-gmail-autoauth-mcp
 2. Remove `gmail` MCP server and `mcp__gmail__*` from `container/agent-runner/src/index.ts`
 3. Rebuild and restart
 4. Clear stale agent-runner copies: `rm -r data/sessions/*/agent-runner-src 2>/dev/null || true`
-5. Rebuild: `cd container && ./build.sh && cd .. && npm run build && launchctl kickstart -k gui/$(id -u)/com.delegate-agent` (macOS) or `systemctl --user restart delegate-agent` (Linux)
+5. Rebuild: `cd container && ./build.sh && cd .. && npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux)
 
 ### Channel mode
 
@@ -217,4 +233,4 @@ npx -y @gongrzhe/server-gmail-autoauth-mcp
 5. Uninstall: `npm uninstall googleapis`
 6. Rebuild and restart
 7. Clear stale agent-runner copies: `rm -r data/sessions/*/agent-runner-src 2>/dev/null || true`
-8. Rebuild: `cd container && ./build.sh && cd .. && npm run build && launchctl kickstart -k gui/$(id -u)/com.delegate-agent` (macOS) or `systemctl --user restart delegate-agent` (Linux)
+8. Rebuild: `cd container && ./build.sh && cd .. && npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux)

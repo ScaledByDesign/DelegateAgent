@@ -1,11 +1,11 @@
 ---
 name: init-onecli
-description: Install and initialize OneCLI Agent Vault. Migrates existing .env credentials to the vault. Use after /update-delegate-agent brings in OneCLI as a breaking change, or for first-time OneCLI setup.
+description: Install and initialize OneCLI Agent Vault. Migrates existing .env credentials to the vault. Use after /update-nanoclaw brings in OneCLI as a breaking change, or for first-time OneCLI setup.
 ---
 
 # Initialize OneCLI Agent Vault
 
-This skill installs OneCLI, configures the Agent Vault gateway, and migrates any existing `.env` credentials into it. Run this after `/update-delegate-agent` introduces OneCLI as a breaking change, or any time OneCLI needs to be set up from scratch.
+This skill installs OneCLI, configures the Agent Vault gateway, and migrates any existing `.env` credentials into it. Run this after `/update-nanoclaw` introduces OneCLI as a breaking change, or any time OneCLI needs to be set up from scratch.
 
 **Principle:** When something is broken or missing, fix it. Don't tell the user to go fix it themselves unless it genuinely requires their manual action (e.g. pasting a token).
 
@@ -17,13 +17,7 @@ This skill installs OneCLI, configures the Agent Vault gateway, and migrates any
 onecli version 2>/dev/null
 ```
 
-If the command succeeds, OneCLI is installed. Check if the gateway is reachable:
-
-```bash
-curl -sf http://127.0.0.1:10254/health
-```
-
-If both succeed, check for an Anthropic secret:
+If the command succeeds, OneCLI is installed, check for an Anthropic secret:
 
 ```bash
 onecli secrets list
@@ -56,7 +50,7 @@ If they cancel, stop.
 grep "@onecli-sh/sdk" package.json
 ```
 
-If `@onecli-sh/sdk` is NOT in package.json, the codebase hasn't been updated to use OneCLI yet. Tell the user to run `/update-delegate-agent` first to get the OneCLI integration, then retry `/init-onecli`. Stop here.
+If `@onecli-sh/sdk` is NOT in package.json, the codebase hasn't been updated to use OneCLI yet. Tell the user to run `/update-nanoclaw` first to get the OneCLI integration, then retry `/init-onecli`. Stop here.
 
 ## Phase 2: Install OneCLI
 
@@ -81,16 +75,16 @@ Re-verify with `onecli version`.
 
 ### Configure the CLI
 
-Point the CLI at the local OneCLI instance:
+Point the CLI at the local OneCLI instance, the ONECLI_URL was output from the install script above:
 
 ```bash
-onecli config set api-host http://127.0.0.1:10254
+onecli config set api-host ${ONECLI_URL}
 ```
 
 ### Set ONECLI_URL in .env
 
 ```bash
-grep -q 'ONECLI_URL' .env 2>/dev/null || echo 'ONECLI_URL=http://127.0.0.1:10254' >> .env
+grep -q 'ONECLI_URL' .env 2>/dev/null || echo 'ONECLI_URL=${ONECLI_URL}' >> .env
 ```
 
 ### Wait for gateway readiness
@@ -99,7 +93,7 @@ The gateway may take a moment to start after installation. Poll for up to 15 sec
 
 ```bash
 for i in $(seq 1 15); do
-  curl -sf http://127.0.0.1:10254/health && break
+  curl -sf ${ONECLI_URL}/health && break
   sleep 1
 done
 ```
@@ -159,7 +153,7 @@ Tell the user: "Migrated your Anthropic credentials from `.env` to the OneCLI Ag
 
 After handling Anthropic credentials (whether migrated or freshly registered), scan `.env` again for remaining credential variables that containers use for outbound API calls.
 
-**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the DelegateAgent host process to connect to messaging platforms — they must stay in `.env`.
+**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the NanoClaw host process to connect to messaging platforms — they must stay in `.env`.
 
 Known container-facing credentials:
 
@@ -214,7 +208,7 @@ Tell the user to run `claude setup-token` in another terminal and copy the token
 
 Once they have the token, AskUserQuestion with two options:
 
-1. **Dashboard** — description: "Best if you have a browser on this machine. Open http://127.0.0.1:10254 and add the secret in the UI. Use type 'anthropic' and paste your token as the value."
+1. **Dashboard** — description: "Best if you have a browser on this machine. Open ${ONECLI_URL} and add the secret in the UI. Use type 'anthropic' and paste your token as the value."
 2. **CLI** — description: "Best for remote/headless servers. Run: `onecli secrets create --name Anthropic --type anthropic --value YOUR_TOKEN --host-pattern api.anthropic.com`"
 
 #### API key path
@@ -223,7 +217,7 @@ Tell the user to get an API key from https://console.anthropic.com/settings/keys
 
 AskUserQuestion with two options:
 
-1. **Dashboard** — description: "Best if you have a browser on this machine. Open http://127.0.0.1:10254 and add the secret in the UI."
+1. **Dashboard** — description: "Best if you have a browser on this machine. Open ${ONECLI_URL} and add the secret in the UI."
 2. **CLI** — description: "Best for remote/headless servers. Run: `onecli secrets create --name Anthropic --type anthropic --value YOUR_KEY --host-pattern api.anthropic.com`"
 
 #### After either path
@@ -243,16 +237,16 @@ npm run build
 If build fails, diagnose and fix. Common issue: `@onecli-sh/sdk` not installed — run `npm install` first.
 
 Restart the service:
-- macOS (launchd): `launchctl kickstart -k gui/$(id -u)/com.delegate-agent`
-- Linux (systemd): `systemctl --user restart delegate-agent`
-- WSL/manual: stop and re-run `bash start-delegate-agent.sh`
+- macOS (launchd): `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
+- Linux (systemd): `systemctl --user restart nanoclaw`
+- WSL/manual: stop and re-run `bash start-nanoclaw.sh`
 
 ## Phase 5: Verify
 
 Check logs for successful OneCLI integration:
 
 ```bash
-tail -30 logs/delegate-agent.log | grep -i "onecli\|gateway"
+tail -30 logs/nanoclaw.log | grep -i "onecli\|gateway"
 ```
 
 Expected: `OneCLI gateway config applied` messages when containers start.
@@ -262,12 +256,12 @@ If the service is running and a channel is configured, tell the user to send a t
 Tell the user:
 - OneCLI Agent Vault is now managing credentials
 - Agents never see raw API keys — credentials are injected at the gateway level
-- To manage secrets: `onecli secrets list`, or open http://127.0.0.1:10254
+- To manage secrets: `onecli secrets list`, or open ${ONECLI_URL}
 - To add rate limits or policies: `onecli rules create --help`
 
 ## Troubleshooting
 
-**"OneCLI gateway not reachable" in logs:** The gateway isn't running. Check with `curl -sf http://127.0.0.1:10254/health`. Start it with `onecli start` if needed.
+**"OneCLI gateway not reachable" in logs:** The gateway isn't running. Check with `curl -sf ${ONECLI_URL}/health`. Start it with `onecli start` if needed.
 
 **Container gets no credentials:** Verify `ONECLI_URL` is set in `.env` and the gateway has an Anthropic secret (`onecli secrets list`).
 
