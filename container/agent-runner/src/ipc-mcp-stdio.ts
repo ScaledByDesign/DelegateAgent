@@ -15,10 +15,12 @@ const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
 
-// Context from environment variables (set by the agent runner)
-const chatJid = process.env.NANOCLAW_CHAT_JID!;
-const groupFolder = process.env.NANOCLAW_GROUP_FOLDER!;
-const isMain = process.env.NANOCLAW_IS_MAIN === '1';
+// Context from environment variables (set by the agent runner).
+// Read new DELEGATEAGENT_* keys, fall back to legacy NANOCLAW_* for one release
+// so a partially-deployed container-runtime / MCP-binary pair doesn't break.
+const chatJid = (process.env.DELEGATEAGENT_CHAT_JID || process.env.NANOCLAW_CHAT_JID)!;
+const groupFolder = (process.env.DELEGATEAGENT_GROUP_FOLDER || process.env.NANOCLAW_GROUP_FOLDER)!;
+const isMain = (process.env.DELEGATEAGENT_IS_MAIN || process.env.NANOCLAW_IS_MAIN) === '1';
 
 function writeIpcFile(dir: string, data: object): string {
   fs.mkdirSync(dir, { recursive: true });
