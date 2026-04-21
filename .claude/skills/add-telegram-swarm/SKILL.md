@@ -325,7 +325,7 @@ npm run build
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 # Linux:
-# systemctl --user restart nanoclaw
+# systemctl --user restart delegate-agent
 ```
 
 Must use `unload/load` (macOS) or `restart` (Linux) because the service env vars changed.
@@ -381,4 +381,4 @@ To remove Agent Swarm support while keeping basic Telegram:
 5. Remove `sender` param from MCP tool in `container/agent-runner/src/ipc-mcp-stdio.ts`
 6. Remove Agent Teams section from group CLAUDE.md files
 7. Remove `TELEGRAM_BOT_POOL` from `.env`, `data/env/env`, and launchd plist/systemd unit
-8. Rebuild: `npm run build && ./container/build.sh && launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist && launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist` (macOS) or `npm run build && ./container/build.sh && systemctl --user restart nanoclaw` (Linux)
+8. Rebuild: `npm run build && ./container/build.sh && launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist && launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist` (macOS) or `npm run build && ./container/build.sh && systemctl --user restart delegate-agent` (Linux)

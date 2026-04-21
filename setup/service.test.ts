@@ -53,7 +53,7 @@ function generateSystemdUnit(
   isSystem: boolean,
 ): string {
   return `[Unit]
-Description=NanoClaw Personal Assistant
+Description=DelegateAgent Personal Assistant
 After=network.target
 
 [Service]
@@ -106,8 +106,8 @@ describe('plist generation', () => {
       '/home/user/nanoclaw',
       '/home/user',
     );
-    expect(plist).toContain('nanoclaw.log');
-    expect(plist).toContain('nanoclaw.error.log');
+    expect(plist).toContain('delegate-agent.log');
+    expect(plist).toContain('delegate-agent.error.log');
   });
 });
 
@@ -170,7 +170,7 @@ describe('WSL nohup fallback', () => {
   it('generates a valid wrapper script', () => {
     const projectRoot = '/home/user/nanoclaw';
     const nodePath = '/usr/bin/node';
-    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
+    const pidFile = path.join(projectRoot, 'delegate-agent.pid');
 
     // Simulate what service.ts generates
     const wrapper = `#!/bin/bash
@@ -182,6 +182,6 @@ echo $! > ${JSON.stringify(pidFile)}`;
     expect(wrapper).toContain('#!/bin/bash');
     expect(wrapper).toContain('nohup');
     expect(wrapper).toContain(nodePath);
-    expect(wrapper).toContain('nanoclaw.pid');
+    expect(wrapper).toContain('delegate-agent.pid');
   });
 });

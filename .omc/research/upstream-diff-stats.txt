@@ -1,0 +1,125 @@
+=== src/config.ts ===
+    - Add TIMEZONE config using system timezone for cron expressions
+    - Filter bot messages by content prefix instead of is_from_me
+      (user shares WhatsApp account with bot)
+    - Format messages as XML for cleaner agent parsing
+    - Update schedule_task tool to clarify local time usage
+    
+    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+ src/config.ts | 4 ++++
+ 1 file changed, 4 insertions(+)
+=== src/container-runner.ts ===
+    
+    Previously, the entire .env file was copied and mounted into containers,
+    exposing all environment variables to the agent. Now only the specific
+    authentication variables needed by Claude Code (CLAUDE_CODE_OAUTH_TOKEN
+    and ANTHROPIC_API_KEY) are extracted and mounted.
+    
+    https://claude.ai/code/session_01Y6Az5oUPkYmJhA1N9MUd67
+
+ src/container-runner.ts | 25 +++++++++++++++++++------
+ 1 file changed, 19 insertions(+), 6 deletions(-)
+=== src/credential-client.ts ===
+=== src/channels/index.ts ===
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+    
+    ---------
+    
+    Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+    Co-authored-by: gavrielc <gabicohen22@yahoo.com>
+    Co-authored-by: Koshkoshinski <daniel.milliner@gmail.com>
+
+ src/channels/index.ts | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+=== src/channels/registry.ts ===
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+    
+    ---------
+    
+    Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+    Co-authored-by: gavrielc <gabicohen22@yahoo.com>
+    Co-authored-by: Koshkoshinski <daniel.milliner@gmail.com>
+
+ src/channels/registry.ts | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+=== package.json ===
+    - Remove dead scheduler MCP config (built into IPC)
+    - Remove unused eslint script
+    - Add clear error message when Apple Container fails to start
+    - Auto-generate launchd plist with real paths in setup skill
+    - Standardize Node.js version to 20+ everywhere
+    
+    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+ package.json | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+=== CHANGELOG.md ===
+    Placeholder — release notes will be populated at merge time.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+    
+    ---------
+    
+    Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+
+ CHANGELOG.md | 3 +++
+ 1 file changed, 3 insertions(+)
+=== README.md ===
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+commit 1699dfc3d105320d17017bc98499d1fcd965a956
+Author: gavrielc <gabicohen22@yahoo.com>
+Date:   Sun Feb 1 17:51:59 2026 +0200
+
+    Update README.md
+
+ README.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+=== CLAUDE.md ===
+      to prevent cross-group access to conversation history
+    - Remove Gmail MCP from built-in (now available via /add-gmail skill)
+    - Add SECURITY.md documenting the security model
+    - Move docs to docs/ folder (SPEC.md, REQUIREMENTS.md, SECURITY.md)
+    - Update documentation to reflect changes
+    
+    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+ CLAUDE.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+=== CONTRIBUTING.md ===
+    
+    - CONTRIBUTING.md: Explain accepted source changes vs skills
+    - PR template: Checkboxes for contribution type
+    - CI workflow: Block PRs that add skills while modifying source
+    - CODEOWNERS: Require maintainer review for source changes
+    
+    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+ CONTRIBUTING.md | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+=== deploy/deploy.sh ===
+=== deploy/Caddyfile ===
+=== .env.example ===
+    * remove unused docs (skills-system-status, implementation-guide)
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+    
+    ---------
+    
+    Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+
+ .env.example | 1 +
+ 1 file changed, 1 insertion(+)
+=== setup.sh ===
+    headless gate because browser opening works via Windows interop.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+    
+    ---------
+    
+    Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+
+ setup.sh | 161 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 161 insertions(+)
+=== sentry-init.cjs ===

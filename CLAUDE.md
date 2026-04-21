@@ -39,7 +39,7 @@ Four types of skills exist in DelegateAgent. See [CONTRIBUTING.md](CONTRIBUTING.
 | `/setup` | First-time installation, authentication, service configuration |
 | `/customize` | Adding channels, integrations, changing behavior |
 | `/debug` | Container issues, logs, troubleshooting |
-| `/update-delegate-agent` | Bring upstream nanoclaw updates into a customized install |
+| `/update-delegate-agent` | Bring upstream delegate-agent updates into a customized install |
 | `/init-onecli` | Install OneCLI Agent Vault and migrate `.env` credentials to it |
 | `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
 | `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |

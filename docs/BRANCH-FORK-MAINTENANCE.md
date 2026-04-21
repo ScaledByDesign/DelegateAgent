@@ -4,7 +4,7 @@
 
 **`qwibitai/nanoclaw`** (upstream) — core engine with skill definitions (`.claude/skills/`). No channel code on `main`.
 
-**Channel forks** (`nanoclaw-whatsapp`, `nanoclaw-telegram`, `nanoclaw-slack`, etc.) — each fork = upstream + one channel's code applied. Users clone upstream, then merge a fork into their clone to add a channel.
+**Channel forks** (`delegate-agent-whatsapp`, `delegate-agent-telegram`, `delegate-agent-slack`, etc.) — each fork = upstream + one channel's code applied. Users clone upstream, then merge a fork into their clone to add a channel.
 
 **`skill/*` and `feat/*` branches on upstream** — add features unrelated to channels (e.g. `skill/compact`, `skill/apple-container`). Users merge these into their clone to add capabilities. Channel-specific skill branches that duplicate the forks (e.g. `skill/whatsapp`, `skill/telegram`) are legacy.
 
@@ -12,7 +12,7 @@
 
 ```
 user clones upstream main
-  ├── merges nanoclaw-whatsapp fork  → adds WhatsApp
+  ├── merges delegate-agent-whatsapp fork  → adds WhatsApp
   ├── merges skill/compact branch    → adds /compact command
   └── merges skill/apple-container   → switches to Apple Container
 ```
@@ -29,17 +29,17 @@ Forks and skill branches carry applied code changes. Users merge them into their
 ## Forward merge procedure
 
 ```bash
-# In your local nanoclaw checkout
+# In your local delegate-agent checkout
 git checkout main && git pull
 
 # For a fork:
-git fetch nanoclaw-whatsapp
-git checkout -B whatsapp-merge nanoclaw-whatsapp/main
+git fetch delegate-agent-whatsapp
+git checkout -B whatsapp-merge delegate-agent-whatsapp/main
 git merge main
 # Resolve conflicts (see below)
 # Remove upstream-only workflows (re-added by every merge since main has them):
 git rm .github/workflows/bump-version.yml .github/workflows/update-tokens.yml 2>/dev/null
-git push nanoclaw-whatsapp HEAD:main
+git push delegate-agent-whatsapp HEAD:main
 git checkout main && git branch -D whatsapp-merge
 
 # For a skill branch:
@@ -71,7 +71,7 @@ After any main change that touches shared files (`package.json`, `src/index.ts`,
 
 When creating a new channel fork:
 
-1. Fork `nanoclaw` to `nanoclaw-{channel}`
+1. Fork `delegate-agent` to `delegate-agent-{channel}`
 2. Remove upstream-only workflows: `bump-version.yml`, `update-tokens.yml`
 3. Add channel code, deps, env vars
 4. Forward-merge main immediately to establish a clean baseline

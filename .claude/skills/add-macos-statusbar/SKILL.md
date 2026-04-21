@@ -1,11 +1,11 @@
 ---
 name: add-macos-statusbar
-description: Add a macOS menu bar status indicator for NanoClaw. Shows a bolt icon with a green/red dot indicating whether NanoClaw is running, with Start, Stop, and Restart controls. macOS only.
+description: Add a macOS menu bar status indicator for DelegateAgent. Shows a bolt icon with a green/red dot indicating whether DelegateAgent is running, with Start, Stop, and Restart controls. macOS only.
 ---
 
 # Add macOS Menu Bar Status Indicator
 
-Adds a persistent menu bar icon that shows NanoClaw's running status and lets the user
+Adds a persistent menu bar icon that shows DelegateAgent's running status and lets the user
 start, stop, or restart the service — similar to how Docker Desktop appears in the menu bar.
 
 **macOS only.** Requires Xcode Command Line Tools (`swiftc`).
@@ -117,10 +117,10 @@ The first column should show a PID (not `-`).
 
 Tell the user:
 
-> The bolt icon should now appear in your macOS menu bar. Click it to see NanoClaw's status and control the service.
+> The bolt icon should now appear in your macOS menu bar. Click it to see DelegateAgent's status and control the service.
 >
-> - **Green dot** — NanoClaw is running
-> - **Red dot** — NanoClaw is stopped
+> - **Green dot** — DelegateAgent is running
+> - **Red dot** — DelegateAgent is stopped
 >
 > Use **Restart** after making code changes, and **View Logs** to open the log file directly.
 

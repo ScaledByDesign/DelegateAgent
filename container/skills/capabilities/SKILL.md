@@ -1,11 +1,11 @@
 ---
 name: capabilities
-description: Show what this NanoClaw instance can do — installed skills, available tools, and system info. Read-only. Use when the user asks what the bot can do, what's installed, or runs /capabilities.
+description: Show what this DelegateAgent instance can do — installed skills, available tools, and system info. Read-only. Use when the user asks what the bot can do, what's installed, or runs /capabilities.
 ---
 
 # /capabilities — System Capabilities Report
 
-Generate a structured read-only report of what this NanoClaw instance can do.
+Generate a structured read-only report of what this DelegateAgent instance can do.
 
 **Main-channel check:** Only the main channel has `/workspace/project` mounted. Run:
 
@@ -43,7 +43,7 @@ Read the allowed tools from your SDK configuration. You always have access to:
 
 ### 3. MCP server tools
 
-The NanoClaw MCP server exposes these tools (via `mcp__nanoclaw__*` prefix):
+The DelegateAgent MCP server exposes these tools (via `mcp__nanoclaw__*` prefix):
 - `send_message` — send a message to the user/group
 - `schedule_task` — schedule a recurring or one-time task
 - `list_tasks` — list scheduled tasks
@@ -73,7 +73,7 @@ ls /workspace/extra/ 2>/dev/null && echo "Extra mounts: $(ls /workspace/extra/ 2
 Present the report as a clean, readable message. Example:
 
 ```
-📋 *NanoClaw Capabilities*
+📋 *DelegateAgent Capabilities*
 
 *Installed Skills:*
 • /agent-browser — Browse the web, fill forms, extract data

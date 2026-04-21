@@ -153,7 +153,7 @@ Tell the user: "Migrated your Anthropic credentials from `.env` to the OneCLI Ag
 
 After handling Anthropic credentials (whether migrated or freshly registered), scan `.env` again for remaining credential variables that containers use for outbound API calls.
 
-**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the NanoClaw host process to connect to messaging platforms — they must stay in `.env`.
+**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the DelegateAgent host process to connect to messaging platforms — they must stay in `.env`.
 
 Known container-facing credentials:
 
@@ -238,7 +238,7 @@ If build fails, diagnose and fix. Common issue: `@onecli-sh/sdk` not installed �
 
 Restart the service:
 - macOS (launchd): `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
-- Linux (systemd): `systemctl --user restart nanoclaw`
+- Linux (systemd): `systemctl --user restart delegate-agent`
 - WSL/manual: stop and re-run `bash start-nanoclaw.sh`
 
 ## Phase 5: Verify

@@ -418,9 +418,9 @@ interface GroupInfo {
 }
 
 /**
- * Map OpenClaw session key channel:kind:id to NanoClaw JID format.
+ * Map OpenClaw session key channel:kind:id to DelegateAgent JID format.
  * OpenClaw keys: "whatsapp:group:120...@g.us", "telegram:group:-10012345"
- * NanoClaw JIDs: "120...@g.us", "tg:-10012345", "dc:12345", "slack:C12345"
+ * DelegateAgent JIDs: "120...@g.us", "tg:-10012345", "dc:12345", "slack:C12345"
  */
 function toNanoClawJid(channel: string, id: string): string {
   switch (channel) {
@@ -672,7 +672,7 @@ function main(): void {
     .map((c) => c.name)
     .join(',');
 
-  // Format groups as "channel:id(name)" — also include NanoClaw JID mapping
+  // Format groups as "channel:id(name)" — also include DelegateAgent JID mapping
   const groupList = groups
     .map(
       (g) =>

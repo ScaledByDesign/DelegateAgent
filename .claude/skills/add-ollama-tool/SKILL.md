@@ -124,7 +124,7 @@ OLLAMA_HOST=http://your-ollama-host:11434
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
-# Linux: systemctl --user restart nanoclaw
+# Linux: systemctl --user restart delegate-agent
 ```
 
 ## Phase 4: Verify

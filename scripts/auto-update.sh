@@ -49,7 +49,7 @@ fi
 
 # Restart the service
 echo "$LOG_PREFIX Restarting service..."
-systemctl restart remote-agent 2>/dev/null || systemctl restart nanoclaw 2>/dev/null || true
+systemctl restart remote-agent 2>/dev/null || systemctl restart delegate-agent 2>/dev/null || true
 
 echo "$LOG_PREFIX Update complete: ${BEFORE:0:8} → ${AFTER:0:8}"
 date

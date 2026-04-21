@@ -2,9 +2,9 @@
 
 ## Overview
 
-This document covers **feature skills** — skills that add capabilities via git branch merges. This is the most complex skill type and the primary way NanoClaw is extended.
+This document covers **feature skills** — skills that add capabilities via git branch merges. This is the most complex skill type and the primary way DelegateAgent is extended.
 
-NanoClaw has four types of skills overall. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full taxonomy:
+DelegateAgent has four types of skills overall. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full taxonomy:
 
 | Type | Location | How it works |
 |------|----------|-------------|
@@ -25,7 +25,7 @@ This replaces the previous `skills-engine/` system (three-way file merging, `.na
 
 The upstream repo (`qwibitai/nanoclaw`) maintains:
 
-- `main` — core NanoClaw (no skill code)
+- `main` — core DelegateAgent (no skill code)
 - `skill/discord` — main + Discord integration
 - `skill/telegram` — main + Telegram integration
 - `skill/slack` — main + Slack integration
@@ -52,7 +52,7 @@ Users never interact with the marketplace directly. The operational skills `/set
 
 ```bash
 # Claude runs this behind the scenes — users don't see it
-claude plugin install nanoclaw-skills@nanoclaw-skills --scope project
+claude plugin install delegate-agent-skills@delegate-agent-skills --scope project
 ```
 
 Skills are hot-loaded after `claude plugin install` — no restart needed. This means `/setup` can install the marketplace plugin, then immediately run any feature skill, all in one session.
@@ -70,12 +70,12 @@ Dependent skills (e.g., `telegram-swarm` depends on `telegram`) are only offered
 
 ### Marketplace configuration
 
-NanoClaw's `.claude/settings.json` registers the official marketplace:
+DelegateAgent's `.claude/settings.json` registers the official marketplace:
 
 ```json
 {
   "extraKnownMarketplaces": {
-    "nanoclaw-skills": {
+    "delegate-agent-skills": {
       "source": {
         "source": "github",
         "repo": "qwibitai/nanoclaw-skills"
@@ -92,7 +92,7 @@ qwibitai/nanoclaw-skills/
   .claude-plugin/
     marketplace.json              # Plugin catalog
   plugins/
-    nanoclaw-skills/              # Single plugin bundling all official skills
+    delegate-agent-skills/              # Single plugin bundling all official skills
       .claude-plugin/
         plugin.json               # Plugin manifest
       skills/
@@ -105,7 +105,7 @@ qwibitai/nanoclaw-skills/
         ...
 ```
 
-Multiple skills are bundled in one plugin — installing `nanoclaw-skills` makes all feature skills available at once. Individual skills don't need separate installation.
+Multiple skills are bundled in one plugin — installing `delegate-agent-skills` makes all feature skills available at once. Individual skills don't need separate installation.
 
 Each SKILL.md tells Claude to merge the corresponding skill branch as step 1, then walks through interactive setup (env vars, bot creation, etc.).
 
@@ -217,7 +217,7 @@ A GitHub Action runs on every push to `main`:
 2. Clone your fork:
    ```bash
    git clone https://github.com/<you>/nanoclaw.git
-   cd nanoclaw
+   cd delegate-agent
    ```
 3. Run Claude Code:
    ```bash
@@ -374,18 +374,18 @@ Anyone can maintain their own fork with skill branches and their own marketplace
 
 A community contributor:
 
-1. Maintains a fork of NanoClaw (e.g., `alice/nanoclaw`)
+1. Maintains a fork of DelegateAgent (e.g., `alice/nanoclaw`)
 2. Creates `skill/*` branches on their fork with their custom skills
 3. Creates a marketplace repo (e.g., `alice/nanoclaw-skills`) with a `.claude-plugin/marketplace.json` and plugin structure
 
 ### Adding a community marketplace
 
-If the community contributor is trusted, they can open a PR to add their marketplace to NanoClaw's `.claude/settings.json`:
+If the community contributor is trusted, they can open a PR to add their marketplace to DelegateAgent's `.claude/settings.json`:
 
 ```json
 {
   "extraKnownMarketplaces": {
-    "nanoclaw-skills": {
+    "delegate-agent-skills": {
       "source": {
         "source": "github",
         "repo": "qwibitai/nanoclaw-skills"
@@ -401,7 +401,7 @@ If the community contributor is trusted, they can open a PR to add their marketp
 }
 ```
 
-Once merged, all NanoClaw users automatically discover the community marketplace alongside the official one.
+Once merged, all DelegateAgent users automatically discover the community marketplace alongside the official one.
 
 ### Installing community skills
 
@@ -430,7 +430,7 @@ Users can also browse and install community plugins manually via `/plugin`.
 
 ## Flavors
 
-A flavor is a curated fork of NanoClaw — a combination of skills, custom changes, and configuration tailored for a specific use case (e.g., "NanoClaw for Sales," "NanoClaw Minimal," "NanoClaw for Developers").
+A flavor is a curated fork of DelegateAgent — a combination of skills, custom changes, and configuration tailored for a specific use case (e.g., "DelegateAgent for Sales," "DelegateAgent Minimal," "DelegateAgent for Developers").
 
 ### Creating a flavor
 
@@ -443,10 +443,10 @@ A flavor is a curated fork of NanoClaw — a combination of skills, custom chang
 
 During `/setup`, users are offered a choice of flavors before any configuration happens. The setup skill reads `flavors.yaml` from the repo (shipped with upstream, always up to date) and presents options:
 
-AskUserQuestion: "Start with a flavor or default NanoClaw?"
-- Default NanoClaw
-- NanoClaw for Sales — Gmail + Slack + CRM (maintained by alice)
-- NanoClaw Minimal — Telegram-only, lightweight (maintained by bob)
+AskUserQuestion: "Start with a flavor or default DelegateAgent?"
+- Default DelegateAgent
+- DelegateAgent for Sales — Gmail + Slack + CRM (maintained by alice)
+- DelegateAgent Minimal — Telegram-only, lightweight (maintained by bob)
 
 If a flavor is chosen:
 
@@ -480,12 +480,12 @@ The flavor maintainer keeps their fork updated (merging upstream, updating skill
 
 ```yaml
 flavors:
-  - name: NanoClaw for Sales
+  - name: DelegateAgent for Sales
     repo: alice/nanoclaw
     description: Gmail + Slack + CRM integration, daily pipeline summaries
     maintainer: alice
 
-  - name: NanoClaw Minimal
+  - name: DelegateAgent Minimal
     repo: bob/nanoclaw
     description: Telegram-only, no container overhead
     maintainer: bob
@@ -497,7 +497,7 @@ Anyone can PR to add their flavor. The file is available locally when `/setup` r
 
 - **During setup** — flavor selection is offered as part of the initial setup flow
 - **`/browse-flavors` skill** — reads `flavors.yaml` and presents options at any time
-- **GitHub topics** — flavor forks can tag themselves with `nanoclaw-flavor` for searchability
+- **GitHub topics** — flavor forks can tag themselves with `delegate-agent-flavor` for searchability
 - **Discord / website** — community-curated lists
 
 ## Migration
@@ -539,7 +539,7 @@ Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-sk
 Before:
 ```bash
 git clone https://github.com/qwibitai/NanoClaw.git
-cd NanoClaw
+cd DelegateAgent
 claude
 ```
 
@@ -547,7 +547,7 @@ After:
 ```
 1. Fork qwibitai/nanoclaw on GitHub
 2. git clone https://github.com/<you>/nanoclaw.git
-3. cd nanoclaw
+3. cd delegate-agent
 4. claude
 5. /setup
 ```
@@ -558,7 +558,7 @@ Updates to the setup flow:
 
 - Check if `upstream` remote exists; if not, add it: `git remote add upstream https://github.com/qwibitai/nanoclaw.git`
 - Check if `origin` points to the user's fork (not qwibitai). If it points to qwibitai, guide them through the fork migration.
-- **Install marketplace plugin:** `claude plugin install nanoclaw-skills@nanoclaw-skills --scope project` — makes all feature skills available (hot-loaded, no restart)
+- **Install marketplace plugin:** `claude plugin install delegate-agent-skills@delegate-agent-skills --scope project` — makes all feature skills available (hot-loaded, no restart)
 - **Ask which channels to add:** present channel options (Discord, Telegram, Slack, WhatsApp, Gmail), run corresponding `/add-*` skills for selected channels
 - **Offer dependent skills:** after a channel is set up, offer relevant add-ons (e.g., Agent Swarm after Telegram, voice transcription after WhatsApp)
 - **Optionally enable community marketplaces:** ask if the user wants community skills, install those marketplace plugins too
@@ -570,7 +570,7 @@ Marketplace configuration so the official marketplace is auto-registered:
 ```json
 {
   "extraKnownMarketplaces": {
-    "nanoclaw-skills": {
+    "delegate-agent-skills": {
       "source": {
         "source": "github",
         "repo": "qwibitai/nanoclaw-skills"
@@ -639,7 +639,7 @@ Users only need to re-merge a skill branch if the skill itself was updated (not 
 
 > **Skills are now git branches**
 >
-> We've simplified how skills work in NanoClaw. Instead of a custom skills engine, skills are now git branches that you merge in.
+> We've simplified how skills work in DelegateAgent. Instead of a custom skills engine, skills are now git branches that you merge in.
 >
 > **What this means for you:**
 > - Applying a skill: `git fetch upstream skill/discord && git merge upstream/skill/discord`
@@ -674,4 +674,4 @@ Users only need to re-merge a skill branch if the skill itself was updated (not 
 >
 > That's it. We'll create a `skill/<name>` branch from your PR, add you to CONTRIBUTORS.md, and add the SKILL.md to the marketplace. CI automatically keeps skill branches merged-forward with `main` using Claude to resolve any conflicts.
 >
-> **Want to run your own skill marketplace?** Maintain skill branches on your fork and create a marketplace repo. Open a PR to add it to NanoClaw's auto-discovered marketplaces — or users can add it manually via `/plugin marketplace add`.
+> **Want to run your own skill marketplace?** Maintain skill branches on your fork and create a marketplace repo. Open a PR to add it to DelegateAgent's auto-discovered marketplaces — or users can add it manually via `/plugin marketplace add`.

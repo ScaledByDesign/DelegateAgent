@@ -1,0 +1,1971 @@
+[rebrand] DRY RUN — showing diff only, not writing
+=== ./setup.sh ===
+--- ./setup.sh	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.7SKiQDLxKx	2026-04-20 19:38:56
+@@ -1,7 +1,7 @@
+ #!/bin/bash
+ set -euo pipefail
+ 
+-# setup.sh — Bootstrap script for NanoClaw
++# setup.sh — Bootstrap script for DelegateAgent
+ # Handles Node.js/npm setup, then hands off to the Node.js setup modules.
+ # This is the only bash script in the setup flow.
+ 
+=== ./CODE_OF_CONDUCT.md ===
+--- ./CODE_OF_CONDUCT.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.o0DclYHAcD	2026-04-20 19:38:56
+@@ -60,7 +60,7 @@
+ 
+ Instances of abusive, harassing, or otherwise unacceptable behavior may be
+ reported to the community leaders responsible for enforcement at
+-community@nanoclaw.dev.
++community@delegate-agent.dev.
+ All complaints will be reviewed and investigated promptly and fairly.
+ 
+ All community leaders are obligated to respect the privacy and security of the
+=== ./deploy/README.md ===
+--- ./deploy/README.md	2026-04-20 18:24:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.ZO9zlxBzrA	2026-04-20 19:38:56
+@@ -86,7 +86,7 @@
+ | `OPENAI_API_KEY` | OpenAI key (for Bifrost provider) | `sk-proj-...` |
+ | `DELEGATE_URL` | Delegate app URL | `https://delegate.ws` |
+ | `DELEGATE_API_KEY` | Token for channel auth (matches Vercel `DELEGATE_AGENT_TOKEN`) | `0ab6b3d9...` |
+-| `DELEGATE_AGENT_TOKEN` | Same as DELEGATE_API_KEY (legacy: `NANOCLAW_TOKEN` still accepted for one release) | `0ab6b3d9...` |
++| `DELEGATE_AGENT_TOKEN` | Same as DELEGATE_API_KEY (legacy: `DELEGATE_AGENT_TOKEN` still accepted for one release) | `0ab6b3d9...` |
+ | `GITHUB_TOKEN` | Admin fallback only — workspace tokens resolved from Delegate DB | `ghp_...` |
+ | `BIFROST_URL` | Bifrost health check endpoint | `http://localhost:4000` |
+ 
+=== ./deploy/deploy.sh ===
+--- ./deploy/deploy.sh	2026-04-20 18:24:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.csxDAE7ffs	2026-04-20 19:38:56
+@@ -2,17 +2,17 @@
+ set -euo pipefail
+ 
+ # --- Rebrand migration (idempotent, safe to run multiple times) ---
+-# Move /opt/nanoclaw → /opt/delegate-agent, leave legacy symlink for one release.
+-if [ -d /opt/nanoclaw ] && [ ! -L /opt/nanoclaw ] && [ ! -d /opt/delegate-agent ]; then
+-  mv /opt/nanoclaw /opt/delegate-agent
+-  ln -s /opt/delegate-agent /opt/nanoclaw
+-  echo "[migrate] moved /opt/nanoclaw → /opt/delegate-agent (legacy symlink retained)"
++# Move /opt/delegate-agent → /opt/delegate-agent, leave legacy symlink for one release.
++if [ -d /opt/delegate-agent ] && [ ! -L /opt/delegate-agent ] && [ ! -d /opt/delegate-agent ]; then
++  mv /opt/delegate-agent /opt/delegate-agent
++  ln -s /opt/delegate-agent /opt/delegate-agent
++  echo "[migrate] moved /opt/delegate-agent → /opt/delegate-agent (legacy symlink retained)"
+ fi
+ 
+ # Systemd unit migration (idempotent)
+-if systemctl list-unit-files | grep -q '^nanoclaw\.service'; then
+-  systemctl stop nanoclaw.service 2>/dev/null || true
+-  systemctl disable nanoclaw.service 2>/dev/null || true
++if systemctl list-unit-files | grep -q '^delegate-agent\.service'; then
++  systemctl stop delegate-agent.service 2>/dev/null || true
++  systemctl disable delegate-agent.service 2>/dev/null || true
+   rm -f /etc/systemd/system/nanoclaw.service
+   systemctl daemon-reload
+ fi
+=== ./setup/verify.ts ===
+--- ./setup/verify.ts	2026-04-20 19:32:55
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.M0DI7fTrQn	2026-04-20 19:38:56
+@@ -50,14 +50,14 @@
+   } else if (mgr === 'systemd') {
+     const prefix = isRoot() ? 'systemctl' : 'systemctl --user';
+     try {
+-      execSync(`${prefix} is-active nanoclaw`, { stdio: 'ignore' });
++      execSync(`${prefix} is-active delegate-agent`, { stdio: 'ignore' });
+       service = 'running';
+     } catch {
+       try {
+         const output = execSync(`${prefix} list-unit-files`, {
+           encoding: 'utf-8',
+         });
+-        if (output.includes('nanoclaw')) {
++        if (output.includes('delegate-agent')) {
+           service = 'stopped';
+         }
+       } catch {
+@@ -66,7 +66,7 @@
+     }
+   } else {
+     // Check for nohup PID file
+-    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
++    const pidFile = path.join(projectRoot, 'delegate-agent.pid');
+     if (fs.existsSync(pidFile)) {
+       try {
+         const raw = fs.readFileSync(pidFile, 'utf-8').trim();
+@@ -159,7 +159,7 @@
+   let mountAllowlist = 'missing';
+   if (
+     fs.existsSync(
+-      path.join(homeDir, '.config', 'nanoclaw', 'mount-allowlist.json'),
++      path.join(homeDir, '.config', 'delegate-agent', 'mount-allowlist.json'),
+     )
+   ) {
+     mountAllowlist = 'configured';
+=== ./setup/service.test.ts ===
+--- ./setup/service.test.ts	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.qb2NGNM4x0	2026-04-20 19:38:56
+@@ -53,7 +53,7 @@
+   isSystem: boolean,
+ ): string {
+   return `[Unit]
+-Description=NanoClaw Personal Assistant
++Description=DelegateAgent Personal Assistant
+ After=network.target
+ 
+ [Service]
+@@ -106,8 +106,8 @@
+       '/home/user/nanoclaw',
+       '/home/user',
+     );
+-    expect(plist).toContain('nanoclaw.log');
+-    expect(plist).toContain('nanoclaw.error.log');
++    expect(plist).toContain('delegate-agent.log');
++    expect(plist).toContain('delegate-agent.error.log');
+   });
+ });
+ 
+@@ -170,7 +170,7 @@
+   it('generates a valid wrapper script', () => {
+     const projectRoot = '/home/user/nanoclaw';
+     const nodePath = '/usr/bin/node';
+-    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
++    const pidFile = path.join(projectRoot, 'delegate-agent.pid');
+ 
+     // Simulate what service.ts generates
+     const wrapper = `#!/bin/bash
+@@ -182,6 +182,6 @@
+     expect(wrapper).toContain('#!/bin/bash');
+     expect(wrapper).toContain('nohup');
+     expect(wrapper).toContain(nodePath);
+-    expect(wrapper).toContain('nanoclaw.pid');
++    expect(wrapper).toContain('delegate-agent.pid');
+   });
+ });
+=== ./setup/register.test.ts ===
+--- ./setup/register.test.ts	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.cIkdJ6F9I9	2026-04-20 19:38:56
+@@ -310,7 +310,7 @@
+   }
+ 
+   beforeEach(() => {
+-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-register-test-'));
++    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-agent-register-test-'));
+     groupsDir = path.join(tmpDir, 'groups');
+     fs.mkdirSync(path.join(groupsDir, 'main'), { recursive: true });
+     fs.mkdirSync(path.join(groupsDir, 'global'), { recursive: true });
+=== ./setup/platform.ts ===
+--- ./setup/platform.ts	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.fMmnnRCeiG	2026-04-20 19:38:56
+@@ -1,5 +1,5 @@
+ /**
+- * Cross-platform detection utilities for NanoClaw setup.
++ * Cross-platform detection utilities for DelegateAgent setup.
+  */
+ import { execSync } from 'child_process';
+ import fs from 'fs';
+=== ./setup/mounts.ts ===
+--- ./setup/mounts.ts	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.zRIA4KQJi1	2026-04-20 19:38:56
+@@ -28,7 +28,7 @@
+ export async function run(args: string[]): Promise<void> {
+   const { empty, json, force } = parseArgs(args);
+   const homeDir = os.homedir();
+-  const configDir = path.join(homeDir, '.config', 'nanoclaw');
++  const configDir = path.join(homeDir, '.config', 'delegate-agent');
+   const configFile = path.join(configDir, 'mount-allowlist.json');
+ 
+   if (isRoot()) {
+=== ./setup/service.ts ===
+--- ./setup/service.ts	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.kUBJ5o6Zom	2026-04-20 19:38:56
+@@ -160,7 +160,7 @@
+ }
+ 
+ /**
+- * Kill any orphaned nanoclaw node processes left from previous runs or debugging.
++ * Kill any orphaned delegate-agent node processes left from previous runs or debugging.
+  * Prevents connection conflicts when two instances connect to the same channel simultaneously.
+  */
+ function killOrphanedProcesses(projectRoot: string): void {
+@@ -168,7 +168,7 @@
+     execSync(`pkill -f '${projectRoot}/dist/index\\.js' || true`, {
+       stdio: 'ignore',
+     });
+-    logger.info('Stopped any orphaned nanoclaw processes');
++    logger.info('Stopped any orphaned delegate-agent processes');
+   } catch {
+     // pkill not available or no orphans
+   }
+@@ -229,12 +229,12 @@
+     }
+     const unitDir = path.join(homeDir, '.config', 'systemd', 'user');
+     fs.mkdirSync(unitDir, { recursive: true });
+-    unitPath = path.join(unitDir, 'nanoclaw.service');
++    unitPath = path.join(unitDir, 'delegate-agent.service');
+     systemctlPrefix = 'systemctl --user';
+   }
+ 
+   const unit = `[Unit]
+-Description=NanoClaw Personal Assistant
++Description=DelegateAgent Personal Assistant
+ After=network.target
+ 
+ [Service]
+@@ -263,7 +263,7 @@
+     );
+   }
+ 
+-  // Kill orphaned nanoclaw processes to avoid channel connection conflicts
+=== ./.claude/skills/use-local-whisper/SKILL.md ===
+--- ./.claude/skills/use-local-whisper/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.moWW7zQTgc	2026-04-20 19:38:56
+@@ -94,7 +94,7 @@
+ 
+ ### Ensure launchd PATH includes Homebrew
+ 
+-The NanoClaw launchd service runs with a restricted PATH. `whisper-cli` and `ffmpeg` are in `/opt/homebrew/bin/` (Apple Silicon) or `/usr/local/bin/` (Intel), which may not be in the plist's PATH.
++The DelegateAgent launchd service runs with a restricted PATH. `whisper-cli` and `ffmpeg` are in `/opt/homebrew/bin/` (Apple Silicon) or `/usr/local/bin/` (Intel), which may not be in the plist's PATH.
+ 
+ Check the current PATH:
+ ```bash
+=== ./.claude/skills/add-discord/SKILL.md ===
+--- ./.claude/skills/add-discord/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.iovQyIfLyB	2026-04-20 19:38:56
+@@ -1,11 +1,11 @@
+ ---
+ name: add-discord
+-description: Add Discord bot channel integration to NanoClaw.
++description: Add Discord bot channel integration to DelegateAgent.
+ ---
+ 
+ # Add Discord Channel
+ 
+-This skill adds Discord support to NanoClaw, then walks through interactive setup.
++This skill adds Discord support to DelegateAgent, then walks through interactive setup.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -169,7 +169,7 @@
+ 1. Check `DISCORD_BOT_TOKEN` is set in `.env` AND synced to `data/env/env`
+ 2. Check channel is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'dc:%'"`
+ 3. For non-main channels: message must include trigger pattern (@mention the bot)
+-4. Service is running: `launchctl list | grep nanoclaw`
++4. Service is running: `launchctl list | grep delegate-agent`
+ 5. Verify the bot has been invited to the server (check OAuth2 URL was used)
+ 
+ ### Bot only responds to @mentions
+@@ -184,7 +184,7 @@
+ 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+ 2. Select your application > **Bot** tab
+ 3. Under **Privileged Gateway Intents**, enable **Message Content Intent**
+-4. Restart NanoClaw
++4. Restart DelegateAgent
+ 
+ ### Getting Channel ID
+ 
+@@ -198,6 +198,6 @@
+ - Text messages in registered channels
+ - Attachment descriptions (images, videos, files shown as placeholders)
+ - Reply context (shows who the user is replying to)
+-- @mention translation (Discord `<@botId>` → NanoClaw trigger format)
++- @mention translation (Discord `<@botId>` → DelegateAgent trigger format)
+=== ./.claude/skills/add-whatsapp/SKILL.md ===
+--- ./.claude/skills/add-whatsapp/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.afsvQOxhRO	2026-04-20 19:38:56
+@@ -5,7 +5,7 @@
+ 
+ # Add WhatsApp Channel
+ 
+-This skill adds WhatsApp support to NanoClaw. It installs the WhatsApp channel code, dependencies, and guides through authentication, registration, and configuration.
++This skill adds WhatsApp support to DelegateAgent. It installs the WhatsApp channel code, dependencies, and guides through authentication, registration, and configuration.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -267,7 +267,7 @@
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw
+ 
+ # Linux (systemd)
+-systemctl --user restart nanoclaw
++systemctl --user restart delegate-agent
+ 
+ # Linux (nohup fallback)
+ bash start-nanoclaw.sh
+@@ -320,7 +320,7 @@
+ 
+ ### "conflict" disconnection
+ 
+-This happens when two instances connect with the same credentials. Ensure only one NanoClaw process is running:
++This happens when two instances connect with the same credentials. Ensure only one DelegateAgent process is running:
+ 
+ ```bash
+ pkill -f "node dist/index.js"
+@@ -332,7 +332,7 @@
+ Check:
+ 1. Auth credentials exist: `ls store/auth/creds.json`
+ 3. Chat is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE '%whatsapp%' OR jid LIKE '%@g.us' OR jid LIKE '%@s.whatsapp.net'"`
+-4. Service is running: `launchctl list | grep nanoclaw` (macOS) or `systemctl --user status nanoclaw` (Linux)
++4. Service is running: `launchctl list | grep delegate-agent` (macOS) or `systemctl --user status delegate-agent` (Linux)
+ 5. Logs: `tail -50 logs/nanoclaw.log`
+ 
+ ### Group names not showing
+@@ -357,9 +357,9 @@
+ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+=== ./.claude/skills/add-compact/SKILL.md ===
+--- ./.claude/skills/add-compact/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.QqPMP94GIF	2026-04-20 19:38:56
+@@ -53,14 +53,14 @@
+ 
+ ```bash
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ ## Phase 3: Verify
+ 
+ ### Integration Test
+ 
+-1. Start NanoClaw in dev mode: `npm run dev`
++1. Start DelegateAgent in dev mode: `npm run dev`
+ 2. From the **main group** (self-chat), send exactly: `/compact`
+ 3. Verify:
+    - The agent acknowledges compaction (e.g., "Conversation compacted.")
+@@ -117,7 +117,7 @@
+ 
+ - **Main-group or trusted/admin sender only.** The main group is the user's private self-chat and is trusted (see `docs/SECURITY.md`). Non-main groups are untrusted — a careless or malicious user could wipe the agent's short-term memory. However, the device owner (`is_from_me`) is always trusted and can compact from any group.
+ - **No auto-compaction.** This skill implements manual compaction only. Automatic threshold-based compaction is a separate concern and should be a separate skill.
+-- **No config file.** NanoClaw's philosophy is customization through code changes, not configuration sprawl.
++- **No config file.** DelegateAgent's philosophy is customization through code changes, not configuration sprawl.
+ - **Transcript archived before compaction.** The existing `PreCompact` hook in the agent-runner archives the full transcript to `conversations/` before the SDK compacts it.
+ - **Session continues after compaction.** This is not a destructive reset. The conversation continues with summarized context.
+ 
+=== ./.claude/skills/migrate-from-openclaw/MIGRATE_CRONS.md ===
+--- ./.claude/skills/migrate-from-openclaw/MIGRATE_CRONS.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.UVP8d9jeKj	2026-04-20 19:38:56
+@@ -1,4 +1,4 @@
+-# Migrating OpenClaw Cron Jobs to NanoClaw Scheduled Tasks
++# Migrating OpenClaw Cron Jobs to DelegateAgent Scheduled Tasks
+ 
+ This file is referenced by SKILL.md Phase 5 when cron jobs are detected.
+ 
+@@ -20,7 +20,7 @@
+ - `failureAlert`: `{ after?: number, channel?, to?, cooldownMs? }` | `false`
+ - `state`: runtime state (nextRunAtMs, lastRunStatus, consecutiveErrors, etc.)
+ 
+-## NanoClaw `scheduled_tasks` Table
++## DelegateAgent `scheduled_tasks` Table
+ 
+ Source: `src/db.ts`
+ 
+@@ -50,11 +50,11 @@
+ 
+ ## What Doesn't Map
+ 
+-- `delivery.mode:"webhook"` — NanoClaw has no webhook delivery. Discuss with the user: this could be implemented as a task `script` that runs `curl` to hit the webhook endpoint.
+-- `failureAlert` — NanoClaw has no failure alert system. Note this to the user.
+-- `wakeMode` — NanoClaw tasks always wake the agent immediately.
+-- `payload.model`, `payload.thinking`, `payload.timeoutSeconds` — NanoClaw doesn't support per-task model/thinking config. These are handled by the SDK.
+-- `deleteAfterRun` — NanoClaw `"once"` tasks are marked `"completed"` after running, not deleted.
++- `delivery.mode:"webhook"` — DelegateAgent has no webhook delivery. Discuss with the user: this could be implemented as a task `script` that runs `curl` to hit the webhook endpoint.
++- `failureAlert` — DelegateAgent has no failure alert system. Note this to the user.
++- `wakeMode` — DelegateAgent tasks always wake the agent immediately.
++- `payload.model`, `payload.thinking`, `payload.timeoutSeconds` — DelegateAgent doesn't support per-task model/thinking config. These are handled by the SDK.
++- `deleteAfterRun` — DelegateAgent `"once"` tasks are marked `"completed"` after running, not deleted.
+ 
+ ## For Each Enabled Job
+ 
+=== ./.claude/skills/migrate-from-openclaw/scripts/discover-openclaw.ts ===
+--- ./.claude/skills/migrate-from-openclaw/scripts/discover-openclaw.ts	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.jM2h6Y4lzt	2026-04-20 19:38:56
+@@ -418,9 +418,9 @@
+ }
+ 
+ /**
+- * Map OpenClaw session key channel:kind:id to NanoClaw JID format.
++ * Map OpenClaw session key channel:kind:id to DelegateAgent JID format.
+  * OpenClaw keys: "whatsapp:group:120...@g.us", "telegram:group:-10012345"
+- * NanoClaw JIDs: "120...@g.us", "tg:-10012345", "dc:12345", "slack:C12345"
++ * DelegateAgent JIDs: "120...@g.us", "tg:-10012345", "dc:12345", "slack:C12345"
+  */
+ function toNanoClawJid(channel: string, id: string): string {
+   switch (channel) {
+@@ -672,7 +672,7 @@
+     .map((c) => c.name)
+     .join(',');
+ 
+-  // Format groups as "channel:id(name)" — also include NanoClaw JID mapping
++  // Format groups as "channel:id(name)" — also include DelegateAgent JID mapping
+   const groupList = groups
+     .map(
+       (g) =>
+=== ./.claude/skills/migrate-from-openclaw/scripts/extract-channel-credentials.ts ===
+--- ./.claude/skills/migrate-from-openclaw/scripts/extract-channel-credentials.ts	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.VhOT9dpdw7	2026-04-20 19:38:56
+@@ -1,6 +1,6 @@
+ /**
+  * Extract a channel credential from an OpenClaw configuration and write it
+- * directly to the NanoClaw .env file.
++ * directly to the DelegateAgent .env file.
+  *
+  * Usage: npx tsx .claude/skills/migrate-from-openclaw/scripts/extract-channel-credentials.ts \
+  *          --channel telegram --state-dir ~/.openclaw --write-env .env
+@@ -172,7 +172,7 @@
+ interface ChannelCredentialSpec {
+   // Fields to look for in the channel config
+   fields: string[];
+-  // Corresponding NanoClaw env var names
++  // Corresponding DelegateAgent env var names
+   envVars: string[];
+ }
+ 
+@@ -293,7 +293,7 @@
+ 
+   // WhatsApp special case: no token, auth-state based.
+   // OpenClaw stores Baileys auth at <stateDir>/credentials/whatsapp/<accountId>/
+-  // using useMultiFileAuthState (same as NanoClaw). The files are directly compatible.
++  // using useMultiFileAuthState (same as DelegateAgent). The files are directly compatible.
+   if (channel === 'whatsapp') {
+     const authPaths = [
+       path.join(stateDir, 'credentials', 'whatsapp', 'default'),
+@@ -341,7 +341,7 @@
+     emitStatus({
+       CHANNEL: channel,
+       HAS_CREDENTIAL: false,
+-      NOTE: `Channel "${channel}" is not supported by NanoClaw. Supported: telegram, discord, slack, whatsapp.`,
++      NOTE: `Channel "${channel}" is not supported by DelegateAgent. Supported: telegram, discord, slack, whatsapp.`,
+     });
+     return;
+   }
+=== ./.claude/skills/migrate-from-openclaw/SKILL.md ===
+--- ./.claude/skills/migrate-from-openclaw/SKILL.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.e2catcg6Mz	2026-04-20 19:38:56
+@@ -1,13 +1,13 @@
+ ---
+ name: migrate-from-openclaw
+-description: Migrate from OpenClaw to NanoClaw. Detects existing OpenClaw installation, extracts identity, channel credentials, scheduled tasks, and other config, then guides interactive migration. Triggers on "migrate from openclaw", "openclaw migration", "import from openclaw".
++description: Migrate from OpenClaw to DelegateAgent. Detects existing OpenClaw installation, extracts identity, channel credentials, scheduled tasks, and other config, then guides interactive migration. Triggers on "migrate from openclaw", "openclaw migration", "import from openclaw".
+ ---
+ 
+ # Migrate from OpenClaw
+ 
+-Guide the user through migrating their OpenClaw installation to NanoClaw. This is a conversation, not a batch job. Read OpenClaw state, discuss it with the user, make judgment calls together about what to bring over and how.
++Guide the user through migrating their OpenClaw installation to DelegateAgent. This is a conversation, not a batch job. Read OpenClaw state, discuss it with the user, make judgment calls together about what to bring over and how.
+ 
+-**Principle:** Never silently copy data. Read it, explain it, discuss where it belongs in NanoClaw's architecture, show proposed changes before applying. Credentials must be masked when displayed (first 4 + `...` + last 4 characters). Make judgment calls about what's core vs. reference material.
++**Principle:** Never silently copy data. Read it, explain it, discuss where it belongs in DelegateAgent's architecture, show proposed changes before applying. Credentials must be masked when displayed (first 4 + `...` + last 4 characters). Make judgment calls about what's core vs. reference material.
+ 
+ **UX:** Use `AskUserQuestion` for multiple-choice only. Use plain text for free-form input. Don't dump raw data — summarize and explain conversationally.
+ 
+@@ -52,7 +52,7 @@
+ - "I found your OpenClaw installation at `<STATE_DIR>`."
+ - Identity: name from IDENTITY.md (if found)
+ - Workspace files: which of SOUL.md, USER.md, MEMORY.md, IDENTITY.md exist
+-- Channels: list each, note which NanoClaw supports (whatsapp, telegram, slack, discord) and which it doesn't
++- Channels: list each, note which DelegateAgent supports (whatsapp, telegram, slack, discord) and which it doesn't
+ - Daily memory files: count (if any)
+ - Skills: count and names (from workspace, shared, personal, project locations)
+ - Cron jobs: count and names
+@@ -61,10 +61,10 @@
+ 
+ Then explain the key architectural differences. Don't dump a table — paraphrase conversationally:
+ 
+-- **Container isolation:** NanoClaw runs each agent in an isolated Linux container (Docker or Apple Container). OpenClaw runs everything in one process. This means stronger isolation but also means each group is its own sandbox.
+-- **Group-based memory:** In OpenClaw, all groups under one agent share the same SOUL.md, MEMORY.md, and IDENTITY.md. In NanoClaw, each group has its own filesystem and CLAUDE.md. Shared state goes in `groups/global/CLAUDE.md` (mounted read-only into all non-main containers).
+-- **Channel skills:** In OpenClaw, channels are configured in `openclaw.json`. In NanoClaw, channels are installed as code via skills (`/add-telegram`, `/add-whatsapp`, etc.) and configured through `.env` variables.
+-- **Simpler config:** NanoClaw has no config file — behavior is in the code and `CLAUDE.md` files. Credentials live in `.env` or the OneCLI vault.
++- **Container isolation:** DelegateAgent runs each agent in an isolated Linux container (Docker or Apple Container). OpenClaw runs everything in one process. This means stronger isolation but also means each group is its own sandbox.
++- **Group-based memory:** In OpenClaw, all groups under one agent share the same SOUL.md, MEMORY.md, and IDENTITY.md. In DelegateAgent, each group has its own filesystem and CLAUDE.md. Shared state goes in `groups/global/CLAUDE.md` (mounted read-only into all non-main containers).
++- **Channel skills:** In OpenClaw, channels are configured in `openclaw.json`. In DelegateAgent, channels are installed as code via skills (`/add-telegram`, `/add-whatsapp`, etc.) and configured through `.env` variables.
++- **Simpler config:** DelegateAgent has no config file — behavior is in the code and `CLAUDE.md` files. Credentials live in `.env` or the OneCLI vault.
+=== ./.claude/skills/add-voice-transcription/SKILL.md ===
+--- ./.claude/skills/add-voice-transcription/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.5ZTeNBwKt9	2026-04-20 19:38:56
+@@ -1,11 +1,11 @@
+ ---
+ name: add-voice-transcription
+-description: Add voice message transcription to NanoClaw using OpenAI's Whisper API. Automatically transcribes WhatsApp voice notes so the agent can read and respond to them.
++description: Add voice message transcription to DelegateAgent using OpenAI's Whisper API. Automatically transcribes WhatsApp voice notes so the agent can read and respond to them.
+ ---
+ 
+ # Add Voice Transcription
+ 
+-This skill adds automatic voice message transcription to NanoClaw's WhatsApp channel using OpenAI's Whisper API. When a voice note arrives, it is downloaded, transcribed, and delivered to the agent as `[Voice: <transcript>]`.
++This skill adds automatic voice message transcription to DelegateAgent's WhatsApp channel using OpenAI's Whisper API. When a voice note arrives, it is downloaded, transcribed, and delivered to the agent as `[Voice: <transcript>]`.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -77,7 +77,7 @@
+ >
+ > 1. Go to https://platform.openai.com/api-keys
+ > 2. Click "Create new secret key"
+-> 3. Give it a name (e.g., "NanoClaw Transcription")
++> 3. Give it a name (e.g., "DelegateAgent Transcription")
+ > 4. Copy the key (starts with `sk-`)
+ >
+ > Cost: ~$0.006 per minute of audio (~$0.003 per typical 30-second voice note)
+@@ -105,7 +105,7 @@
+ ```bash
+ npm run build
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ ## Phase 4: Verify
+=== ./.claude/skills/add-emacs/SKILL.md ===
+--- ./.claude/skills/add-emacs/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.kjNaWPikIB	2026-04-20 19:38:56
+@@ -1,21 +1,21 @@
+ ---
+ name: add-emacs
+-description: Add Emacs as a channel. Opens an interactive chat buffer and org-mode integration so you can talk to NanoClaw from within Emacs (Doom, Spacemacs, or vanilla). Uses a local HTTP bridge — no bot token or external service needed.
++description: Add Emacs as a channel. Opens an interactive chat buffer and org-mode integration so you can talk to DelegateAgent from within Emacs (Doom, Spacemacs, or vanilla). Uses a local HTTP bridge — no bot token or external service needed.
+ ---
+ 
+ # Add Emacs Channel
+ 
+-This skill adds Emacs support to NanoClaw, then walks through interactive setup.
++This skill adds Emacs support to DelegateAgent, then walks through interactive setup.
+ Works with Doom Emacs, Spacemacs, and vanilla Emacs 27.1+.
+ 
+ ## What you can do with this
+ 
+ - **Ask while coding** — open the chat buffer (`C-c n c` / `SPC N c`), ask about a function or error without leaving Emacs
+-- **Code review** — select a region and send it with `nanoclaw-org-send`; the response appears as a child heading inline in your org file
++- **Code review** — select a region and send it with `delegate-agent-org-send`; the response appears as a child heading inline in your org file
+ - **Meeting notes** — send an org agenda entry; get a summary or action item list back as a child node
+ - **Draft writing** — send org prose; receive revisions or continuations in place
+ - **Research capture** — ask a question directly in your org notes; the answer lands exactly where you need it
+-- **Schedule tasks** — ask Andy to set a reminder or create a scheduled NanoClaw task (e.g. "remind me tomorrow to review the PR")
++- **Schedule tasks** — ask Andy to set a reminder or create a scheduled DelegateAgent task (e.g. "remind me tomorrow to review the PR")
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -65,7 +65,7 @@
+ This adds:
+ - `src/channels/emacs.ts` — `EmacsBridgeChannel` HTTP server (port 8766)
+ - `src/channels/emacs.test.ts` — unit tests
+-- `emacs/nanoclaw.el` — Emacs Lisp package (`nanoclaw-chat`, `nanoclaw-org-send`)
++- `emacs/nanoclaw.el` — Emacs Lisp package (`delegate-agent-chat`, `delegate-agent-org-send`)
+ - `import './emacs.js'` appended to `src/channels/index.ts`
+ 
+ If the merge reports conflicts, resolve them by reading the conflicted files and understanding the intent of both sides.
+@@ -98,7 +98,7 @@
+ 
+ ### Configure Emacs
+=== ./.claude/skills/update-delegate-agent/SKILL.md ===
+--- ./.claude/skills/update-delegate-agent/SKILL.md	2026-04-20 18:24:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.904Bchs0iO	2026-04-20 19:38:56
+@@ -1,6 +1,6 @@
+ ---
+ name: update-delegate-agent
+-description: Efficiently bring upstream NanoClaw updates into a customized DelegateAgent install, with preview, selective cherry-pick, and low token usage.
++description: Efficiently bring upstream DelegateAgent updates into a customized DelegateAgent install, with preview, selective cherry-pick, and low token usage.
+ ---
+ 
+ # About
+=== ./.claude/skills/use-native-credential-proxy/SKILL.md ===
+--- ./.claude/skills/use-native-credential-proxy/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.2HlZgVPRZi	2026-04-20 19:38:57
+@@ -5,7 +5,7 @@
+ 
+ # Use Native Credential Proxy
+ 
+-This skill replaces the OneCLI gateway with NanoClaw's built-in credential proxy. Containers get credentials injected via a local HTTP proxy that reads from `.env` — no external services needed.
++This skill replaces the OneCLI gateway with DelegateAgent's built-in credential proxy. Containers get credentials injected via a local HTTP proxy that reads from `.env` — no external services needed.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -130,7 +130,7 @@
+ 
+ Then restart the service:
+ - macOS: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
+-- Linux: `systemctl --user restart nanoclaw`
++- Linux: `systemctl --user restart delegate-agent`
+ - WSL/manual: stop and re-run `bash start-nanoclaw.sh`
+ 
+ 2. Check logs for successful proxy startup:
+=== ./.claude/skills/setup/SKILL.md ===
+--- ./.claude/skills/setup/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.msRcvJn4Bv	2026-04-20 19:39:00
+@@ -1,9 +1,9 @@
+ ---
+ name: setup
+-description: Run initial NanoClaw setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
++description: Run initial DelegateAgent setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure delegate-agent", or first-time setup requests.
+ ---
+ 
+-# NanoClaw Setup
++# DelegateAgent Setup
+ 
+ Run setup steps automatically. Only pause when user action is required (channel authentication, configuration choices). Setup uses `bash setup.sh` for bootstrap, then `npx tsx setup/index.ts --step <name>` for all other steps. Steps emit structured status blocks to stdout. Verbose logs go to `logs/setup.log`.
+ 
+@@ -20,7 +20,7 @@
+ 
+ **Case A — `origin` points to `qwibitai/nanoclaw` (user cloned directly):**
+ 
+-The user cloned instead of forking. AskUserQuestion: "You cloned NanoClaw directly. We recommend forking so you can push your customizations. Would you like to set up a fork?"
++The user cloned instead of forking. AskUserQuestion: "You cloned DelegateAgent directly. We recommend forking so you can push your customizations. Would you like to set up a fork?"
+ - Fork now (recommended) — walk them through it
+ - Continue without fork — they'll only have local changes
+ 
+@@ -81,7 +81,7 @@
+ If a directory is found, AskUserQuestion:
+ 
+ 1. **Migrate now** — "Import identity, credentials, and settings from OpenClaw before continuing setup."
+-2. **Fresh start** — "Skip migration and set up NanoClaw from scratch."
++2. **Fresh start** — "Skip migration and set up DelegateAgent from scratch."
+ 3. **Migrate later** — "Continue setup now, run `/migrate-from-openclaw` anytime later."
+ 
+ If "Migrate now": invoke `/migrate-from-openclaw`, then return here and continue at step 2a (Timezone).
+@@ -282,7 +282,7 @@
+ 
+ If service already running: unload first.
+ - macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist`
+-- Linux: `systemctl --user stop nanoclaw` (or `systemctl stop nanoclaw` if root)
++- Linux: `systemctl --user stop delegate-agent` (or `systemctl stop delegate-agent` if root)
+ 
+ Run `npx tsx setup/index.ts --step service` and parse the status block.
+=== ./.claude/skills/setup/diagnostics.md ===
+--- ./.claude/skills/setup/diagnostics.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.uYYzJK5805	2026-04-20 19:39:00
+@@ -20,7 +20,7 @@
+   "distinct_id": "<uuid>",
+   "properties": {
+     "success": true,
+-    "nanoclaw_version": "1.2.21",
++    "delegate-agent_version": "1.2.21",
+     "os_platform": "darwin",
+     "arch": "arm64",
+     "node_major_version": 22,
+=== ./.claude/skills/migrate-nanoclaw/SKILL.md ===
+--- ./.claude/skills/migrate-nanoclaw/SKILL.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.A7XbYv89IR	2026-04-20 19:39:00
+@@ -5,7 +5,7 @@
+ 
+ # Context
+ 
+-NanoClaw users fork the repo and customize it — changing config values, editing source files, modifying personas, adding skills. When upstream ships updates or refactors, `git merge` produces painful conflicts because the same core files were changed on both sides.
++DelegateAgent users fork the repo and customize it — changing config values, editing source files, modifying personas, adding skills. When upstream ships updates or refactors, `git merge` produces painful conflicts because the same core files were changed on both sides.
+ 
+ This skill extracts the user's customizations into a migration guide — capturing both the intent (what they want) and the implementation details (how they did it, with code snippets, API calls, and specific configurations). On upgrade, it checks out clean upstream in a worktree, then reapplies customizations using the guide. No merge conflicts because there's nothing to merge.
+ 
+@@ -109,7 +109,7 @@
+ 
+ Spawn a haiku sub-agent (Agent tool, model: haiku) for initial exploration:
+ 
+-> Explore this NanoClaw fork to identify all changes from the upstream base. Run these commands and report back:
++> Explore this DelegateAgent fork to identify all changes from the upstream base. Run these commands and report back:
+ >
+ > 1. `git diff --name-only $BASE..HEAD` — all changed files
+ > 2. `git log --oneline $BASE..HEAD` — all commits (look for skill branch merges like `Merge branch 'skill/*'`)
+@@ -194,7 +194,7 @@
+ Structure:
+ 
+ ```markdown
+-# NanoClaw Migration Guide
++# DelegateAgent Migration Guide
+ 
+ Generated: <timestamp>
+ Base: <BASE hash>
+=== ./.claude/skills/migrate-nanoclaw/diagnostics.md ===
+--- ./.claude/skills/migrate-nanoclaw/diagnostics.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.nGWfrvO9Vi	2026-04-20 19:39:00
+@@ -18,7 +18,7 @@
+   "distinct_id": "<uuid>",
+   "properties": {
+     "success": true,
+-    "nanoclaw_version": "1.2.43",
++    "delegate-agent_version": "1.2.43",
+     "os_platform": "darwin",
+     "arch": "arm64",
+     "node_major_version": 22,
+=== ./.claude/skills/add-telegram/SKILL.md ===
+--- ./.claude/skills/add-telegram/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.W1hq4S4Uwk	2026-04-20 19:39:00
+@@ -5,7 +5,7 @@
+ 
+ # Add Telegram Channel
+ 
+-This skill adds Telegram support to NanoClaw, then walks through interactive setup.
++This skill adds Telegram support to DelegateAgent, then walks through interactive setup.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -116,7 +116,7 @@
+ ```bash
+ npm run build
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ ## Phase 4: Registration
+@@ -173,7 +173,7 @@
+ 1. `TELEGRAM_BOT_TOKEN` is set in `.env` AND synced to `data/env/env`
+ 2. Chat is registered in SQLite (check with: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'tg:%'"`)
+ 3. For non-main chats: message includes trigger pattern
+-4. Service is running: `launchctl list | grep nanoclaw` (macOS) or `systemctl --user status nanoclaw` (Linux)
++4. Service is running: `launchctl list | grep delegate-agent` (macOS) or `systemctl --user status delegate-agent` (Linux)
+ 
+ ### Bot only responds to @mentions in groups
+ 
+@@ -197,9 +197,9 @@
+ # When done testing:
+ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+ # Linux:
+-# systemctl --user stop nanoclaw
++# systemctl --user stop delegate-agent
+ # npm run dev
+-# systemctl --user start nanoclaw
++# systemctl --user start delegate-agent
+ ```
+ 
+=== ./.claude/skills/add-reactions/SKILL.md ===
+--- ./.claude/skills/add-reactions/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.xRzjDfbjCp	2026-04-20 19:39:01
+@@ -5,7 +5,7 @@
+ 
+ # Add Reactions
+ 
+-This skill adds emoji reaction support to NanoClaw's WhatsApp channel: receive and store reactions, send reactions from the container agent via MCP tool, and query reaction history from SQLite.
++This skill adds emoji reaction support to DelegateAgent's WhatsApp channel: receive and store reactions, send reactions from the container agent via MCP tool, and query reaction history from SQLite.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -76,7 +76,7 @@
+ 
+ Linux:
+ ```bash
+-systemctl --user restart nanoclaw
++systemctl --user restart delegate-agent
+ ```
+ 
+ macOS:
+@@ -102,7 +102,7 @@
+ 
+ ### Reactions not appearing in database
+ 
+-- Check NanoClaw logs for `Failed to process reaction` errors
++- Check DelegateAgent logs for `Failed to process reaction` errors
+ - Verify the chat is registered
+ - Confirm the service is running
+ 
+=== ./.claude/skills/update-nanoclaw/SKILL.md ===
+--- ./.claude/skills/update-nanoclaw/SKILL.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.pk2abbPXad	2026-04-20 19:39:01
+@@ -1,11 +1,11 @@
+ ---
+ name: update-nanoclaw
+-description: Efficiently bring upstream NanoClaw updates into a customized install, with preview, selective cherry-pick, and low token usage.
++description: Efficiently bring upstream DelegateAgent updates into a customized install, with preview, selective cherry-pick, and low token usage.
+ ---
+ 
+ # About
+ 
+-Your NanoClaw fork drifts from upstream as you customize it. This skill pulls upstream changes into your install without losing your modifications.
++Your DelegateAgent fork drifts from upstream as you customize it. This skill pulls upstream changes into your install without losing your modifications.
+ 
+ Run `/update-nanoclaw` in Claude Code.
+ 
+@@ -50,7 +50,7 @@
+ ---
+ 
+ # Goal
+-Help a user with a customized NanoClaw install safely incorporate upstream changes without a fresh reinstall and without blowing tokens.
++Help a user with a customized DelegateAgent install safely incorporate upstream changes without a fresh reinstall and without blowing tokens.
+ 
+ # Operating principles
+ - Never proceed with a dirty working tree.
+=== ./.claude/skills/update-nanoclaw/diagnostics.md ===
+--- ./.claude/skills/update-nanoclaw/diagnostics.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.dtm1LssRKY	2026-04-20 19:39:01
+@@ -19,7 +19,7 @@
+   "distinct_id": "<uuid>",
+   "properties": {
+     "success": true,
+-    "nanoclaw_version": "1.2.21",
++    "delegate-agent_version": "1.2.21",
+     "os_platform": "darwin",
+     "arch": "arm64",
+     "node_major_version": 22,
+=== ./.claude/skills/channel-formatting/SKILL.md ===
+--- ./.claude/skills/channel-formatting/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.jCYajAkwFE	2026-04-20 19:39:01
+@@ -88,7 +88,7 @@
+ ```bash
+ npm run build
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw   # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ ### Spot-check formatting
+=== ./.claude/skills/convert-to-apple-container/SKILL.md ===
+--- ./.claude/skills/convert-to-apple-container/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.4vldyOmQlM	2026-04-20 19:39:01
+@@ -5,7 +5,7 @@
+ 
+ # Convert to Apple Container
+ 
+-This skill switches NanoClaw's container runtime from Docker to Apple Container (macOS-only). It uses the skills engine for deterministic code changes, then walks through verification.
++This skill switches DelegateAgent's container runtime from Docker to Apple Container (macOS-only). It uses the skills engine for deterministic code changes, then walks through verification.
+ 
+ **What this changes:**
+ - Container runtime binary: `docker` → `container`
+@@ -111,7 +111,7 @@
+ ```
+ 
+ ```bash
+-grep -q 'nanoclaw proxy' /etc/pf.conf 2>/dev/null || echo '# nanoclaw proxy — block LAN access to credential proxy
++grep -q 'delegate-agent proxy' /etc/pf.conf 2>/dev/null || echo '# delegate-agent proxy — block LAN access to credential proxy
+ block in on en0 proto tcp to any port 3001' | sudo tee -a /etc/pf.conf > /dev/null
+ ```
+ 
+=== ./.claude/skills/x-integration/SKILL.md ===
+--- ./.claude/skills/x-integration/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.vh2SBxV3NJ	2026-04-20 19:39:01
+@@ -1,13 +1,13 @@
+ ---
+ name: x-integration
+-description: X (Twitter) integration for NanoClaw. Post tweets, like, reply, retweet, and quote. Use for setup, testing, or troubleshooting X functionality. Triggers on "setup x", "x integration", "twitter", "post tweet", "tweet".
++description: X (Twitter) integration for DelegateAgent. Post tweets, like, reply, retweet, and quote. Use for setup, testing, or troubleshooting X functionality. Triggers on "setup x", "x integration", "twitter", "post tweet", "tweet".
+ ---
+ 
+ # X (Twitter) Integration
+ 
+ Browser automation for X interactions via WhatsApp.
+ 
+-> **Compatibility:** NanoClaw v1.0.0. Directory structure may change in future versions.
++> **Compatibility:** DelegateAgent v1.0.0. Directory structure may change in future versions.
+ 
+ ## Features
+ 
+@@ -23,7 +23,7 @@
+ 
+ Before using this skill, ensure:
+ 
+-1. **NanoClaw is installed and running** - WhatsApp connected, service active
++1. **DelegateAgent is installed and running** - WhatsApp connected, service active
+ 2. **Dependencies installed**:
+    ```bash
+    npm ls playwright dotenv-cli || npm install playwright dotenv-cli
+@@ -50,8 +50,8 @@
+ # 3. Rebuild host and restart service
+ npm run build
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
+-# Verify: launchctl list | grep nanoclaw (macOS) or systemctl --user status nanoclaw (Linux)
++# Linux: systemctl --user restart delegate-agent
++# Verify: launchctl list | grep delegate-agent (macOS) or systemctl --user status delegate-agent (Linux)
+ ```
+ 
+ ## Configuration
+@@ -154,7 +154,7 @@
+ 
+=== ./.claude/skills/claw/SKILL.md ===
+--- ./.claude/skills/claw/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.ejBscclfYv	2026-04-20 19:39:01
+@@ -1,11 +1,11 @@
+ ---
+ name: claw
+-description: Install the claw CLI tool — run NanoClaw agent containers from the command line without opening a chat app.
++description: Install the claw CLI tool — run DelegateAgent agent containers from the command line without opening a chat app.
+ ---
+ 
+-# claw — NanoClaw CLI
++# claw — DelegateAgent CLI
+ 
+-`claw` is a Python CLI that sends prompts directly to a NanoClaw agent container from the terminal. It reads registered groups from the NanoClaw database, picks up secrets from `.env`, and pipes a JSON payload into a container run — no chat app required.
++`claw` is a Python CLI that sends prompts directly to a DelegateAgent agent container from the terminal. It reads registered groups from the DelegateAgent database, picks up secrets from `.env`, and pipes a JSON payload into a container run — no chat app required.
+ 
+ ## What it does
+ 
+@@ -21,12 +21,12 @@
+ ## Prerequisites
+ 
+ - Python 3.8 or later
+-- NanoClaw installed with a built and tagged container image (`nanoclaw-agent:latest`)
++- DelegateAgent installed with a built and tagged container image (`nanoclaw-agent:latest`)
+ - Either `container` (Apple Container, macOS 15+) or `docker` available in `PATH`
+ 
+ ## Install
+ 
+-Run this skill from within the NanoClaw directory. The script auto-detects its location, so the symlink always points to the right place.
++Run this skill from within the DelegateAgent directory. The script auto-detects its location, so the symlink always points to the right place.
+ 
+ ### 1. Copy the script
+ 
+@@ -61,7 +61,7 @@
+ claw --list-groups
+ ```
+ 
+-You should see registered groups. If NanoClaw isn't running or the database doesn't exist yet, the list will be empty — that's fine.
++You should see registered groups. If DelegateAgent isn't running or the database doesn't exist yet, the list will be empty — that's fine.
+ 
+ ## Usage Examples
+=== ./.claude/skills/add-telegram-swarm/SKILL.md ===
+--- ./.claude/skills/add-telegram-swarm/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.CDPfmtZAFS	2026-04-20 19:39:01
+@@ -325,7 +325,7 @@
+ launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+ # Linux:
+-# systemctl --user restart nanoclaw
++# systemctl --user restart delegate-agent
+ ```
+ 
+ Must use `unload/load` (macOS) or `restart` (Linux) because the service env vars changed.
+@@ -381,4 +381,4 @@
+ 5. Remove `sender` param from MCP tool in `container/agent-runner/src/ipc-mcp-stdio.ts`
+ 6. Remove Agent Teams section from group CLAUDE.md files
+ 7. Remove `TELEGRAM_BOT_POOL` from `.env`, `data/env/env`, and launchd plist/systemd unit
+-8. Rebuild: `npm run build && ./container/build.sh && launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist && launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist` (macOS) or `npm run build && ./container/build.sh && systemctl --user restart nanoclaw` (Linux)
++8. Rebuild: `npm run build && ./container/build.sh && launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist && launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist` (macOS) or `npm run build && ./container/build.sh && systemctl --user restart delegate-agent` (Linux)
+=== ./.claude/skills/init-onecli/SKILL.md ===
+--- ./.claude/skills/init-onecli/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.FHsTlLm1EN	2026-04-20 19:39:02
+@@ -153,7 +153,7 @@
+ 
+ After handling Anthropic credentials (whether migrated or freshly registered), scan `.env` again for remaining credential variables that containers use for outbound API calls.
+ 
+-**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the NanoClaw host process to connect to messaging platforms — they must stay in `.env`.
++**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the DelegateAgent host process to connect to messaging platforms — they must stay in `.env`.
+ 
+ Known container-facing credentials:
+ 
+@@ -238,7 +238,7 @@
+ 
+ Restart the service:
+ - macOS (launchd): `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
+-- Linux (systemd): `systemctl --user restart nanoclaw`
++- Linux (systemd): `systemctl --user restart delegate-agent`
+ - WSL/manual: stop and re-run `bash start-nanoclaw.sh`
+ 
+ ## Phase 5: Verify
+=== ./.claude/skills/add-karpathy-llm-wiki/SKILL.md ===
+--- ./.claude/skills/add-karpathy-llm-wiki/SKILL.md	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.i1MRyUOQSQ	2026-04-20 19:39:02
+@@ -1,11 +1,11 @@
+ ---
+ name: add-karpathy-llm-wiki
+-description: Add a persistent wiki knowledge base to a NanoClaw group. Based on Karpathy's LLM Wiki pattern. Triggers on "add wiki", "wiki", "knowledge base", "llm wiki", "karpathy wiki".
++description: Add a persistent wiki knowledge base to a DelegateAgent group. Based on Karpathy's LLM Wiki pattern. Triggers on "add wiki", "wiki", "knowledge base", "llm wiki", "karpathy wiki".
+ ---
+ 
+ # Add Karpathy LLM Wiki
+ 
+-Set up a persistent wiki knowledge base on NanoClaw, based on Karpathy's LLM Wiki pattern.
++Set up a persistent wiki knowledge base on DelegateAgent, based on Karpathy's LLM Wiki pattern.
+ 
+ ## Step 1: Read the pattern
+ 
+@@ -71,7 +71,7 @@
+ 2. **Monthly**
+ 3. **Skip** — lint manually
+ 
+-If yes, create a NanoClaw scheduled task that runs in the wiki group. This is NOT a Claude Code cron job — it's a NanoClaw group task that runs in the agent container. Insert it into the SQLite database:
++If yes, create a DelegateAgent scheduled task that runs in the wiki group. This is NOT a Claude Code cron job — it's a DelegateAgent group task that runs in the agent container. Insert it into the SQLite database:
+ 
+ ```bash
+ npx tsx -e "
+@@ -104,7 +104,7 @@
+ npm run build
+ ./container/build.sh
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ Tell the user to test by sending a source to the wiki group.
+=== ./.claude/skills/add-parallel/SKILL.md ===
+--- ./.claude/skills/add-parallel/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.DqDCOWO964	2026-04-20 19:39:03
+@@ -1,18 +1,18 @@
+ # Add Parallel AI Integration
+ 
+-Adds Parallel AI MCP integration to NanoClaw for advanced web research capabilities.
++Adds Parallel AI MCP integration to DelegateAgent for advanced web research capabilities.
+ 
+ ## What This Adds
+ 
+ - **Quick Search** - Fast web lookups using Parallel Search API (free to use)
+ - **Deep Research** - Comprehensive analysis using Parallel Task API (asks permission)
+-- **Non-blocking Design** - Uses NanoClaw scheduler for result polling (no container blocking)
++- **Non-blocking Design** - Uses DelegateAgent scheduler for result polling (no container blocking)
+ 
+ ## Prerequisites
+ 
+ User must have:
+ 1. Parallel AI API key from https://platform.parallel.ai
+-2. NanoClaw already set up and running
++2. DelegateAgent already set up and running
+ 3. Docker installed and running
+ 
+ ## Implementation Steps
+@@ -83,14 +83,14 @@
+ Find the section where `mcpServers` is configured (around line 237-252):
+ ```typescript
+ const mcpServers: Record<string, any> = {
+-  nanoclaw: ipcMcp
++  delegate-agent: ipcMcp
+ };
+ ```
+ 
+-Add Parallel AI MCP servers after the nanoclaw server:
++Add Parallel AI MCP servers after the delegate-agent server:
+ ```typescript
+ const mcpServers: Record<string, any> = {
+-  nanoclaw: ipcMcp
++  delegate-agent: ipcMcp
+ };
+=== ./.claude/skills/add-ollama-tool/SKILL.md ===
+--- ./.claude/skills/add-ollama-tool/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.dpwcB7kc55	2026-04-20 19:39:03
+@@ -124,7 +124,7 @@
+ 
+ ```bash
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ ## Phase 4: Verify
+=== ./.claude/skills/add-pdf-reader/SKILL.md ===
+--- ./.claude/skills/add-pdf-reader/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.UzQa42proz	2026-04-20 19:39:03
+@@ -1,6 +1,6 @@
+ ---
+ name: add-pdf-reader
+-description: Add PDF reading to NanoClaw agents. Extracts text from PDFs via pdftotext CLI. Handles WhatsApp attachments, URLs, and local files.
++description: Add PDF reading to DelegateAgent agents. Extracts text from PDFs via pdftotext CLI. Handles WhatsApp attachments, URLs, and local files.
+ ---
+ 
+ # Add PDF Reader
+@@ -63,7 +63,7 @@
+ 
+ ```bash
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ ## Phase 3: Verify
+=== ./.claude/skills/add-macos-statusbar/SKILL.md ===
+--- ./.claude/skills/add-macos-statusbar/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.x04ALf5yoZ	2026-04-20 19:39:03
+@@ -1,11 +1,11 @@
+ ---
+ name: add-macos-statusbar
+-description: Add a macOS menu bar status indicator for NanoClaw. Shows a bolt icon with a green/red dot indicating whether NanoClaw is running, with Start, Stop, and Restart controls. macOS only.
++description: Add a macOS menu bar status indicator for DelegateAgent. Shows a bolt icon with a green/red dot indicating whether DelegateAgent is running, with Start, Stop, and Restart controls. macOS only.
+ ---
+ 
+ # Add macOS Menu Bar Status Indicator
+ 
+-Adds a persistent menu bar icon that shows NanoClaw's running status and lets the user
++Adds a persistent menu bar icon that shows DelegateAgent's running status and lets the user
+ start, stop, or restart the service — similar to how Docker Desktop appears in the menu bar.
+ 
+ **macOS only.** Requires Xcode Command Line Tools (`swiftc`).
+@@ -117,10 +117,10 @@
+ 
+ Tell the user:
+ 
+-> The bolt icon should now appear in your macOS menu bar. Click it to see NanoClaw's status and control the service.
++> The bolt icon should now appear in your macOS menu bar. Click it to see DelegateAgent's status and control the service.
+ >
+-> - **Green dot** — NanoClaw is running
+-> - **Red dot** — NanoClaw is stopped
++> - **Green dot** — DelegateAgent is running
++> - **Red dot** — DelegateAgent is stopped
+ >
+ > Use **Restart** after making code changes, and **View Logs** to open the log file directly.
+ 
+=== ./.claude/skills/add-gmail/SKILL.md ===
+--- ./.claude/skills/add-gmail/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.VYYYBsPTal	2026-04-20 19:39:03
+@@ -1,11 +1,11 @@
+ ---
+ name: add-gmail
+-description: Add Gmail integration to NanoClaw. Can be configured as a tool (agent reads/sends emails when triggered from WhatsApp) or as a full channel (emails can trigger the agent, schedule tasks, and receive replies). Guides through GCP OAuth setup and implements the integration.
++description: Add Gmail integration to DelegateAgent. Can be configured as a tool (agent reads/sends emails when triggered from WhatsApp) or as a full channel (emails can trigger the agent, schedule tasks, and receive replies). Guides through GCP OAuth setup and implements the integration.
+ ---
+ 
+ # Add Gmail Integration
+ 
+-This skill adds Gmail support to NanoClaw — either as a tool (read, send, search, draft) or as a full channel that polls the inbox.
++This skill adds Gmail support to DelegateAgent — either as a tool (read, send, search, draft) or as a full channel that polls the inbox.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -113,7 +113,7 @@
+ > 2. Go to **APIs & Services > Library**, search "Gmail API", click **Enable**
+ > 3. Go to **APIs & Services > Credentials**, click **+ CREATE CREDENTIALS > OAuth client ID**
+ >    - If prompted for consent screen: choose "External", fill in app name and email, save
+->    - Application type: **Desktop app**, name: anything (e.g., "NanoClaw Gmail")
++>    - Application type: **Desktop app**, name: anything (e.g., "DelegateAgent Gmail")
+ > 4. Click **DOWNLOAD JSON** and save as `gcp-oauth.keys.json`
+ >
+ > Where did you save the file? (Give me the full path, or paste the file contents here)
+@@ -160,7 +160,7 @@
+ ```bash
+ npm run build
+ launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
+-# Linux: systemctl --user restart nanoclaw
++# Linux: systemctl --user restart delegate-agent
+ ```
+ 
+ ## Phase 4: Verify
+@@ -222,7 +222,7 @@
+ 2. Remove `gmail` MCP server and `mcp__gmail__*` from `container/agent-runner/src/index.ts`
+ 3. Rebuild and restart
+ 4. Clear stale agent-runner copies: `rm -r data/sessions/*/agent-runner-src 2>/dev/null || true`
+-5. Rebuild: `cd container && ./build.sh && cd .. && npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux)
++5. Rebuild: `cd container && ./build.sh && cd .. && npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart delegate-agent` (Linux)
+=== ./.claude/skills/add-image-vision/SKILL.md ===
+--- ./.claude/skills/add-image-vision/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.UVFJuHRfuY	2026-04-20 19:39:03
+@@ -1,11 +1,11 @@
+ ---
+ name: add-image-vision
+-description: Add image vision to NanoClaw agents. Resizes and processes WhatsApp image attachments, then sends them to Claude as multimodal content blocks.
++description: Add image vision to DelegateAgent agents. Resizes and processes WhatsApp image attachments, then sends them to Claude as multimodal content blocks.
+ ---
+ 
+ # Image Vision Skill
+ 
+-Adds the ability for NanoClaw agents to see and understand images sent via WhatsApp. Images are downloaded, resized with sharp, saved to the group workspace, and passed to the agent as base64-encoded multimodal content blocks.
++Adds the ability for DelegateAgent agents to see and understand images sent via WhatsApp. Images are downloaded, resized with sharp, saved to the group workspace, and passed to the agent as base64-encoded multimodal content blocks.
+ 
+ ## Phase 1: Pre-flight
+ 
+=== ./.claude/skills/add-slack/SKILL.md ===
+--- ./.claude/skills/add-slack/SKILL.md	2026-04-20 19:32:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.xR6P1rrkr3	2026-04-20 19:39:03
+@@ -5,7 +5,7 @@
+ 
+ # Add Slack Channel
+ 
+-This skill adds Slack support to NanoClaw, then walks through interactive setup.
++This skill adds Slack support to DelegateAgent, then walks through interactive setup.
+ 
+ ## Phase 1: Pre-flight
+ 
+@@ -112,7 +112,7 @@
+ > 2. In that channel, the channel ID is in the URL when you open it in a browser: `https://app.slack.com/client/T.../C0123456789` — the `C...` part is the channel ID
+ > 3. Alternatively, right-click the channel name → **Copy link** — the channel ID is the last path segment
+ >
+-> The JID format for NanoClaw is: `slack:C0123456789`
++> The JID format for DelegateAgent is: `slack:C0123456789`
+ 
+ Wait for the user to provide the channel ID.
+ 
+@@ -157,7 +157,7 @@
+ 1. Check `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are set in `.env` AND synced to `data/env/env`
+ 2. Check channel is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'slack:%'"`
+ 3. For non-main channels: message must include trigger pattern
+-4. Service is running: `launchctl list | grep nanoclaw`
++4. Service is running: `launchctl list | grep delegate-agent`
+ 
+ ### Bot connected but not receiving messages
+ 
+=== ./.claude/skills/debug/SKILL.md ===
+--- ./.claude/skills/debug/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.LoBXAxD4Ml	2026-04-20 19:39:03
+@@ -3,7 +3,7 @@
+ description: Debug container agent issues. Use when things aren't working, container fails, authentication problems, or to understand how the container system works. Covers logs, environment variables, mounts, and common issues.
+ ---
+ 
+-# NanoClaw Container Debugging
++# DelegateAgent Container Debugging
+ 
+ This guide covers debugging the containerized agent execution system.
+ 
+@@ -278,7 +278,7 @@
+ # Clear sessions for a specific group
+ rm -rf data/sessions/{groupFolder}/.claude/
+ 
+-# Also clear the session ID from NanoClaw's tracking (stored in SQLite)
++# Also clear the session ID from DelegateAgent's tracking (stored in SQLite)
+ sqlite3 store/messages.db "DELETE FROM sessions WHERE group_folder = '{groupFolder}'"
+ ```
+ 
+@@ -320,7 +320,7 @@
+ Run this to check common issues:
+ 
+ ```bash
+-echo "=== Checking NanoClaw Container Setup ==="
++echo "=== Checking DelegateAgent Container Setup ==="
+ 
+ echo -e "\n1. Authentication configured?"
+ [ -f .env ] && (grep -q "CLAUDE_CODE_OAUTH_TOKEN=sk-" .env || grep -q "ANTHROPIC_API_KEY=sk-" .env) && echo "OK" || echo "MISSING - add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY to .env"
+=== ./.claude/skills/customize/SKILL.md ===
+--- ./.claude/skills/customize/SKILL.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.Ghid0vymOL	2026-04-20 19:39:03
+@@ -1,9 +1,9 @@
+ ---
+ name: customize
+-description: Add new capabilities or modify NanoClaw behavior. Use when user wants to add channels (Telegram, Slack, email input), change triggers, add integrations, modify the router, or make any other customizations. This is an interactive skill that asks questions to understand what the user wants.
++description: Add new capabilities or modify DelegateAgent behavior. Use when user wants to add channels (Telegram, Slack, email input), change triggers, add integrations, modify the router, or make any other customizations. This is an interactive skill that asks questions to understand what the user wants.
+ ---
+ 
+-# NanoClaw Customization
++# DelegateAgent Customization
+ 
+ This skill helps users add capabilities or modify behavior. Use AskUserQuestion to understand what they want before making changes.
+ 
+@@ -96,7 +96,7 @@
+ launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+ # Linux:
+-# systemctl --user restart nanoclaw
++# systemctl --user restart delegate-agent
+ ```
+ 
+ ## Example Interaction
+=== ./docs/MERGE-POLICY-20260418.md ===
+--- ./docs/MERGE-POLICY-20260418.md	2026-04-20 19:31:42
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.hGA6gaVasC	2026-04-20 19:39:03
+@@ -24,7 +24,7 @@
+ | `src/config.ts` | Keep `getEnvWithFallback` + `migrateLegacyConfigDir` | Accept upstream adds |
+ | `src/channels/delegate.ts` | Keep ours entirely | Upstream has no equivalent |
+ | `src/channels/registry.ts` | Keep `delegate` registration + accept upstream adds | |
+-| `.env.example`, `deploy/env.example` | Keep `DELEGATE_AGENT_TOKEN` header; NANOCLAW_TOKEN as commented legacy | |
++| `.env.example`, `deploy/env.example` | Keep `DELEGATE_AGENT_TOKEN` header; DELEGATE_AGENT_TOKEN as commented legacy | |
+ | `deploy/deploy.sh` | Keep migration block intact | |
+ | `deploy/delegate-agent.service`, `launchd/com.delegate-agent.plist` | Keep ours | No upstream equivalent |
+ | `deploy/Caddyfile` | Keep title + `"service":"delegate-agent"` body | |
+=== ./docs/REQUIREMENTS.md ===
+--- ./docs/REQUIREMENTS.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.Wjo8UtCMLt	2026-04-20 19:39:03
+@@ -1,4 +1,4 @@
+-# NanoClaw Requirements
++# DelegateAgent Requirements
+ 
+ Original requirements and design decisions from the project creator.
+ 
+@@ -8,7 +8,7 @@
+ 
+ This is a lightweight, secure alternative to OpenClaw (formerly ClawBot). That project became a monstrosity - 4-5 different processes running different gateways, endless configuration files, endless integrations. It's a security nightmare where agents don't run in isolated processes; there's all kinds of leaky workarounds trying to prevent them from accessing parts of the system they shouldn't. It's impossible for anyone to realistically understand the whole codebase. When you run it you're kind of just yoloing it.
+ 
+-NanoClaw gives you the core functionality without that mess.
++DelegateAgent gives you the core functionality without that mess.
+ 
+ ---
+ 
+@@ -134,7 +134,7 @@
+ 
+ ### Scheduler
+ - Built-in scheduler runs on the host, spawns containers for task execution
+-- Custom `nanoclaw` MCP server (inside container) provides scheduling tools
++- Custom `delegate-agent` MCP server (inside container) provides scheduling tools
+ - Tools: `schedule_task`, `list_tasks`, `pause_task`, `resume_task`, `cancel_task`, `send_message`
+ - Tasks stored in SQLite with run history
+ - Scheduler loop checks for due tasks every minute
+@@ -184,4 +184,4 @@
+ 
+ ## Project Name
+ 
+-**NanoClaw** - A reference to Clawdbot (now OpenClaw).
++**DelegateAgent** - A reference to Clawdbot (now OpenClaw).
+=== ./docs/docker-sandboxes.md ===
+--- ./docs/docker-sandboxes.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.HmntWDiRv0	2026-04-20 19:39:03
+@@ -1,13 +1,13 @@
+-# Running NanoClaw in Docker Sandboxes (Manual Setup)
++# Running DelegateAgent in Docker Sandboxes (Manual Setup)
+ 
+-This guide walks through setting up NanoClaw inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) from scratch — no install script, no pre-built fork. You'll clone the upstream repo, apply the necessary patches, and have agents running in full hypervisor-level isolation.
++This guide walks through setting up DelegateAgent inside a [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) from scratch — no install script, no pre-built fork. You'll clone the upstream repo, apply the necessary patches, and have agents running in full hypervisor-level isolation.
+ 
+ ## Architecture
+ 
+ ```
+ Host (macOS / Windows WSL)
+ └── Docker Sandbox (micro VM with isolated kernel)
+-    ├── NanoClaw process (Node.js)
++    ├── DelegateAgent process (Node.js)
+     │   ├── Channel adapters (WhatsApp, Telegram, etc.)
+     │   └── Container spawner → nested Docker daemon
+     └── Docker-in-Docker
+@@ -70,9 +70,9 @@
+ npm config set strict-ssl false
+ ```
+ 
+-## Step 3: Clone and Install NanoClaw
++## Step 3: Clone and Install DelegateAgent
+ 
+-NanoClaw must live inside the workspace directory — Docker-in-Docker can only bind-mount from the shared workspace path.
++DelegateAgent must live inside the workspace directory — Docker-in-Docker can only bind-mount from the shared workspace path.
+ 
+ ```bash
+ # Clone to home first (virtiofs can corrupt git pack files during clone)
+@@ -83,7 +83,7 @@
+ WORKSPACE=/Users/you/nanoclaw-workspace
+ 
+ # Move into workspace so DinD mounts work
+-mv nanoclaw "$WORKSPACE/nanoclaw"
++mv delegate-agent "$WORKSPACE/nanoclaw"
+ cd "$WORKSPACE/nanoclaw"
+ 
+ # Install dependencies
+=== ./docs/README.md ===
+--- ./docs/README.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.20lKNqbxF8	2026-04-20 19:39:03
+@@ -1,4 +1,4 @@
+-# NanoClaw Documentation
++# DelegateAgent Documentation
+ 
+ The official documentation is at **[docs.nanoclaw.dev](https://docs.nanoclaw.dev)**.
+ 
+=== ./docs/skills-as-branches.md ===
+--- ./docs/skills-as-branches.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.k4r5KxyK4x	2026-04-20 19:39:03
+@@ -2,9 +2,9 @@
+ 
+ ## Overview
+ 
+-This document covers **feature skills** — skills that add capabilities via git branch merges. This is the most complex skill type and the primary way NanoClaw is extended.
++This document covers **feature skills** — skills that add capabilities via git branch merges. This is the most complex skill type and the primary way DelegateAgent is extended.
+ 
+-NanoClaw has four types of skills overall. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full taxonomy:
++DelegateAgent has four types of skills overall. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full taxonomy:
+ 
+ | Type | Location | How it works |
+ |------|----------|-------------|
+@@ -25,7 +25,7 @@
+ 
+ The upstream repo (`qwibitai/nanoclaw`) maintains:
+ 
+-- `main` — core NanoClaw (no skill code)
++- `main` — core DelegateAgent (no skill code)
+ - `skill/discord` — main + Discord integration
+ - `skill/telegram` — main + Telegram integration
+ - `skill/slack` — main + Slack integration
+@@ -52,7 +52,7 @@
+ 
+ ```bash
+ # Claude runs this behind the scenes — users don't see it
+-claude plugin install nanoclaw-skills@nanoclaw-skills --scope project
++claude plugin install delegate-agent-skills@delegate-agent-skills --scope project
+ ```
+ 
+ Skills are hot-loaded after `claude plugin install` — no restart needed. This means `/setup` can install the marketplace plugin, then immediately run any feature skill, all in one session.
+@@ -70,12 +70,12 @@
+ 
+ ### Marketplace configuration
+ 
+-NanoClaw's `.claude/settings.json` registers the official marketplace:
++DelegateAgent's `.claude/settings.json` registers the official marketplace:
+ 
+ ```json
+=== ./docs/BRANCH-FORK-MAINTENANCE.md ===
+--- ./docs/BRANCH-FORK-MAINTENANCE.md	2026-03-30 17:07:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.6UyEbC6ARD	2026-04-20 19:39:03
+@@ -4,7 +4,7 @@
+ 
+ **`qwibitai/nanoclaw`** (upstream) — core engine with skill definitions (`.claude/skills/`). No channel code on `main`.
+ 
+-**Channel forks** (`nanoclaw-whatsapp`, `nanoclaw-telegram`, `nanoclaw-slack`, etc.) — each fork = upstream + one channel's code applied. Users clone upstream, then merge a fork into their clone to add a channel.
++**Channel forks** (`delegate-agent-whatsapp`, `delegate-agent-telegram`, `delegate-agent-slack`, etc.) — each fork = upstream + one channel's code applied. Users clone upstream, then merge a fork into their clone to add a channel.
+ 
+ **`skill/*` and `feat/*` branches on upstream** — add features unrelated to channels (e.g. `skill/compact`, `skill/apple-container`). Users merge these into their clone to add capabilities. Channel-specific skill branches that duplicate the forks (e.g. `skill/whatsapp`, `skill/telegram`) are legacy.
+ 
+@@ -12,7 +12,7 @@
+ 
+ ```
+ user clones upstream main
+-  ├── merges nanoclaw-whatsapp fork  → adds WhatsApp
++  ├── merges delegate-agent-whatsapp fork  → adds WhatsApp
+   ├── merges skill/compact branch    → adds /compact command
+   └── merges skill/apple-container   → switches to Apple Container
+ ```
+@@ -29,17 +29,17 @@
+ ## Forward merge procedure
+ 
+ ```bash
+-# In your local nanoclaw checkout
++# In your local delegate-agent checkout
+ git checkout main && git pull
+ 
+ # For a fork:
+-git fetch nanoclaw-whatsapp
+-git checkout -B whatsapp-merge nanoclaw-whatsapp/main
++git fetch delegate-agent-whatsapp
++git checkout -B whatsapp-merge delegate-agent-whatsapp/main
+ git merge main
+ # Resolve conflicts (see below)
+ # Remove upstream-only workflows (re-added by every merge since main has them):
+ git rm .github/workflows/bump-version.yml .github/workflows/update-tokens.yml 2>/dev/null
+-git push nanoclaw-whatsapp HEAD:main
++git push delegate-agent-whatsapp HEAD:main
+ git checkout main && git branch -D whatsapp-merge
+=== ./docs/SPEC.md ===
+--- ./docs/SPEC.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.dJOUM7yRA6	2026-04-20 19:39:03
+@@ -1,4 +1,4 @@
+-# NanoClaw Specification
++# DelegateAgent Specification
+ 
+ A personal Claude assistant with multi-channel support, persistent memory per conversation, scheduled tasks, and container-isolated agent execution.
+ 
+@@ -314,8 +314,8 @@
+ │   └── ipc/                       # Container IPC (messages/, tasks/)
+ │
+ ├── logs/                          # Runtime logs (gitignored)
+-│   ├── nanoclaw.log               # Host stdout
+-│   └── nanoclaw.error.log         # Host stderr
++│   ├── delegate-agent.log               # Host stdout
++│   └── delegate-agent.error.log         # Host stderr
+ │   # Note: Per-container logs are in groups/{folder}/logs/container-*.log
+ │
+ └── launchd/
+@@ -414,7 +414,7 @@
+ ### Placeholder Values in launchd
+ 
+ Files with `{{PLACEHOLDER}}` values need to be configured:
+-- `{{PROJECT_ROOT}}` - Absolute path to your nanoclaw installation
++- `{{PROJECT_ROOT}}` - Absolute path to your delegate-agent installation
+ - `{{NODE_PATH}}` - Path to node binary (detected via `which node`)
+ - `{{HOME}}` - User's home directory
+ 
+@@ -422,7 +422,7 @@
+ 
+ ## Memory System
+ 
+-NanoClaw uses a hierarchical memory system based on CLAUDE.md files.
++DelegateAgent uses a hierarchical memory system based on CLAUDE.md files.
+ 
+ ### Memory Hierarchy
+ 
+@@ -498,7 +498,7 @@
+    ├── cwd: groups/{group-name}/
+    ├── prompt: conversation history + current message
+=== ./docs/DEBUG_CHECKLIST.md ===
+--- ./docs/DEBUG_CHECKLIST.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.swARkCNhed	2026-04-20 19:39:03
+@@ -1,4 +1,4 @@
+-# NanoClaw Debug Checklist
++# DelegateAgent Debug Checklist
+ 
+ ## Known Issues (2026-02-08)
+ 
+@@ -15,7 +15,7 @@
+ 
+ **Symptoms**: `Container exited with code 125: pull access denied for nanoclaw-agent` — the container image disappears overnight or after a few hours, even though you just built it.
+ 
+-**Cause**: If your container runtime has Kubernetes enabled (Rancher Desktop enables it by default), the kubelet runs image garbage collection when disk usage exceeds 85%. NanoClaw containers are ephemeral (run and exit), so `nanoclaw-agent:latest` is never protected by a running container. The kubelet sees it as unused and deletes it — often overnight when no messages are being processed. Other images (docker-compose services) survive because they have long-running containers referencing them.
++**Cause**: If your container runtime has Kubernetes enabled (Rancher Desktop enables it by default), the kubelet runs image garbage collection when disk usage exceeds 85%. DelegateAgent containers are ephemeral (run and exit), so `nanoclaw-agent:latest` is never protected by a running container. The kubelet sees it as unused and deletes it — often overnight when no messages are being processed. Other images (docker-compose services) survive because they have long-running containers referencing them.
+ 
+ **Fix**: Disable Kubernetes if you don't need it:
+ ```bash
+@@ -28,11 +28,11 @@
+ 
+ **Diagnosis**: Check the k3s log for image GC activity:
+ ```bash
+-grep -i "nanoclaw" ~/Library/Logs/rancher-desktop/k3s.log
++grep -i "delegate-agent" ~/Library/Logs/rancher-desktop/k3s.log
+ # Look for: "Removing image to free bytes" with the nanoclaw-agent image ID
+ ```
+ 
+-Check NanoClaw logs for image status:
++Check DelegateAgent logs for image status:
+ ```bash
+ grep -E "image found|image NOT found|image missing" logs/nanoclaw.log
+ ```
+@@ -43,14 +43,14 @@
+ 
+ ```bash
+ # 1. Is the service running?
+-launchctl list | grep nanoclaw
++launchctl list | grep delegate-agent
+ # Expected: PID  0  com.nanoclaw (PID = running, "-" = not running, non-zero exit = crashed)
+ 
+ # 2. Any running containers?
+=== ./docs/SECURITY.md ===
+--- ./docs/SECURITY.md	2026-04-20 19:32:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.TG9epqi7nt	2026-04-20 19:39:03
+@@ -1,4 +1,4 @@
+-# NanoClaw Security Model
++# DelegateAgent Security Model
+ 
+ ## Trust Model
+ 
+@@ -23,7 +23,7 @@
+ 
+ ### 2. Mount Security
+ 
+-**External Allowlist** - Mount permissions stored at `~/.config/nanoclaw/mount-allowlist.json`, which is:
++**External Allowlist** - Mount permissions stored at `~/.config/delegate-agent/mount-allowlist.json`, which is:
+ - Outside project root
+ - Never mounted into containers
+ - Cannot be modified by agents
+@@ -66,16 +66,16 @@
+ 
+ ### 5. Credential Isolation (OneCLI Agent Vault)
+ 
+-Real API credentials **never enter containers**. NanoClaw uses [OneCLI's Agent Vault](https://github.com/onecli/onecli) to proxy outbound requests and inject credentials at the gateway level.
++Real API credentials **never enter containers**. DelegateAgent uses [OneCLI's Agent Vault](https://github.com/onecli/onecli) to proxy outbound requests and inject credentials at the gateway level.
+ 
+ **How it works:**
+ 1. Credentials are registered once with `onecli secrets create`, stored and managed by OneCLI
+-2. When NanoClaw spawns a container, it calls `applyContainerConfig()` to route outbound HTTPS through the OneCLI gateway
++2. When DelegateAgent spawns a container, it calls `applyContainerConfig()` to route outbound HTTPS through the OneCLI gateway
+ 3. The gateway matches requests by host and path, injects the real credential, and forwards
+ 4. Agents cannot discover real credentials — not in environment, stdin, files, or `/proc`
+ 
+ **Per-agent policies:**
+-Each NanoClaw group gets its own OneCLI agent identity. This allows different credential policies per group (e.g. your sales agent vs. support agent). OneCLI supports rate limits, and time-bound access and approval flows are on the roadmap.
++Each DelegateAgent group gets its own OneCLI agent identity. This allows different credential policies per group (e.g. your sales agent vs. support agent). OneCLI supports rate limits, and time-bound access and approval flows are on the roadmap.
+ 
+ **NOT Mounted:**
+ - Channel auth sessions (`store/auth/`) — host only
+=== ./README.md ===
+--- ./README.md	2026-04-20 19:32:40
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.4KTx4wVbxt	2026-04-20 19:39:03
+@@ -51,7 +51,7 @@
+ | `/api/context/:folder` | POST | Push CLAUDE.md to group folder |
+ | `/api/health` | GET | Git SHA + uptime |
+ 
+-All endpoints require `Authorization: Bearer <token>` using either `DELEGATE_API_KEY` or `DELEGATE_AGENT_TOKEN` (or the legacy `NANOCLAW_TOKEN` for one release).
++All endpoints require `Authorization: Bearer <token>` using either `DELEGATE_API_KEY` or `DELEGATE_AGENT_TOKEN` (or the legacy `DELEGATE_AGENT_TOKEN` for one release).
+ 
+ ## Development
+ 
+=== ./container/build.sh ===
+--- ./container/build.sh	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.a4i2FjXzon	2026-04-20 19:39:03
+@@ -1,5 +1,5 @@
+ #!/bin/bash
+-# Build the NanoClaw agent container image
++# Build the DelegateAgent agent container image
+ 
+ set -e
+ 
+@@ -10,7 +10,7 @@
+ TAG="${1:-latest}"
+ CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
+ 
+-echo "Building NanoClaw agent container image..."
++echo "Building DelegateAgent agent container image..."
+ echo "Image: ${IMAGE_NAME}:${TAG}"
+ 
+ ${CONTAINER_RUNTIME} build -t "${IMAGE_NAME}:${TAG}" .
+=== ./container/skills/capabilities/SKILL.md ===
+--- ./container/skills/capabilities/SKILL.md	2026-03-30 17:07:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.wSZXjnlPph	2026-04-20 19:39:03
+@@ -1,11 +1,11 @@
+ ---
+ name: capabilities
+-description: Show what this NanoClaw instance can do — installed skills, available tools, and system info. Read-only. Use when the user asks what the bot can do, what's installed, or runs /capabilities.
++description: Show what this DelegateAgent instance can do — installed skills, available tools, and system info. Read-only. Use when the user asks what the bot can do, what's installed, or runs /capabilities.
+ ---
+ 
+ # /capabilities — System Capabilities Report
+ 
+-Generate a structured read-only report of what this NanoClaw instance can do.
++Generate a structured read-only report of what this DelegateAgent instance can do.
+ 
+ **Main-channel check:** Only the main channel has `/workspace/project` mounted. Run:
+ 
+@@ -43,7 +43,7 @@
+ 
+ ### 3. MCP server tools
+ 
+-The NanoClaw MCP server exposes these tools (via `mcp__nanoclaw__*` prefix):
++The DelegateAgent MCP server exposes these tools (via `mcp__nanoclaw__*` prefix):
+ - `send_message` — send a message to the user/group
+ - `schedule_task` — schedule a recurring or one-time task
+ - `list_tasks` — list scheduled tasks
+@@ -73,7 +73,7 @@
+ Present the report as a clean, readable message. Example:
+ 
+ ```
+-📋 *NanoClaw Capabilities*
++📋 *DelegateAgent Capabilities*
+ 
+ *Installed Skills:*
+ • /agent-browser — Browse the web, fill forms, extract data
+=== ./container/skills/status/SKILL.md ===
+--- ./container/skills/status/SKILL.md	2026-03-30 17:07:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.lDr9dB8jU2	2026-04-20 19:39:03
+@@ -75,7 +75,7 @@
+ Present as a clean, readable message:
+ 
+ ```
+-🔍 *NanoClaw Status*
++🔍 *DelegateAgent Status*
+ 
+ *Session:*
+ • Channel: main
+=== ./container/agent-runner/package.json ===
+--- ./container/agent-runner/package.json	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.c64UyhPfeY	2026-04-20 19:39:03
+@@ -2,7 +2,7 @@
+   "name": "nanoclaw-agent-runner",
+   "version": "1.0.0",
+   "type": "module",
+-  "description": "Container-side agent runner for NanoClaw",
++  "description": "Container-side agent runner for DelegateAgent",
+   "main": "dist/index.js",
+   "scripts": {
+     "build": "tsc",
+=== ./container/agent-runner/src/ipc-mcp-stdio.ts ===
+--- ./container/agent-runner/src/ipc-mcp-stdio.ts	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.IXW1C2f16T	2026-04-20 19:39:03
+@@ -1,5 +1,5 @@
+ /**
+- * Stdio MCP Server for NanoClaw
++ * Stdio MCP Server for DelegateAgent
+  * Standalone process that agent teams subagents can inherit.
+  * Reads context from environment variables, writes IPC files for the host.
+  */
+@@ -35,7 +35,7 @@
+ }
+ 
+ const server = new McpServer({
+-  name: 'nanoclaw',
++  name: 'delegate-agent',
+   version: '1.0.0',
+ });
+ 
+=== ./container/agent-runner/src/index.ts ===
+--- ./container/agent-runner/src/index.ts	2026-04-20 19:32:54
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.wzSh60nlQR	2026-04-20 19:39:03
+@@ -1,5 +1,5 @@
+ /**
+- * NanoClaw Agent Runner
++ * DelegateAgent Agent Runner
+  * Runs inside a container, receives config via stdin, outputs result to stdout
+  *
+  * Input protocol:
+@@ -475,7 +475,7 @@
+       allowDangerouslySkipPermissions: true,
+       settingSources: ['project', 'user'],
+       mcpServers: {
+-        nanoclaw: {
++        delegate-agent: {
+           command: 'node',
+           args: [mcpServerPath],
+           env: {
+=== ./CONTRIBUTORS.md ===
+--- ./CONTRIBUTORS.md	2026-04-20 19:32:40
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.W5hpU7HhZp	2026-04-20 19:39:03
+@@ -1,6 +1,6 @@
+ # Contributors
+ 
+-Thanks to everyone who has contributed to DelegateAgent and the upstream NanoClaw project it is forked from!
++Thanks to everyone who has contributed to DelegateAgent and the upstream DelegateAgent project it is forked from!
+ 
+ - [Alakazam03](https://github.com/Alakazam03) — Vaibhav Aggarwal
+ - [tydev-new](https://github.com/tydev-new)
+=== ./scripts/auto-update.sh ===
+--- ./scripts/auto-update.sh	2026-03-30 17:07:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.gpUSZL4Ll2	2026-04-20 19:39:03
+@@ -49,7 +49,7 @@
+ 
+ # Restart the service
+ echo "$LOG_PREFIX Restarting service..."
+-systemctl restart remote-agent 2>/dev/null || systemctl restart nanoclaw 2>/dev/null || true
++systemctl restart remote-agent 2>/dev/null || systemctl restart delegate-agent 2>/dev/null || true
+ 
+ echo "$LOG_PREFIX Update complete: ${BEFORE:0:8} → ${AFTER:0:8}"
+ date
+=== ./scripts/cleanup-sessions.sh ===
+--- ./scripts/cleanup-sessions.sh	2026-04-20 19:32:01
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.uMxOjIBD9t	2026-04-20 19:39:03
+@@ -1,7 +1,7 @@
+ #!/bin/bash
+ #
+ # Prune stale session artifacts (JSONLs, debug logs, todos, telemetry, group logs).
+-# Safe to run while NanoClaw is live — active sessions are read from the DB.
++# Safe to run while DelegateAgent is live — active sessions are read from the DB.
+ #
+ # Usage:  ./scripts/cleanup-sessions.sh [--dry-run]
+ #
+=== ./repo-tokens/README.md ===
+--- ./repo-tokens/README.md	2026-03-30 17:07:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.2ciCAuxQLl	2026-04-20 19:39:04
+@@ -34,7 +34,7 @@
+ 
+ | Repo | Badge |
+ |------|-------|
+-| [NanoClaw](https://github.com/qwibitai/NanoClaw) | ![tokens](https://raw.githubusercontent.com/qwibitai/NanoClaw/main/repo-tokens/badge.svg) |
++| [DelegateAgent](https://github.com/qwibitai/NanoClaw) | ![tokens](https://raw.githubusercontent.com/qwibitai/NanoClaw/main/repo-tokens/badge.svg) |
+ 
+ ### Full workflow example
+ 
+=== ./CLAUDE.md ===
+--- ./CLAUDE.md	2026-04-20 19:32:39
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.w9z5aEYOm0	2026-04-20 19:39:04
+@@ -39,7 +39,7 @@
+ | `/setup` | First-time installation, authentication, service configuration |
+ | `/customize` | Adding channels, integrations, changing behavior |
+ | `/debug` | Container issues, logs, troubleshooting |
+-| `/update-delegate-agent` | Bring upstream nanoclaw updates into a customized install |
++| `/update-delegate-agent` | Bring upstream delegate-agent updates into a customized install |
+ | `/init-onecli` | Install OneCLI Agent Vault and migrate `.env` credentials to it |
+ | `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
+ | `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
+=== ./src/getEnvWithFallback.test.ts ===
+--- ./src/getEnvWithFallback.test.ts	2026-04-20 18:24:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.GDfwsxKUqE	2026-04-20 19:39:04
+@@ -7,7 +7,7 @@
+   beforeEach(() => {
+     process.env = { ...originalEnv };
+     delete process.env.DELEGATE_AGENT_TOKEN;
+-    delete process.env.NANOCLAW_TOKEN;
++    delete process.env.DELEGATE_AGENT_TOKEN;
+   });
+ 
+   afterEach(() => {
+@@ -17,26 +17,26 @@
+ 
+   it('prefers the primary env var when set', () => {
+     process.env.DELEGATE_AGENT_TOKEN = 'new-token';
+-    process.env.NANOCLAW_TOKEN = 'legacy-token';
+-    expect(getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN'])).toBe(
++    process.env.DELEGATE_AGENT_TOKEN = 'legacy-token';
++    expect(getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_AGENT_TOKEN'])).toBe(
+       'new-token',
+     );
+   });
+ 
+   it('falls back to a legacy env var when primary is missing', () => {
+-    process.env.NANOCLAW_TOKEN = 'legacy-token';
++    process.env.DELEGATE_AGENT_TOKEN = 'legacy-token';
+     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+-    expect(getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN'])).toBe(
++    expect(getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_AGENT_TOKEN'])).toBe(
+       'legacy-token',
+     );
+     expect(warn).toHaveBeenCalledWith(
+-      expect.stringContaining('NANOCLAW_TOKEN'),
++      expect.stringContaining('DELEGATE_AGENT_TOKEN'),
+     );
+   });
+ 
+   it('returns undefined when neither is set', () => {
+     expect(
+-      getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN']),
+=== ./src/mount-security.ts ===
+--- ./src/mount-security.ts	2026-04-20 19:32:55
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.vXJ7DACSBz	2026-04-20 19:39:04
+@@ -1,10 +1,10 @@
+ /**
+- * Mount Security Module for NanoClaw
++ * Mount Security Module for DelegateAgent
+  *
+  * Validates additional mounts against an allowlist stored OUTSIDE the project root.
+  * This prevents container agents from modifying security configuration.
+  *
+- * Allowlist location: ~/.config/nanoclaw/mount-allowlist.json
++ * Allowlist location: ~/.config/delegate-agent/mount-allowlist.json
+  */
+ import fs from 'fs';
+ import os from 'os';
+=== ./src/remote-control.ts ===
+--- ./src/remote-control.ts	2026-04-20 19:32:55
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.8TfOLq2puA	2026-04-20 19:39:04
+@@ -102,14 +102,14 @@
+   }
+ 
+   // Redirect stdout/stderr to files so the process has no pipes to the parent.
+-  // This prevents SIGPIPE when NanoClaw restarts.
++  // This prevents SIGPIPE when DelegateAgent restarts.
+   fs.mkdirSync(DATA_DIR, { recursive: true });
+   const stdoutFd = fs.openSync(STDOUT_FILE, 'w');
+   const stderrFd = fs.openSync(STDERR_FILE, 'w');
+ 
+   let proc;
+   try {
+-    proc = spawn('claude', ['remote-control', '--name', 'NanoClaw Remote'], {
++    proc = spawn('claude', ['remote-control', '--name', 'DelegateAgent Remote'], {
+       cwd,
+       stdio: ['pipe', stdoutFd, stderrFd],
+       detached: true,
+=== ./src/container-runtime.test.ts ===
+--- ./src/container-runtime.test.ts	2026-04-20 19:32:55
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.seQWQFcyfE	2026-04-20 19:39:04
+@@ -40,9 +40,9 @@
+ 
+ describe('stopContainer', () => {
+   it('calls docker stop for valid container names', () => {
+-    stopContainer('nanoclaw-test-123');
++    stopContainer('delegate-agent-test-123');
+     expect(mockExecSync).toHaveBeenCalledWith(
+-      `${CONTAINER_RUNTIME_BIN} stop -t 1 nanoclaw-test-123`,
++      `${CONTAINER_RUNTIME_BIN} stop -t 1 delegate-agent-test-123`,
+       { stdio: 'pipe' },
+     );
+   });
+@@ -92,10 +92,10 @@
+ // --- cleanupOrphans ---
+ 
+ describe('cleanupOrphans', () => {
+-  it('stops orphaned nanoclaw containers', () => {
++  it('stops orphaned delegate-agent containers', () => {
+     // docker ps returns container names, one per line
+     mockExecSync.mockReturnValueOnce(
+-      'nanoclaw-group1-111\nnanoclaw-group2-222\n',
++      'delegate-agent-group1-111\nnanoclaw-group2-222\n',
+     );
+     // stop calls succeed
+     mockExecSync.mockReturnValue('');
+@@ -106,16 +106,16 @@
+     expect(mockExecSync).toHaveBeenCalledTimes(3);
+     expect(mockExecSync).toHaveBeenNthCalledWith(
+       2,
+-      `${CONTAINER_RUNTIME_BIN} stop -t 1 nanoclaw-group1-111`,
++      `${CONTAINER_RUNTIME_BIN} stop -t 1 delegate-agent-group1-111`,
+       { stdio: 'pipe' },
+     );
+     expect(mockExecSync).toHaveBeenNthCalledWith(
+       3,
+-      `${CONTAINER_RUNTIME_BIN} stop -t 1 nanoclaw-group2-222`,
++      `${CONTAINER_RUNTIME_BIN} stop -t 1 delegate-agent-group2-222`,
+       { stdio: 'pipe' },
+=== ./src/container-runtime.ts ===
+--- ./src/container-runtime.ts	2026-04-20 19:32:55
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.NDTQ2gq6LO	2026-04-20 19:39:04
+@@ -1,5 +1,5 @@
+ /**
+- * Container runtime abstraction for NanoClaw.
++ * Container runtime abstraction for DelegateAgent.
+  * All runtime-specific logic lives here so swapping runtimes means changing one file.
+  */
+ import { execSync } from 'child_process';
+@@ -64,7 +64,7 @@
+       '║  2. Run: docker info                                           ║',
+     );
+     console.error(
+-      '║  3. Restart NanoClaw                                           ║',
++      '║  3. Restart DelegateAgent                                           ║',
+     );
+     console.error(
+       '╚════════════════════════════════════════════════════════════════╝\n',
+@@ -75,11 +75,11 @@
+   }
+ }
+ 
+-/** Kill orphaned NanoClaw containers from previous runs. */
++/** Kill orphaned DelegateAgent containers from previous runs. */
+ export function cleanupOrphans(): void {
+   try {
+     const output = execSync(
+-      `${CONTAINER_RUNTIME_BIN} ps --filter name=nanoclaw- --format '{{.Names}}'`,
++      `${CONTAINER_RUNTIME_BIN} ps --filter name=delegate-agent- --format '{{.Names}}'`,
+       { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
+     );
+     const orphans = output.trim().split('\n').filter(Boolean);
+=== ./src/remote-control.test.ts ===
+--- ./src/remote-control.test.ts	2026-04-20 19:32:55
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.GVwYHycvHV	2026-04-20 19:39:04
+@@ -97,7 +97,7 @@
+       });
+       expect(spawnMock).toHaveBeenCalledWith(
+         'claude',
+-        ['remote-control', '--name', 'NanoClaw Remote'],
++        ['remote-control', '--name', 'DelegateAgent Remote'],
+         expect.objectContaining({ cwd: '/project', detached: true }),
+       );
+       expect(proc.unref).toHaveBeenCalled();
+=== ./src/index.ts ===
+--- ./src/index.ts	2026-04-20 19:35:34
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.7KALrFVo1I	2026-04-20 19:39:04
+@@ -451,7 +451,7 @@
+   }
+   messageLoopRunning = true;
+ 
+-  logger.info(`NanoClaw running (default trigger: ${DEFAULT_TRIGGER})`);
++  logger.info(`DelegateAgent running (default trigger: ${DEFAULT_TRIGGER})`);
+ 
+   while (true) {
+     try {
+@@ -771,7 +771,7 @@
+ 
+ if (isDirectRun) {
+   main().catch((err) => {
+-    logger.error({ err }, 'Failed to start NanoClaw');
++    logger.error({ err }, 'Failed to start DelegateAgent');
+     process.exit(1);
+   });
+ }
+=== ./src/group-api.ts ===
+--- ./src/group-api.ts	2026-04-20 18:24:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.1QJtBEZyng	2026-04-20 19:39:04
+@@ -33,7 +33,7 @@
+   const PORT = parseInt(process.env.GROUP_API_PORT || '3001', 10);
+   const VALID_TOKENS = [
+     process.env.DELEGATE_API_KEY,
+-    getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN']),
++    getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_AGENT_TOKEN']),
+   ].filter(Boolean) as string[];
+ 
+   const server = http.createServer(async (req, res) => {
+=== ./src/config.ts ===
+--- ./src/config.ts	2026-04-20 19:34:20
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.Rfva9c1jvi	2026-04-20 19:39:04
+@@ -7,7 +7,7 @@
+ 
+ /**
+  * Read env var with optional legacy fallback. Logs a deprecation warning if the fallback is used.
+- * @example getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN'])
++ * @example getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_AGENT_TOKEN'])
+  */
+ export function getEnvWithFallback(
+   primary: string,
+@@ -28,7 +28,7 @@
+ }
+ 
+ /**
+- * One-shot migration: move ~/.config/nanoclaw → ~/.config/delegate-agent if the
++ * One-shot migration: move ~/.config/delegate-agent → ~/.config/delegate-agent if the
+  * legacy dir exists and the new one does not. Safe to call multiple times.
+  * Must run BEFORE any config load that reads the resolved paths.
+  */
+@@ -67,13 +67,13 @@
+ export const MOUNT_ALLOWLIST_PATH = path.join(
+   HOME_DIR,
+   '.config',
+-  'nanoclaw',
++  'delegate-agent',
+   'mount-allowlist.json',
+ );
+ export const SENDER_ALLOWLIST_PATH = path.join(
+   HOME_DIR,
+   '.config',
+-  'nanoclaw',
++  'delegate-agent',
+   'sender-allowlist.json',
+ );
+ export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
+=== ./src/db-migration.test.ts ===
+--- ./src/db-migration.test.ts	2026-04-20 19:32:55
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.M6smNa5oF9	2026-04-20 19:39:04
+@@ -7,7 +7,7 @@
+ describe('database migrations', () => {
+   it('defaults Telegram backfill chats to direct messages', async () => {
+     const repoRoot = process.cwd();
+-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-db-test-'));
++    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-agent-db-test-'));
+ 
+     try {
+       process.chdir(tempDir);
+=== ./src/channels/delegate.ts ===
+--- ./src/channels/delegate.ts	2026-04-20 18:24:33
++++ /var/folders/w7/f176s1lj5kd0r5h84pdrcvlr0000gn/T/tmp.ALbD2Sj4oE	2026-04-20 19:39:04
+@@ -10,8 +10,8 @@
+ // Auth: Bearer token (DELEGATE_API_KEY env var)
+ //
+ // This file ships as src/channels/delegate.ts in the DelegateAgent repo
+-// (fork of upstream NanoClaw). Before the rebrand it was injected into
+-// upstream NanoClaw at deploy time via cloud-init.
++// (fork of upstream DelegateAgent). Before the rebrand it was injected into
++// upstream DelegateAgent at deploy time via cloud-init.
+ 
+ import * as fs from 'fs';
+ import * as path from 'path';
+[rebrand] DRY RUN complete — no files modified

@@ -1,4 +1,4 @@
-# NanoClaw Specification
+# DelegateAgent Specification
 
 A personal Claude assistant with multi-channel support, persistent memory per conversation, scheduled tasks, and container-isolated agent execution.
 
@@ -314,8 +314,8 @@ nanoclaw/
 │   └── ipc/                       # Container IPC (messages/, tasks/)
 │
 ├── logs/                          # Runtime logs (gitignored)
-│   ├── nanoclaw.log               # Host stdout
-│   └── nanoclaw.error.log         # Host stderr
+│   ├── delegate-agent.log               # Host stdout
+│   └── delegate-agent.error.log         # Host stderr
 │   # Note: Per-container logs are in groups/{folder}/logs/container-*.log
 │
 └── launchd/
@@ -414,7 +414,7 @@ Or edit the default in `src/config.ts`. This changes:
 ### Placeholder Values in launchd
 
 Files with `{{PLACEHOLDER}}` values need to be configured:
-- `{{PROJECT_ROOT}}` - Absolute path to your nanoclaw installation
+- `{{PROJECT_ROOT}}` - Absolute path to your delegate-agent installation
 - `{{NODE_PATH}}` - Path to node binary (detected via `which node`)
 - `{{HOME}}` - User's home directory
 
@@ -422,7 +422,7 @@ Files with `{{PLACEHOLDER}}` values need to be configured:
 
 ## Memory System
 
-NanoClaw uses a hierarchical memory system based on CLAUDE.md files.
+DelegateAgent uses a hierarchical memory system based on CLAUDE.md files.
 
 ### Memory Hierarchy
 
@@ -498,7 +498,7 @@ Sessions enable conversation continuity - Claude remembers what you talked about
    ├── cwd: groups/{group-name}/
    ├── prompt: conversation history + current message
    ├── resume: session_id (for continuity)
-   └── mcpServers: nanoclaw (scheduler)
+   └── mcpServers: delegate-agent (scheduler)
    │
    ▼
 8. Claude processes message:
@@ -555,7 +555,7 @@ This allows the agent to understand the conversation context even if it wasn't m
 
 ## Scheduled Tasks
 
-NanoClaw has a built-in scheduler that runs tasks as full agents in their group's context.
+DelegateAgent has a built-in scheduler that runs tasks as full agents in their group's context.
 
 ### How Scheduling Works
 
@@ -616,9 +616,9 @@ From main channel:
 
 ## MCP Servers
 
-### NanoClaw MCP (built-in)
+### DelegateAgent MCP (built-in)
 
-The `nanoclaw` MCP server is created dynamically per agent call with the current group's context.
+The `delegate-agent` MCP server is created dynamically per agent call with the current group's context.
 
 **Available Tools:**
 | Tool | Purpose |
@@ -636,12 +636,12 @@ The `nanoclaw` MCP server is created dynamically per agent call with the current
 
 ## Deployment
 
-NanoClaw runs as a single macOS launchd service.
+DelegateAgent runs as a single macOS launchd service.
 
 ### Startup Sequence
 
-When NanoClaw starts, it:
-1. **Ensures container runtime is running** - Automatically starts it if needed; kills orphaned NanoClaw containers from previous runs
+When DelegateAgent starts, it:
+1. **Ensures container runtime is running** - Automatically starts it if needed; kills orphaned DelegateAgent containers from previous runs
 2. Initializes the SQLite database (migrates from JSON files if they exist)
 3. Loads state from SQLite (registered groups, sessions, router state)
 4. **Connects channels** — loops through registered channels, instantiates those with credentials, calls `connect()` on each
@@ -703,7 +703,7 @@ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 
 # Check status
-launchctl list | grep nanoclaw
+launchctl list | grep delegate-agent
 
 # View logs
 tail -f logs/nanoclaw.log
@@ -762,8 +762,8 @@ chmod 700 groups/
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| No response to messages | Service not running | Check `launchctl list | grep nanoclaw` |
-| "Claude Code process exited with code 1" | Container runtime failed to start | Check logs; NanoClaw auto-starts container runtime but may fail |
+| No response to messages | Service not running | Check `launchctl list | grep delegate-agent` |
+| "Claude Code process exited with code 1" | Container runtime failed to start | Check logs; DelegateAgent auto-starts container runtime but may fail |
 | "Claude Code process exited with code 1" | Session mount path wrong | Ensure mount is to `/home/node/.claude/` not `/root/.claude/` |
 | Session not continuing | Session ID not saved | Check SQLite: `sqlite3 store/messages.db "SELECT * FROM sessions"` |
 | Session not continuing | Mount path mismatch | Container user is `node` with HOME=/home/node; sessions must be at `/home/node/.claude/` |

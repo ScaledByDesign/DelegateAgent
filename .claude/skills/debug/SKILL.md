@@ -3,7 +3,7 @@ name: debug
 description: Debug container agent issues. Use when things aren't working, container fails, authentication problems, or to understand how the container system works. Covers logs, environment variables, mounts, and common issues.
 ---
 
-# NanoClaw Container Debugging
+# DelegateAgent Container Debugging
 
 This guide covers debugging the containerized agent execution system.
 
@@ -278,7 +278,7 @@ rm -rf data/sessions/
 # Clear sessions for a specific group
 rm -rf data/sessions/{groupFolder}/.claude/
 
-# Also clear the session ID from NanoClaw's tracking (stored in SQLite)
+# Also clear the session ID from DelegateAgent's tracking (stored in SQLite)
 sqlite3 store/messages.db "DELETE FROM sessions WHERE group_folder = '{groupFolder}'"
 ```
 
@@ -320,7 +320,7 @@ cat data/ipc/{groupFolder}/current_tasks.json
 Run this to check common issues:
 
 ```bash
-echo "=== Checking NanoClaw Container Setup ==="
+echo "=== Checking DelegateAgent Container Setup ==="
 
 echo -e "\n1. Authentication configured?"
 [ -f .env ] && (grep -q "CLAUDE_CODE_OAUTH_TOKEN=sk-" .env || grep -q "ANTHROPIC_API_KEY=sk-" .env) && echo "OK" || echo "MISSING - add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY to .env"

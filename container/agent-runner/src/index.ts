@@ -1,5 +1,5 @@
 /**
- * NanoClaw Agent Runner
+ * DelegateAgent Agent Runner
  * Runs inside a container, receives config via stdin, outputs result to stdout
  *
  * Input protocol:
@@ -475,7 +475,7 @@ async function runQuery(
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
       mcpServers: {
-        nanoclaw: {
+        delegate-agent: {
           command: 'node',
           args: [mcpServerPath],
           env: {

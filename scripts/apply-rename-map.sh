@@ -43,7 +43,9 @@ has_sentry_nanoclaw_tags() {
 PERL_REWRITE='
   s{/opt/nanoclaw\b}{/opt/delegate-agent}g;
   s{~/\.config/nanoclaw\b}{~/.config/delegate-agent}g;
-  s{\bNANOCLAW_TOKEN\b}{DELEGATE_AGENT_TOKEN}g;
+  # NOTE: NANOCLAW_TOKEN env var rewrite intentionally NOT done here — every
+  # remaining occurrence is a legitimate legacy-fallback reference (CHANGELOG,
+  # deprecation notices, test cases). The env-var rename landed in PR #1.
   s{(?<![-_/.a-zA-Z0-9])NanoClaw(?!(\.git|-agent|\.tar|/))}{DelegateAgent}g;
   s{(?<![-_/.a-zA-Z0-9])nanoclaw(?!(\.git|-agent|\.tar|/))}{delegate-agent}g;
 '

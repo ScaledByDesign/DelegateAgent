@@ -5,7 +5,7 @@ description: Switch from Docker to Apple Container for macOS-native container is
 
 # Convert to Apple Container
 
-This skill switches NanoClaw's container runtime from Docker to Apple Container (macOS-only). It uses the skills engine for deterministic code changes, then walks through verification.
+This skill switches DelegateAgent's container runtime from Docker to Apple Container (macOS-only). It uses the skills engine for deterministic code changes, then walks through verification.
 
 **What this changes:**
 - Container runtime binary: `docker` → `container`
@@ -111,7 +111,7 @@ echo "block in on en0 proto tcp to any port 3001" | sudo pfctl -ef -
 ```
 
 ```bash
-grep -q 'nanoclaw proxy' /etc/pf.conf 2>/dev/null || echo '# nanoclaw proxy — block LAN access to credential proxy
+grep -q 'delegate-agent proxy' /etc/pf.conf 2>/dev/null || echo '# delegate-agent proxy — block LAN access to credential proxy
 block in on en0 proto tcp to any port 3001' | sudo tee -a /etc/pf.conf > /dev/null
 ```
 
