@@ -12,6 +12,28 @@ import { chatComplete } from './bifrost-client.js';
 import { classifyForFastPath } from './heuristic.js';
 import type { ChatDispatchResult, ChatInbound } from './types.js';
 
+// Marker the Delegate poll-handler emits when wrapping a user message with
+// task context (see app/api/agent/channel/poll/poll-handler.ts ~L666). When
+// present we extract just the post-marker portion as the actual user
+// message and treat the preamble as additional system context.
+const USER_MESSAGE_DELIMITER = '\n━━━━━━━━━━━━━━━━━━━━━━━━\nUSER MESSAGE:\n';
+
+interface SplitContext {
+  userText: string;
+  systemPrefix: string | null;
+}
+
+function splitWrappedContext(text: string): SplitContext {
+  const idx = text.indexOf(USER_MESSAGE_DELIMITER);
+  if (idx === -1) {
+    return { userText: text, systemPrefix: null };
+  }
+  return {
+    userText: text.slice(idx + USER_MESSAGE_DELIMITER.length).trim(),
+    systemPrefix: text.slice(0, idx).trim(),
+  };
+}
+
 /** Optional callback for a richer system prompt (task title, description). */
 export type ChatContextResolver = (
   jid: string,
@@ -47,13 +69,21 @@ const FALLBACK_SYSTEM_PROMPT = [
 export async function dispatchChatFastPath(
   inbound: ChatInbound,
 ): Promise<ChatDispatchResult> {
-  const skip = classifyForFastPath(inbound.text);
+  // The Delegate poll-handler wraps user messages on task JIDs with a large
+  // task-context preamble. Strip it before classifying so a 22-char "hi" isn't
+  // judged as a 1500-char prompt; preserve the preamble as the system context.
+  const split = splitWrappedContext(inbound.text);
+  const userText = split.userText;
+
+  const skip = classifyForFastPath(userText);
   if (skip) {
     return { handled: false, reason: skip };
   }
 
   const startedAt = Date.now();
-  let system = FALLBACK_SYSTEM_PROMPT;
+  let system = split.systemPrefix
+    ? `${FALLBACK_SYSTEM_PROMPT}\n\n--- TASK CONTEXT ---\n${split.systemPrefix}`
+    : FALLBACK_SYSTEM_PROMPT;
   if (contextResolver) {
     try {
       const ctx = await contextResolver(inbound.jid);
@@ -68,7 +98,7 @@ export async function dispatchChatFastPath(
   try {
     const reply = await chatComplete({
       system,
-      userMessage: inbound.text,
+      userMessage: userText,
     });
     return {
       handled: true,
