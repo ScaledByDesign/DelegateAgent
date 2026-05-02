@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { registerChannel, type ChannelOpts } from './registry.js';
 import type { Channel } from '../types.js';
+import { dispatchChatFastPath } from '../chat/index.js';
 
 const POLL_INTERVAL = parseInt(
   process.env.DELEGATE_POLL_INTERVAL || '15000',
@@ -527,16 +528,51 @@ class DelegateChannel implements Channel {
         if (first !== undefined) seen.delete(first);
       }
 
-      // Route to DelegateAgent orchestrator (NewMessage format)
-      this.opts.onMessage(jid, {
-        id: msg.id,
-        chat_jid: jid,
-        sender: msg.sender ?? msg.role ?? 'user',
-        sender_name: msg.sender ?? msg.role ?? 'User',
-        content: msg.text,
-        timestamp: msg.timestamp,
-        is_from_me: false,
-        is_bot_message: false,
+      // ── Chat fast-path ────────────────────────────────────────────────
+      // Mirrors openclaw's auto-reply/dispatch pattern: try a lightweight
+      // direct-to-Bifrost reply for short conversational messages, fall
+      // through to the heavy container path on skip / error.
+      // Fire-and-forget per message — the inner await keeps semantic order
+      // for ONE message but the loop doesn't block other messages.
+      const inboundForChat = {
+        jid,
+        text: typeof msg.text === 'string' ? msg.text : '',
+        senderName: msg.sender ?? msg.role ?? 'User',
+      };
+      void dispatchChatFastPath(inboundForChat).then(async (result) => {
+        if (result.handled) {
+          sentryBreadcrumb('chat.fastpath.handled', {
+            jid,
+            latencyMs: result.latencyMs,
+            model: result.model,
+            replyLen: result.replyText.length,
+          });
+          try {
+            await this.sendMessage(jid, result.replyText);
+          } catch (err) {
+            captureSentryError(err, { jid, action: 'chat-fastpath-reply' });
+            // sendMessage already logs to console; nothing else to do.
+          }
+          return;
+        }
+
+        sentryBreadcrumb('chat.fastpath.skipped', {
+          jid,
+          reason: result.reason,
+          textLen: inboundForChat.text.length,
+        });
+        // Route to DelegateAgent orchestrator (NewMessage format) — only
+        // when fast-path doesn't handle it.
+        this.opts.onMessage(jid, {
+          id: msg.id,
+          chat_jid: jid,
+          sender: msg.sender ?? msg.role ?? 'user',
+          sender_name: msg.sender ?? msg.role ?? 'User',
+          content: msg.text,
+          timestamp: msg.timestamp,
+          is_from_me: false,
+          is_bot_message: false,
+        });
       });
       delivered++;
     }
