@@ -541,6 +541,9 @@ class DelegateChannel implements Channel {
       };
       void dispatchChatFastPath(inboundForChat).then(async (result) => {
         if (result.handled) {
+          console.log(
+            `[chat] fastpath handled jid=${jid} latency=${result.latencyMs}ms model=${result.model} replyLen=${result.replyText.length}`,
+          );
           sentryBreadcrumb('chat.fastpath.handled', {
             jid,
             latencyMs: result.latencyMs,
@@ -549,13 +552,20 @@ class DelegateChannel implements Channel {
           });
           try {
             await this.sendMessage(jid, result.replyText);
+            console.log(`[chat] fastpath reply sent jid=${jid}`);
           } catch (err) {
+            console.warn(
+              `[chat] fastpath reply error jid=${jid}:`,
+              (err as Error).message,
+            );
             captureSentryError(err, { jid, action: 'chat-fastpath-reply' });
-            // sendMessage already logs to console; nothing else to do.
           }
           return;
         }
 
+        console.log(
+          `[chat] fastpath skip jid=${jid} reason=${result.reason} textLen=${inboundForChat.text.length}`,
+        );
         sentryBreadcrumb('chat.fastpath.skipped', {
           jid,
           reason: result.reason,
