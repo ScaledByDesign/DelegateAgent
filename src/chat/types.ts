@@ -19,8 +19,8 @@ export type ChatDispatchResult =
   | { handled: false; reason: ChatSkipReason };
 
 export type ChatSkipReason =
-  | "command-detected"     // starts with `/` or matches a slash-command pattern
-  | "task-intent-detected" // looks like a coding/work request, escalate to container
-  | "too-long"             // longer than CHAT_MAX_CHARS — likely a real prompt
-  | "fast-path-disabled"   // env flag CHAT_FAST_PATH=0
-  | "bifrost-error";       // call to Bifrost failed; fall through to container path
+  | 'command-detected' // starts with `/` or matches a slash-command pattern
+  | 'task-intent-detected' // looks like a coding/work request, escalate to container
+  | 'too-long' // longer than CHAT_MAX_CHARS — likely a real prompt
+  | 'fast-path-disabled' // env flag CHAT_FAST_PATH=0
+  | 'bifrost-error'; // call to Bifrost failed; fall through to container path

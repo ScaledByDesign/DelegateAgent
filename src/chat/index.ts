@@ -6,14 +6,14 @@
 //
 // See `dispatch.ts` for the entry point used by `src/channels/delegate.ts`.
 
-export { dispatchChatFastPath, setChatContextResolver } from "./dispatch.js";
-export { classifyForFastPath } from "./heuristic.js";
+export { dispatchChatFastPath, setChatContextResolver } from './dispatch.js';
+export { classifyForFastPath } from './heuristic.js';
 export type {
   ChatBifrostRequest,
   ChatBifrostResponse,
-} from "./bifrost-client.js";
+} from './bifrost-client.js';
 export type {
   ChatDispatchResult,
   ChatInbound,
   ChatSkipReason,
-} from "./types.js";
+} from './types.js';

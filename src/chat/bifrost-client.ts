@@ -10,12 +10,12 @@
 // failover chain as container-spawned agent runs.
 
 const BIFROST_URL = (
-  process.env.BIFROST_URL || "http://localhost:4000"
-).replace(/\/$/, "");
+  process.env.BIFROST_URL || 'http://localhost:4000'
+).replace(/\/$/, '');
 
-const DEFAULT_MODEL = process.env.CHAT_FAST_PATH_MODEL || "claude-sonnet-4-6";
+const DEFAULT_MODEL = process.env.CHAT_FAST_PATH_MODEL || 'claude-sonnet-4-6';
 const REQUEST_TIMEOUT_MS = parseInt(
-  process.env.CHAT_FAST_PATH_TIMEOUT_MS || "20000",
+  process.env.CHAT_FAST_PATH_TIMEOUT_MS || '20000',
   10,
 );
 
@@ -25,7 +25,7 @@ export interface ChatBifrostRequest {
   /** User-facing message to respond to. */
   userMessage: string;
   /** Optional prior turns for conversational context. */
-  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 export interface ChatBifrostResponse {
@@ -42,9 +42,9 @@ export interface ChatBifrostResponse {
 export async function chatComplete(
   req: ChatBifrostRequest,
 ): Promise<ChatBifrostResponse> {
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+  const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
     ...(req.history ?? []),
-    { role: "user", content: req.userMessage },
+    { role: 'user', content: req.userMessage },
   ];
 
   const ctrl = new AbortController();
@@ -53,10 +53,10 @@ export async function chatComplete(
   let res: Response;
   try {
     res = await fetch(`${BIFROST_URL}/anthropic/v1/messages`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "content-type": "application/json",
-        "anthropic-version": "2023-06-01",
+        'content-type': 'application/json',
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: DEFAULT_MODEL,
@@ -71,7 +71,7 @@ export async function chatComplete(
   }
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
+    const body = await res.text().catch(() => '');
     throw new Error(
       `Bifrost ${res.status}: ${body.slice(0, 200) || res.statusText}`,
     );
@@ -84,12 +84,12 @@ export async function chatComplete(
   };
 
   const text = (data.content ?? [])
-    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .filter((b) => b.type === 'text' && typeof b.text === 'string')
     .map((b) => b.text as string)
-    .join("");
+    .join('');
 
   if (!text.trim()) {
-    throw new Error("Bifrost returned empty content");
+    throw new Error('Bifrost returned empty content');
   }
 
   return {

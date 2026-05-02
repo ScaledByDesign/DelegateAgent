@@ -8,9 +8,9 @@
 // reply call because Delegate's Channel API only needs to know
 // "did I handle this myself, or do I need to escalate?".
 
-import { chatComplete } from "./bifrost-client.js";
-import { classifyForFastPath } from "./heuristic.js";
-import type { ChatDispatchResult, ChatInbound } from "./types.js";
+import { chatComplete } from './bifrost-client.js';
+import { classifyForFastPath } from './heuristic.js';
+import type { ChatDispatchResult, ChatInbound } from './types.js';
 
 /** Optional callback for a richer system prompt (task title, description). */
 export type ChatContextResolver = (
@@ -29,11 +29,11 @@ export function setChatContextResolver(fn: ChatContextResolver | null): void {
 }
 
 const FALLBACK_SYSTEM_PROMPT = [
-  "You are DelegateAgent, the conversational AI assistant for the Delegate workspace.",
-  "Reply concisely and conversationally. Do not pretend to execute tools or modify",
-  "files — if the user asks for work that needs file edits or commands, ask them to",
-  "phrase it as a task and the heavier agent will pick it up.",
-].join(" ");
+  'You are DelegateAgent, the conversational AI assistant for the Delegate workspace.',
+  'Reply concisely and conversationally. Do not pretend to execute tools or modify',
+  'files — if the user asks for work that needs file edits or commands, ask them to',
+  'phrase it as a task and the heavier agent will pick it up.',
+].join(' ');
 
 /**
  * Try to handle an inbound message via the chat fast-path.
@@ -77,6 +77,6 @@ export async function dispatchChatFastPath(
       model: reply.model,
     };
   } catch {
-    return { handled: false, reason: "bifrost-error" };
+    return { handled: false, reason: 'bifrost-error' };
   }
 }
