@@ -55,6 +55,15 @@ if [ -f "$AGENT_DIR/delegate-patch.mjs" ]; then
   node "$AGENT_DIR/delegate-patch.mjs" 2>&1 | tail -3
 fi
 
+# Sync Caddyfile if it changed in the diff (so /admin* + /api/* routing changes apply automatically)
+if git diff --name-only "$BEFORE" "$AFTER" | grep -q "^deploy/Caddyfile$"; then
+  echo "$LOG_PREFIX deploy/Caddyfile changed — syncing to /etc/caddy/Caddyfile + reloading"
+  if [ -f "$AGENT_DIR/deploy/Caddyfile" ] && [ -d /etc/caddy ]; then
+    cp "$AGENT_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
+    systemctl reload caddy 2>&1 | tail -3 || echo "$LOG_PREFIX caddy reload failed (non-fatal)"
+  fi
+fi
+
 # Restart the service
 echo "$LOG_PREFIX Restarting service..."
 systemctl restart remote-agent 2>/dev/null || systemctl restart delegate-agent 2>/dev/null || true

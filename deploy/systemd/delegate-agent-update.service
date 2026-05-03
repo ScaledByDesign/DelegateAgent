@@ -1,0 +1,16 @@
+[Unit]
+Description=DelegateAgent auto-update (git pull + rebuild + Caddy sync)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=REMOTE_AGENT_DIR=/opt/delegate-agent
+ExecStart=/opt/delegate-agent/scripts/auto-update.sh
+StandardOutput=journal
+StandardError=journal
+# Keep total runtime short — npm ci on slow networks is the main risk
+TimeoutStartSec=240
+
+[Install]
+WantedBy=multi-user.target

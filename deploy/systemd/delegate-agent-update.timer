@@ -1,0 +1,14 @@
+[Unit]
+Description=Run DelegateAgent auto-update every 60s
+Requires=delegate-agent-update.service
+
+[Timer]
+# Fire 30s after boot, then every 60s.
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=delegate-agent-update.service
+
+[Install]
+WantedBy=timers.target
