@@ -25,9 +25,9 @@ fi
 # Record current HEAD
 BEFORE=$(git rev-parse HEAD 2>/dev/null || echo "none")
 
-# Fast-forward pull (never creates merge commits)
-git pull origin main --ff-only 2>/dev/null || {
-  echo "$LOG_PREFIX git pull failed (possible divergence) — skipping"
+# Fast-forward pull (never creates merge commits). Stderr surfaces in journalctl.
+git pull origin main --ff-only || {
+  echo "$LOG_PREFIX git pull failed — skipping cycle (see preceding stderr)"
   exit 0
 }
 

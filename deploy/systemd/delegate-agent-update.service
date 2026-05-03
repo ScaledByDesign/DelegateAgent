@@ -6,6 +6,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=REMOTE_AGENT_DIR=/opt/delegate-agent
+Environment=HOME=/root
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/opt/delegate-agent/scripts/auto-update.sh
 StandardOutput=journal
 StandardError=journal
