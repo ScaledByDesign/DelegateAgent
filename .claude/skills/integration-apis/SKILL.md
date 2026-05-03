@@ -133,18 +133,60 @@ curl -X POST $DELEGATE_URL/api/agent/integrations/google_contacts/list \
 ```
 
 ### GitHub (also available via MCP)
+
+GitHub actions are **kebab-case** (`list-repos`, not `list_repos`). All write actions go through the proxy — never bake a GitHub token into the container or `git push` directly. The proxy holds the workspace-scoped token; the agent only sends intent.
+
 ```bash
 # List repos
-curl -X POST $DELEGATE_URL/api/agent/integrations/github/list_repos \
+curl -X POST $DELEGATE_URL/api/agent/integrations/github/list-repos \
   -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 
-# Create PR
-curl -X POST $DELEGATE_URL/api/agent/integrations/github/create_pr \
+# Create PR (assumes commits already pushed to <head> via update-file flow below)
+curl -X POST $DELEGATE_URL/api/agent/integrations/github/create-pr \
   -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"repo":"owner/repo","title":"feat: ...","head":"agent/feature","base":"main"}'
+  -d '{"owner":"org","repo":"name","title":"feat: ...","head":"agent/feature","base":"main","body":"..."}'
+```
+
+**Self-modifying-code workflow** (proxy holds the token; agent never sees it):
+
+```bash
+# 1. Get current SHA of base branch
+BASE=$(curl -s -X POST $DELEGATE_URL/api/agent/integrations/github/get-ref \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"taskId":"'$TASK_ID'","owner":"org","repo":"name","branch":"main"}' | jq -r '.data.sha')
+
+# 2. Create a new branch
+curl -s -X POST $DELEGATE_URL/api/agent/integrations/github/create-branch \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"taskId":"'$TASK_ID'","owner":"org","repo":"name","branch":"agent/cleanup","fromSha":"'$BASE'"}'
+
+# 3. Read a file (returns sha + decodedContent)
+EXISTING=$(curl -s -X POST $DELEGATE_URL/api/agent/integrations/github/get-file \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"taskId":"'$TASK_ID'","owner":"org","repo":"name","path":"src/x.ts","branch":"agent/cleanup"}')
+
+# 4. Update the file (pass sha to update; omit sha to create new)
+curl -s -X POST $DELEGATE_URL/api/agent/integrations/github/update-file \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{
+    "taskId":"'$TASK_ID'","owner":"org","repo":"name",
+    "path":"src/x.ts","content":"new file contents\n",
+    "message":"chore: clean up","branch":"agent/cleanup",
+    "sha":"'$(echo $EXISTING | jq -r '.data.sha')'"
+  }'
+
+# 5. (Optional) Delete a file
+curl -s -X POST $DELEGATE_URL/api/agent/integrations/github/delete-file \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"taskId":"'$TASK_ID'","owner":"org","repo":"name","path":"src/old.ts","sha":"<blob-sha>","message":"chore: remove old","branch":"agent/cleanup"}'
+
+# 6. Open PR
+curl -s -X POST $DELEGATE_URL/api/agent/integrations/github/create-pr \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"taskId":"'$TASK_ID'","owner":"org","repo":"name","title":"chore: cleanup","head":"agent/cleanup","base":"main","body":"..."}'
 ```
 
 ### Notion
@@ -212,7 +254,7 @@ curl -X POST $DELEGATE_URL/api/agent/integrations/slack/get-thread \
 | `google_contacts` | `search`, `list`, `get` |
 | `notion` | `search`, `create-page`, `update-page`, `get-page`, `create-database-entry` |
 | `slack` | `send-message`, `list-channels`, `get-thread` |
-| `github` | `list_repos`, `create_repo`, `list_issues`, `create_issue`, `list_prs`, `create_pr`, `get_file`, `push_file` |
+| `github` | **read**: `get-repo`, `list-repos`, `search-repos`, `list-issues`, `list-prs`, `get-pr`, `get-pr-diff`, `get-pr-files`, `get-file`, `get-ref`. **write** (proxy-mediated, no token in agent): `create-repo`, `create-issue`, `create-branch`, `update-file`, `delete-file`, `create-pr`, `create-pr-comment`, `create-pr-review` |
 
 ## When to Use MCP vs Curl
 - **MCP tools**: Preferred when available — faster, typed, no curl boilerplate
