@@ -18,7 +18,7 @@ import {
   writeMCPConfigDirect,
   writeMCPConfigForGroup,
 } from './mcp-config-generator.js';
-import { logger } from './logger.js';
+import { logger, getRecentLogs, logSubscriber } from './logger.js';
 import {
   getAllRegisteredGroups,
   setRegisteredGroup,
@@ -494,6 +494,73 @@ export function startGroupAPI(): void {
         res.writeHead(500);
         res.end(JSON.stringify({ error: 'Render failure' }));
       }
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/admin/partials/logs') {
+      try {
+        const lines = getRecentLogs();
+        const logsBody = lines.map((l) => escape(l)).join('\n');
+        const html = renderTemplate('logs.html', {
+          logs_body: logsBody,
+          buffered_count: String(lines.length),
+        });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.writeHead(200);
+        res.end(html);
+      } catch (err: any) {
+        logger.error({ err }, 'Failed to render /admin/partials/logs');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Render failure' }));
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/admin/sse/logs') {
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.writeHead(200);
+
+      // Flush initial buffer so the client sees current state immediately
+      const initialLines = getRecentLogs();
+      for (const line of initialLines) {
+        const safeHtml = `<div class="log-line">${escape(line)}</div>`;
+        res.write(`event: line\ndata: ${safeHtml}\n\n`);
+      }
+
+      // Subscribe to live log lines
+      const onLine = (line: string) => {
+        const safeHtml = `<div class="log-line">${escape(line)}</div>`;
+        try {
+          res.write(`event: line\ndata: ${safeHtml}\n\n`);
+        } catch {
+          // Client already disconnected; unsubscribe handled below
+        }
+      };
+      logSubscriber.on('line', onLine);
+
+      // Keepalive ping every 30 seconds
+      const keepaliveTimer = setInterval(() => {
+        try {
+          res.write(': ping\n\n');
+        } catch {
+          clearInterval(keepaliveTimer);
+        }
+      }, 30_000);
+
+      // Clean up on client disconnect
+      req.on('close', () => {
+        logSubscriber.off('line', onLine);
+        clearInterval(keepaliveTimer);
+      });
+
+      req.on('error', () => {
+        logSubscriber.off('line', onLine);
+        clearInterval(keepaliveTimer);
+      });
+
       return;
     }
 

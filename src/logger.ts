@@ -1,3 +1,33 @@
+import { EventEmitter } from 'node:events';
+
+// ─── Log ring buffer (cap 500) ───────────────────────────────────────────────
+// Stores the last LOG_BUFFER_CAP formatted log lines for the /admin/partials/logs
+// partial and the /admin/sse/logs SSE stream. Both JSON and pretty lines land here.
+const LOG_BUFFER_CAP = 500;
+const LOG_BUFFER: string[] = [];
+
+/** Returns a shallow copy of the recent log buffer (newest last). */
+export function getRecentLogs(): string[] {
+  return LOG_BUFFER.slice();
+}
+
+/**
+ * EventEmitter that emits `'line'` for every new log line written to the buffer.
+ * SSE consumers subscribe via `logSubscriber.on('line', handler)` and MUST call
+ * `.off('line', handler)` on disconnect to prevent memory leaks.
+ */
+export const logSubscriber = new EventEmitter();
+logSubscriber.setMaxListeners(100); // allow many concurrent SSE clients
+
+function pushToBuffer(line: string): void {
+  LOG_BUFFER.push(line);
+  if (LOG_BUFFER.length > LOG_BUFFER_CAP) {
+    LOG_BUFFER.shift();
+  }
+  logSubscriber.emit('line', line);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── JSON log schema (when LOG_FORMAT=json) ─────────────────────────────────
 // Every line is a single newline-terminated JSON object with these fields:
 //   ts      string  ISO 8601 timestamp (e.g. "2026-05-02T14:23:01.456Z")
@@ -100,21 +130,22 @@ function log(
     if (Object.keys(context).length > 0) {
       entry.context = context;
     }
-    stream.write(JSON.stringify(entry) + '\n');
+    const line = JSON.stringify(entry) + '\n';
+    stream.write(line);
+    pushToBuffer(line.trimEnd());
     return;
   }
 
   // Human-readable (pretty) mode — original behavior unchanged.
   const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
+  let line: string;
   if (typeof dataOrMsg === 'string') {
-    stream.write(
-      `[${ts()}] ${tag} (${process.pid}): ${MSG_COLOR}${dataOrMsg}${RESET}\n`,
-    );
+    line = `[${ts()}] ${tag} (${process.pid}): ${MSG_COLOR}${dataOrMsg}${RESET}\n`;
   } else {
-    stream.write(
-      `[${ts()}] ${tag} (${process.pid}): ${MSG_COLOR}${msg}${RESET}${formatData(dataOrMsg)}\n`,
-    );
+    line = `[${ts()}] ${tag} (${process.pid}): ${MSG_COLOR}${msg}${RESET}${formatData(dataOrMsg)}\n`;
   }
+  stream.write(line);
+  pushToBuffer(line.trimEnd());
 }
 
 export const logger = {

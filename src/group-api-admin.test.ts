@@ -1,5 +1,6 @@
 import http from 'http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { logger } from './logger.js';
 
 import { _initTestDatabase } from './db.js';
 import { startGroupAPI } from './group-api.js';
@@ -135,5 +136,83 @@ describe('admin dashboard', () => {
     // Either 404 (route mismatch) or 401 (auth gate) is acceptable;
     // critical thing is no traversal succeeded.
     expect([401, 404]).toContain(r.status);
+  });
+
+  it('GET /admin/partials/logs returns HTML with valid Bearer', async () => {
+    const r = await fetchAdmin('/admin/partials/logs', { token: TEST_TOKEN });
+    expect(r.status).toBe(200);
+    expect(r.contentType).toContain('text/html');
+    expect(r.body).toContain('logs-pane');
+  });
+
+  it('GET /admin/partials/logs without Bearer returns 401', async () => {
+    const r = await fetchAdmin('/admin/partials/logs');
+    expect(r.status).toBe(401);
+    expect(r.body).toContain('Unauthorized');
+  });
+
+  it('GET /admin/sse/logs streams text/event-stream and contains a buffered log line', async () => {
+    // Emit a log line into the buffer BEFORE connecting so the initial flush carries it
+    const marker = `sse-test-marker-${Date.now()}`;
+    logger.info({ marker }, 'SSE log stream test line');
+
+    await new Promise<void>((resolve, reject) => {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${TEST_TOKEN}`,
+        Accept: 'text/event-stream',
+      };
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port: parseInt(TEST_PORT, 10),
+          path: '/admin/sse/logs',
+          method: 'GET',
+          headers,
+        },
+        (res) => {
+          expect(res.statusCode).toBe(200);
+          expect(String(res.headers['content-type'] ?? '')).toContain(
+            'text/event-stream',
+          );
+
+          let received = '';
+          const timeout = setTimeout(() => {
+            req.destroy();
+            reject(
+              new Error(
+                `Timed out waiting for marker "${marker}" in SSE stream. Received so far:\n${received}`,
+              ),
+            );
+          }, 2000);
+
+          res.on('data', (chunk: Buffer) => {
+            received += chunk.toString();
+            if (received.includes(marker)) {
+              clearTimeout(timeout);
+              req.destroy();
+              resolve();
+            }
+          });
+
+          res.on('end', () => {
+            // Connection closed before we saw the marker
+            clearTimeout(timeout);
+            if (!received.includes(marker)) {
+              reject(
+                new Error(
+                  `Stream ended without marker "${marker}". Received:\n${received}`,
+                ),
+              );
+            }
+          });
+        },
+      );
+      req.on('error', (err) => {
+        // req.destroy() fires an error — treat it as success if marker was seen
+        if ((err as NodeJS.ErrnoException).code === 'ECONNRESET') return;
+        reject(err);
+      });
+      req.end();
+    });
   });
 });

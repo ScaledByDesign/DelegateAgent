@@ -1,0 +1,21 @@
+<div id="logs-pane">
+  <h2>Recent Logs</h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+    <button
+      id="logs-live-btn"
+      hx-ext="sse"
+      sse-connect="/admin/sse/logs"
+      sse-swap="innerHTML"
+      hx-target="#logs-output"
+      style="background:#1f2937;color:#93c5fd;border:1px solid #374151;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.85rem;"
+      title="Connect to live SSE log stream"
+    >&#9654; Live</button>
+    <button
+      onclick="document.getElementById('logs-output').innerHTML='';document.getElementById('logs-count').textContent='0 lines';"
+      style="background:#111;color:#888;border:1px solid #222;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.85rem;"
+      title="Clear the log display"
+    >Clear</button>
+    <span id="logs-count" style="color:#666;font-size:0.82rem;">{{buffered_count}} buffered lines</span>
+  </div>
+  <pre id="logs-output" style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:6px;padding:14px;overflow-y:auto;max-height:60vh;font-size:0.8rem;line-height:1.5;color:#d4d4d4;white-space:pre-wrap;word-break:break-all;">{{logs_body}}</pre>
+</div>
