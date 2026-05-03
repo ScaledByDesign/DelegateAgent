@@ -1,0 +1,13 @@
+src/credential-client.ts:15: * Returns { anthropicKey?, openaiKey?, anthropicBaseUrl? }
+src/credential-client.ts:21:  anthropicKey?: string;
+src/credential-client.ts:23:  anthropicBaseUrl?: string;
+src/container-runner.ts:297:      if (keys?.anthropicKey) {
+src/container-runner.ts:298:        args.push('-e', `ANTHROPIC_API_KEY=${keys.anthropicKey}`);
+src/container-runner.ts:301:        if (keys.anthropicBaseUrl) {
+src/container-runner.ts:302:          args.push('-e', `ANTHROPIC_BASE_URL=${keys.anthropicBaseUrl}`);
+src/container-runner.ts:306:            `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`,
+src/container-runner.ts:343:      args.push('-e', `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`);
+src/chat/bifrost-client.ts:3:// Calls Bifrost's `/anthropic/v1/messages` endpoint directly, bypassing the
+src/chat/bifrost-client.ts:9:// `openrouter-anthropic` provider, so this single call honors the same
+src/chat/bifrost-client.ts:55:    res = await fetch(`${BIFROST_URL}/anthropic/v1/messages`, {
+src/chat/bifrost-client.ts:59:        'anthropic-version': '2023-06-01',

@@ -1,0 +1,6 @@
+  origin/skill/apple-container
+  origin/skill/channel-formatting
+  origin/skill/compact
+  origin/skill/emacs
+  origin/skill/native-credential-proxy
+  origin/skill/ollama-tool

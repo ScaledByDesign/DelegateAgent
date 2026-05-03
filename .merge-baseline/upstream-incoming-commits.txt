@@ -1,0 +1,637 @@
+953264e chore: bump version to 2.0.27
+52051d4 Merge pull request #2181 from mnolet/fix/slash-commands-on-warm-containers
+64769fe Merge branch 'main' into fix/slash-commands-on-warm-containers
+eba5b78 chore: bump version to 2.0.26
+6b76c1a Merge pull request #2183 from cfis/fix/host-sweep-outbound-db-rw
+cb1d8dd Merge branch 'main' into fix/host-sweep-outbound-db-rw
+82216b5 Add /add-deltachat skill
+02650fa Merge pull request #1931 from qwibitai/feat/migrate-from-v1
+640303e Merge branch 'main' into feat/migrate-from-v1
+3b5e5a2 fix(migrate-v2): reset auto-created messaging_group policy on re-run
+7dbedad fix(migrate-v2): skip symlinks in group copyTree
+8181054 fix(migrate-v2): resolve Discord DMs as discord:@me:<id>
+7922a19 docs(migrate-from-v1): drop the blocker/deferred table
+8c1b209 docs(migrate-from-v1): 2b-channel-auth and 3c-auth are blockers
+2bc1279 docs(migrate-from-v1): trim Phase 0 to intent only
+2617313 docs(migrate-from-v1): blockers-first + smoke test before deeper work
+8439a18 docs(migrate-v2): collapsible README section + skill preflight
+dca02f5 feat(migrate-v2): resolve WhatsApp LIDs from store/auth, alias DMs
+2a915e8 fix(migrate-v2): infer is_group from JID format
+416c283 fix(migrate-v2): bash 3.2 compatibility + reset coverage
+aec7ddd fix(migrate-v2): correct JID parsing, Discord guildId lookup, silent failures
+8d022fd fix(host-sweep): reopen outbound DB as writable for orphan claim cleanup
+1ebb2dc fix(poll-loop): slash commands silently broken on warm containers
+ce9f175 fix: reorder phase 3 — Docker before OneCLI
+cf3fcc1 fix: install Docker if missing, don't skip container build
+00a30e3 docs: update changelog, remove experimental label from migration
+f35be24 chore: move shared helpers to migrate-v2/, delete migrate-v1/
+67eb85d chore: remove old setup-embedded migration steps
+1d73b29 feat: add migrate-v2.sh — standalone v1 → v2 migration script
+1b08b58 setup: drop redundant agent ping; harden auth detection and OAuth paste
+897b770 chore: bump version to 2.0.25
+a71d2a4 docs: update token count to 140k tokens · 70% of context window
+39c579b Merge pull request #2151 from glifocat/fix/host-sweep-orphan-processing-ack
+dab4fb4 Merge branch 'main' into fix/host-sweep-orphan-processing-ack
+663d9a4 docs: update token count to 139k tokens · 70% of context window
+a590fbd chore: bump version to 2.0.24
+20a17cb Merge pull request #2160 from kky/pr/inbound-db-fresh-open
+0d83622 Merge branch 'main' into pr/inbound-db-fresh-open
+36e731c Merge branch 'main' into feat/migrate-from-v1
+8c962d3 chore: bump version to 2.0.23
+28c38ae fix(container): pin vercel to 52.2.1 to dodge broken 53.0.1 publish
+7ac8dd0 docs: update token count to 139k tokens · 69% of context window
+7814e45 Merge pull request #2001 from Hinotoi-agent/fix/outbox-path-confinement
+fc3c11b fix(session-manager): apply outbox path-confinement to inbound attachments
+852009d fix(container): confine outbound attachment paths
+212281b Merge pull request #2055 from dooha333/pr/setup-local-bin-path
+6db6bf9 Merge branch 'main' into pr/setup-local-bin-path
+8977f0d chore: bump version to 2.0.22
+d13f338 Merge pull request #2114 from robbyczgw-cla/fix/poll-loop-prescripts-on-followups
+5ab1a27 review: catch follow-up poll errors + re-check done before push
+7d29888 Merge branch 'main' into fix/poll-loop-prescripts-on-followups
+58d875b chore: bump version to 2.0.21
+3e7fea0 Merge pull request #2142 from mnolet/fix/schedule-task-routing
+d418f83 Merge branch 'main' into fix/schedule-task-routing
+32daf60 Merge branch 'main' into pr/setup-local-bin-path
+524ac22 Merge pull request #2111 from qwibitai/setup-scratch-agent-cleanup
+69b4225 Merge branch 'main' into setup-scratch-agent-cleanup
+3d6a9b7 review: surface ping-test cleanup failures + restore copy
+dcc625f Merge pull request #2155 from qwibitai/setup-root-warning-v2
+99a8559 Merge remote-tracking branch 'origin/main' into setup-root-warning-v2
+3dc772c Merge branch 'main' into setup-scratch-agent-cleanup
+5ebad28 Merge pull request #1502 from Koshkoshinsk/docs/pr-hygiene-check
+d73b9e1 Merge branch 'main' into docs/pr-hygiene-check
+681a5b5 Merge pull request #2157 from qwibitai/setup-lazy-env-reuse
+8e45f4e Merge branch 'main' into setup-lazy-env-reuse
+eb9a5d7 Merge branch 'main' into setup-scratch-agent-cleanup
+46cd91c docs: update token count to 138k tokens · 69% of context window
+0218159 chore: bump version to 2.0.20
+3ee07ef Merge pull request #2105 from qwibitai/feat/channel-approval-flow
+462b958 Merge branch 'main' into feat/channel-approval-flow
+a359f25 Merge pull request #2158 from alipgoldberg/setup-splash-screen
+6525926 Merge branch 'main' into setup-splash-screen
+35d35fe Merge pull request #2154 from alipgoldberg/setup-fallback-url-in-prompt
+eab9110 Merge branch 'main' into setup-fallback-url-in-prompt
+2c0d0e9 Merge pull request #2146 from alipgoldberg/setup-headless-link-copy
+ccfdf2d fix(agent-runner): open inbound.db fresh per messages_in read
+17823df Merge branch 'main' into setup-headless-link-copy
+941a75f Merge pull request #2145 from alipgoldberg/setup-headless-skip-browser
+c2ee2b7 Merge branch 'main' into setup-headless-skip-browser
+ef62f57 Merge pull request #2108 from alipgoldberg/setup-fmt-duration
+e51f6e0 feat(setup): show under-the-sea lobster splash at boot
+cb15e60 feat(setup): move URL fallback into the open-browser prompt
+6863e0f feat(setup): label headless URL fallback with "Get started:"
+4d42bb9 feat(setup): skip browser-open prompts on headless devices
+a66cd54 feat(setup): switch elapsed-time suffixes to "Xm Ys" past 60s
+cfb737d Merge branch 'main' into feat/channel-approval-flow
+1db98ee refactor(setup): check env vars per-step instead of upfront all-or-nothing
+bb1b418 Merge pull request #2156 from qwibitai/fix/telegram-spinner-overflow
+5be15be fix: prevent telegram pairing spinner from flooding the terminal
+e56132d Remove SSH key copy step from root warning instructions
+5cf5840 Merge branch 'main' into feat/channel-approval-flow
+7ce9922 fix(host-sweep): clear orphan processing_ack on kill to prevent claim-stuck loop
+35f8e9d Move SSH hint above user-creation steps
+d5388a1 Replace web terminal instructions with SSH setup hint
+23a3fea Add passwordless sudo step to root warning instructions
+72837c1 Fix sg docker re-exec restarting setup from scratch
+d07cd7a Remove redundant root login step from user-creation instructions
+3d29965 Update root warning instructions: add SSH key copy, remove extra step
+0a18c1d Ensure user is in docker group before sg docker, revert workarounds
+dec1be6 Add clone step to root warning user-creation instructions
+030ee8a Update root warning instructions: add root login step, fix ssh user
+c4f6540 Change root warning from y/N prompt to numbered menu options
+7755082 Add root user warning gate to Linux setup pre-flight
+8a20580 fix(setup): wrap scratch agent cleanup in transaction, remove session data
+d7c76ac Merge branch 'main' into setup-scratch-agent-cleanup
+f828e29 chore: bump version to 2.0.19
+43f49b9 docs: update token count to 135k tokens · 68% of context window
+012292d Merge pull request #2115 from robbyczgw-cla/fix/session-manager-attachment-extensions
+d2151ae Merge branch 'main' into fix/session-manager-attachment-extensions
+15f286b chore: bump version to 2.0.18
+6e5e568 sanitize agent sent file names to prevent path traversal
+2a3be9e extract attachment-naming, harden mimeType guard, add tests
+2b1b138 Merge branch 'main' into feat/channel-approval-flow
+3c7b971 Merge branch 'main' into setup-scratch-agent-cleanup
+8dd004c fix(scheduling): include routing in schedule_task content JSON
+34f3612 docs: update token count to 135k tokens · 67% of context window
+1452ed2 chore: bump version to 2.0.17
+597e282 Merge pull request #2110 from qwibitai/fix/credential-failure-ux
+33a03f2 Merge remote-tracking branch 'origin/main' into fix/credential-failure-ux
+e31a6c7 revert(credentials): drop auth-required login-message handling
+ee165d0 docs: update token count to 134k tokens · 67% of context window
+70cb35f chore: bump version to 2.0.16
+d1a2505 Merge pull request #2116 from robbyczgw-cla/fix/compact-window-operator-override
+9889848 fix(claude-provider): respect operator-set CLAUDE_CODE_AUTO_COMPACT_WINDOW
+beb5e04 fix(credentials): move auth-required remediation message into provider
+b9d3025 fix(session-manager): derive attachment extension from mimeType and att.type
+ef8e3aa fix(poll-loop): apply pre-task scripts to follow-up injections too
+3c620bc Merge branch 'fix/credential-failure-ux' of https://github.com/qwibitai/nanoclaw into fix/credential-failure-ux
+d5b48e4 fix(credentials): address review feedback
+8542c48 fix(setup): isolate scratch agent with hardcoded _ping-test folder
+1dd8fab Merge branch 'main' into fix/credential-failure-ux
+8c5d67c fix(setup): dynamic FK cleanup, remove normalizeName coupling
+d860518 feat(setup): delete scratch agent after ping-pong, simplify flow
+5f34e26 fix(credentials): translate auth errors and require OneCLI for spawn
+5dd15c0 Merge branch 'main' into feat/channel-approval-flow
+db19837 feat(permissions): richer channel-approval flow with agent selection and free-text naming
+9e45845 Merge pull request #2104 from alipgoldberg/setup-assistant-green
+9a919f4 Merge branch 'main' into setup-assistant-green
+4608836 feat(setup): paint "assistant" green in the agent-name prompt
+1bf903a Merge pull request #2103 from alipgoldberg/setup-pronoun-green
+0044bba Merge branch 'main' into setup-pronoun-green
+26594d2 feat(setup): paint "you" green in the display-name prompt
+0113152 Merge pull request #2102 from alipgoldberg/setup-color-choices
+3742165 Merge branch 'main' into setup-color-choices
+4c791a4 feat(setup): cyan highlight on active and submitted choices
+6ef147b Merge pull request #2101 from alipgoldberg/setup-color-body
+7d153df Merge branch 'main' into setup-color-body
+ab2d509 feat(setup): paint card and log bodies in brand cyan
+57a9590 Merge pull request #2098 from Koshkoshinsk/setup-token-headless
+9f56465 Merge branch 'main' into setup-token-headless
+2acd717 Merge pull request #2094 from qwibitai/fix/setup-reuse-existing-env
+b7f099d Merge branch 'main' into setup-token-headless
+c8e9603 Merge remote-tracking branch 'upstream/main' into fix/setup-reuse-existing-env
+ec3aa0f Merge pull request #2096 from qwibitai/fix/password-clear-on-error
+d4868a5 Merge branch 'main' into fix/password-clear-on-error
+a014a67 fix password fields not clearing after validation error
+e0f8136 Merge pull request #2095 from alipgoldberg/setup-undim-cards
+aa390b3 detect existing .env and credentials on setup re-run
+9c8f680 fix: stop dimming setup card bodies
+93be2d1 fix claude setup-token flow for headless/remote systems
+8973891 offer to install and authenticate Claude CLI before diagnosis
+ede6c01 chore: bump version to 2.0.15
+4d6f9b7 Merge pull request #2080 from Koshkoshinsk/circuit-breaker
+336e01d fix circuit-breaker off-by-one, ENOENT, and reset-on-throw + tests
+2bf296b add startup circuit breaker and troubleshooting docs
+ae9bcb7 Merge pull request #2075 from qwibitai/fix/slack-setup-wiring
+9986910 Merge branch 'main' into fix/slack-setup-wiring
+c5d0243 fix(setup): add Interactivity & Shortcuts step to Slack setup
+c36f0c6 fix(setup): wire Slack agent during setup like Discord/Telegram
+45d3016 docs: update token count to 133k tokens · 67% of context window
+7e37b13 Fix path traversal in attachment handling on channel-inbound path
+a80f095 fix(setup): inject ~/.local/bin into PATH so post-install onecli is reachable
+f8c3d02 docs: update token count to 133k tokens · 66% of context window
+b808ab4 chore: bump version to 2.0.14
+b9b186c Merge pull request #2023 from KeXin95/fix/custom-anthropic-base-url
+b44bcf5 Merge branch 'main' into fix/custom-anthropic-base-url
+be86bd3 fix(setup): remove duplicate pollHealth import in auto.ts
+6591062 refactor: route custom Anthropic endpoint through OneCLI vault
+26fc3ff feat: pass ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN into agent containers
+4ebf56e Merge pull request #2035 from qwibitai/feat/setup-advanced-settings
+7693a20 feat(setup): validate onecli api token starts with oc_
+e706dca feat(setup): default OneCLI remote URL to https://app.onecli.sh
+f048447 feat(setup): authenticate onecli CLI for remote vault setup
+efdd05a feat(setup): advanced settings registry with remote OneCLI support
+7de1fc1 Merge pull request #2030 from evenisse/feat/onecli-remote
+6b431c1 feat(setup): add remote OneCLI option in setup flow
+5812422 Merge branch 'main' into feat/migrate-from-v1
+0bc082a Merge pull request #2010 from ira-at-work/pr/add-signal-v2
+b6be3b9 docs(skills): merge add-signal-v2 lessons into add-signal, drop v2
+7e99d0e Merge branch 'main' into pr/add-signal-v2
+8d85222 chore: bump version to 2.0.13
+0df647b Merge pull request #1963 from grtwrn/fix/register-channel-wiring
+2825f65 Merge branch 'main' into fix/register-channel-wiring
+15a6950 chore: bump version to 2.0.12
+226fc93 docs: update token count to 132k tokens · 66% of context window
+15e2ac7 Merge pull request #1967 from IamAdamJowett/fix/session-state-per-provider-and-agent-route-files
+f804ebf Merge branch 'main' into fix/session-state-per-provider-and-agent-route-files
+fc375ca fix(register): wire channels with correct engage fields, skip prefix for native IDs
+88d3da7 Merge pull request #1964 from grtwrn/skill/add-gcal-tool
+6d35c85 skill(add-gcal-tool): OneCLI-native Google Calendar MCP tool
+f0ebc8d Merge pull request #1961 from grtwrn/skill/add-gmail-tool
+c7f8e98 Merge branch 'main' into skill/add-gmail-tool
+52f8661 docs(providers): note that container.json provider is what the runner reads
+f37e775 Revert src changes; skill applies them at install time
+4116251 Merge pull request #1960 from shock99-samantha/fix/register-engage-mode-schema
+2afcee3 Merge pull request #1970 from pankajkgarg/codex/detect-auth-errors-in-setup
+9bb416c Merge branch 'main' into codex/detect-auth-errors-in-setup
+beb73d7 Merge pull request #1975 from glifocat/chore/label-pr-fork-support
+8b783da Merge branch 'main' into chore/label-pr-fork-support
+5cbfcce chore: bump version to 2.0.11
+8637143 Merge pull request #1974 from glifocat/chore/format-chat-sdk-bridge
+44067e7 Merge branch 'main' into chore/format-chat-sdk-bridge
+72d0134 Merge pull request #1972 from glifocat/fix/cli-only-verify
+2b51a4e fix(workflows): label PRs from forks that follow the contributing template
+3d6837c chore(format): apply prettier to chat-sdk-bridge.ts
+9fd694c chore(setup): minimize verify diff
+4fc2c42 test(setup): cover CLI-only verify status
+1de5a03 fix(setup): accept CLI-only verify success
+f41c162 detect setup auth ping failures
+fd03b89 fix(agent-route): reject unsafe attachment filenames to prevent path traversal
+672e228 fix(agent-route): forward file attachments between agents
+81ef193 refactor(session-state): key continuations per provider to survive provider switches
+9e33274 skill(add-gmail-tool): OneCLI-native Gmail MCP tool
+d0c608c fix(setup): register step uses engage_mode columns dropped by migration 010
+a4346f5 docs: update token count to 130k tokens · 65% of context window
+1df8dec Merge pull request #1958 from qwibitai/fix/provider-db-precedence
+82baa39 Merge branch 'main' into fix/provider-db-precedence
+5845a5a fix(container-runner): honor agent_provider DB columns with session override
+ce28e7f docs(add-codex): bump CODEX_VERSION to 0.124.0
+9e480a0 Merge pull request #1954 from qwibitai/feat/setup-signal
+3fa0014 feat(setup): wire Signal into the auto setup flow
+78b0ad6 chore: bump version to 2.0.10
+e3f4a8b Merge pull request #1932 from Koshkoshinsk/main
+c1d0395 Merge branch 'main' into main
+0eeeecf Merge pull request #1953 from ddaniels/skill/signal
+7a628bf Merge branch 'main' into skill/signal
+2fd2bf3 chore(signal): move adapter source to channels branch
+f351e46 refactor(approvals): persist title+options on channel/sender approval tables
+5f3bd9c fix(signal): address review feedback from #1953
+5d32efb chore: bump version to 2.0.9
+7eda262 Merge pull request #1943 from qwibitai/fix/pending-rows-idempotent
+ffd38f6 Merge branch 'main' into fix/pending-rows-idempotent
+57eeed6 Merge branch 'main' into skill/signal
+2861009 docs: update token count to 129k tokens · 64% of context window
+bd032c2 chore: bump version to 2.0.8
+0e0794c Merge pull request #1942 from qwibitai/fix/telegram-callback-data-size
+83254b1 Merge branch 'main' into fix/telegram-callback-data-size
+cf2b1c9 Merge pull request #1940 from cheats1314/fix/setup-v2-registered-groups
+f3524a3 Merge branch 'main' into fix/setup-v2-registered-groups
+c6d2f45 feat: add Signal channel adapter
+e5a7a33 docs(add-codex): fix Dockerfile install step — separate RUN block, not combined list
+0ec56b7 docs(add-codex): add skill for installing Codex provider from providers branch
+97868af fix(delivery): make pending_questions/approvals insert idempotent
+ff277c0 fix(chat-sdk-bridge): encode option index in callback_data for Telegram 64-byte cap
+a67b4ab Merge pull request #1941 from qwibitai/fix/container-restart-recovery
+500353c Merge branch 'main' into fix/container-restart-recovery
+a8eb82d Merge branch 'main' into main
+237876c chore(format): wrap session-manager import in container-runner
+209061f fix(sweep): wake before reset + idempotent retry for orphan claims
+bee80b0 fix(container): clear orphan heartbeat before spawn
+539af75 fix(setup): detect registered groups from v2 central db
+a65ee2e Merge branch 'main' into feat/migrate-from-v1
+438deda chore: bump version to 2.0.7
+6475e0f Merge pull request #1933 from qwibitai/fix/atomic-chat-skill-restructure
+dd5bc85 refactor(skill/atomic-chat-tool): ship MCP file in skill folder, revert src edits
+97e356d chore: bump version to 2.0.6
+94d33bc Merge pull request #1802 from Vect0rM/skill/atomic-chat-tool
+cca22e9 Merge branch 'main' into skill/atomic-chat-tool
+3a9b98f feat: add Atomic Chat MCP tool skill
+04e0e18 chore: retrigger CI (pre-existing flaky container test)
+9faa8a9 fix(migrate-v1): splice guild_id into Discord platform_id during seed
+e1c8876 feat(migrate-v1): auto-resolve missing v2 channel keys via adapter APIs
+3ee7d21 feat: add v1 → v2 migration to setup flow (experimental)
+677cc47 Merge pull request #1929 from qwibitai/add-slack-imessage
+40f5683 fix(approvals): show correct post-click labels on channel/sender cards
+15f3068 fix(approvals): show human-readable names in approval cards
+d121cd1 fix(router): pass isGroup from adapter through to messaging group creation
+61ca43d fix(discord): resolve user ID from DM interactions for approval clicks
+3101f65 feat(setup): add Slack and iMessage channel flows (experimental)
+d8b1f52 chore: bump version to 2.0.5
+c84a6ba Merge pull request #1928 from lazer-sketch/fix/scoped-container-reaper
+73c9315 Merge branch 'main' into fix/scoped-container-reaper
+2383bde fix(container): scope orphan reaper by install label so peers don't kill each other
+dee7e0b feat(setup): Yes-default + session-persist on claude-assist, quieter first-chat
+990d243 fix(setup): bypass rate-limited GitHub API when installing onecli CLI
+910342f style(setup): lift text weight — prose becomes regular, outcomes bold
+7f4583d fix(setup): add npm global prefix bin to PATH after fallback install
+092f16d Merge pull request #1927 from qwibitai/setup-feedback-fixes
+4ff4cc7 Merge remote-tracking branch 'origin/main' into setup-feedback-fixes
+56ef5b4 feat(setup): clarify setup flow from user-feedback session
+8a19ad0 chore: bump version to 2.0.4
+5f1b3e5 style: apply prettier formatting to install-slug additions
+72aba8c docs: update token count to 128k tokens · 64% of context window
+3d44001 chore: bump version to 2.0.3
+7a9401d feat(setup): per-checkout service name and docker image tag
+4f6d62a docs(readme-zh): align Chinese README with v2 English
+564000d docs(readme-ja): align Japanese README with v2 English
+601fc7c docs(readme): split Quick Start into separate commands
+cdb9442 docs(readme): clone into nanoclaw-v2 in Quick Start
+8326b4c fix(setup): offer to reuse an existing OneCLI instead of clobbering it
+22c2bef chore: bump version to 2.0.2
+6cd261a chore(container): loosen /home/node to 0777
+d97a0e1 fix(setup): resolve channels remote dynamically, don't assume `origin`
+16421cc fix(setup): fall back to npm install when corepack is missing
+469dd9a refactor(skills): collapse setup skill to one instruction — run bash nanoclaw.sh
+dbb859b docs: update token count to 127k tokens · 64% of context window
+dbb8244 chore: bump version to 2.0.1
+c16052e Merge pull request #1919 from qwibitai/v2
+e9d056d merge: main into v2, resolving conflicts in favor of v2
+25687dc chore(deps): drop @chat-adapter/telegram from trunk
+5df8d9d docs: drop v2 refactor planning docs ahead of merge
+8412b89 feat(diagnostics): funnel events throughout setup with persisted install-id
+39ae04d docs(welcome-skill): expand onboarding tour with capability reveals and trust framing
+d2f5304 docs(module-fragments): add instructions for create_agent, interactive, and remaining core tools
+52ebdce docs(claude-md): drop host-facing header comment from shared base
+e2b1df8 docs(claude-md): strengthen memory discipline in shared base
+3b8240a refactor(self-mod): drop request_rebuild — approvals now bundle rebuild+restart
+e64bdb3 refactor(claude-md): split shared base into module fragments, inject name at runtime
+95e74d8 docs(onecli): expand secrets section; correct stale admin-roles refs
+202ee71 feat(setup): auto-detect timezone after CLI agent step
+0ed00b3 docs(claude.md): add v1-merge STOP banner directing to migrate-v2.sh
+3db66c0 fix: forward ONECLI_API_KEY to OneCLI SDK for authenticated container config
+5371c76 docs(readme): mark translations as pre-v2 pending update
+fe942dd chore: bump to 2.0.0 with v2 CHANGELOG entry
+8e1c8f8 style: apply prettier formatting to touched files
+8662f21 docs(readme): update for v2 + scripted setup default
+390e095 feat(setup): hand off to Claude for Teams finish-wiring
+a70e418 feat(setup): Microsoft Teams wiring with Claude handoff
+a541e75 Merge pull request #1914 from qwibitai/v2-with-refactors
+fb82c1b Delete docs/shared-src.md
+7da24b1 fix(agent-runner): remove thread_id filter and fix processing ack on empty result
+c8fc1da refactor(claude-md): compose per-group CLAUDE.md from shared base + fragments
+8a12fa6 refactor: shared source — replace per-group agent-runner copies with single RO mount
+596035b feat(setup): operator role prompt per channel, owner by default
+4859d8f feat(setup): Claude-assisted error recovery with resume-at-step retry
+dfcbab5 feat(setup): optional WhatsApp wiring + cross-channel UX polish
+72b7a72 feat(setup): ping agent before chat, detect stale service, auto-install Claude
+9b6e5b2 feat(setup): optional Discord wiring in setup:auto
+1e0f7d6 Merge pull request #1884 from ssimeonov/fix/sdk-binary-resolution
+a263da3 feat(setup): prompt to install Homebrew on factory macOS
+1858ef3 Merge pull request #1908 from qwibitai/setup-auto
+7d20816 feat(setup): rewrite copy for first-time users + split auth flow
+9b7d4d5 refactor(setup): split auto.ts into runner + theme + telegram channel
+416fe01 refactor(setup): drop CLI-bonus wiring from init-first-agent
+5269eda feat(setup): three-level output (clack UI / progression log / raw per-step)
+6e0d742 feat(setup): brand setup:auto with @clack/prompts + brand palette
+e24ecbf refactor(setup): own pair-telegram.ts in this branch with clean output
+356a4d0 feat(setup): render Telegram pairing code in a focused banner
+5a472c4 fix(setup): print bot URL alongside the deep-link attempt
+e7d798b feat(setup): validate Telegram token via getMe and deep-link to bot
+92c28a9 feat(setup): run init-first-agent after Telegram pairing
+9c7e1d0 feat(setup): optional Telegram wiring in setup:auto
+c87cd25 feat(verify): end-to-end agent ping via CLI channel
+85faa3e fix(setup): rephrase display-name prompt
+d02001e feat(setup): prompt for display name, hardcode agent persona
+81838bb fix(setup): clarify silent-paste prompt
+1c748f1 refactor(setup): drop timezone step from setup:auto chain
+e49cbce Merge pull request #1883 from ssimeonov/fix/claude-code-version-bump
+a9a488e Merge pull request #1900 from davekim917/fix/discord-truncation-and-session-persist
+52a9ab5 feat(add-wechat): personal WeChat channel via Tencent iLink Bot API
+be6cec5 fix(setup): auto-recover from stale docker group mid-session
+e86d0d9 feat(setup): wire CLI agent in setup:auto
+fd2e404 fix(setup): auto-install Node and bypass corepack prompt
+264849d feat(setup): add nanoclaw.sh entry point
+b0cae1b feat(setup): chain register-claude-token.sh into setup:auto
+ee5995a feat(setup): add register-claude-token.sh
+3ce4101 feat(setup): chain OneCLI install in setup:auto
+2311721 feat(setup): add scripted setup driver and auto-start Docker
+0107228 refactor(setup): drop Apple Container support
+91c668e fix: persist SDK session_id on init + split long messages before adapter truncation
+c9977d6 chore(settings): drop permissions allowlist from checked-in settings.json
+1f7508f refactor(skills): merge /new-setup-2 into unified /new-setup
+40ddc94 Revert "fix(init-first-agent): seed welcome via inbound.db; drop --no-cli-bonus"
+77e6d3b Revert "refactor(skills): merge /new-setup-2 into unified /new-setup"
+01ffce6 Revert "fix(permissions): welcome new approved channels via /welcome, route to them"
+9776dd4 fix(permissions): welcome new approved channels via /welcome, route to them
+483969a refactor(skills): merge /new-setup-2 into unified /new-setup
+9fe5299 fix(init-first-agent): seed welcome via inbound.db; drop --no-cli-bonus
+d8d61d3 fix: Teams user-id prefix + defer cli:local owner grant
+212fc1f docs(add-emacs): rewrite skill for copy-from-channels-branch pattern
+53c11a2 chore(skills): delete 9 irrelevant legacy skills
+f0090eb fix(container): point SDK to pnpm-installed Claude Code binary
+63b8beb fix(container): bump Claude Code to 2.1.116 and Agent SDK to ^0.2.116
+9ecee27 Merge pull request #1859 from wilderfield/feat/add-ollama-provider
+8d8126a Merge pull request #1864 from talmosko-code/docs/add-opencode-gotchas
+c778242 Merge pull request #1873 from Agrematch/pr/gitignore-env-wildcard
+0f6a1ba style: apply prettier formatting to touched files
+6c26c04 feat(router,cli): replyTo override + CLI admin-transport flows
+dadf258 feat(new-setup-2): add per-channel bundled install scripts
+bd5e074 Merge pull request #1877 from qwibitai/feature/channel-registration
+866b791 fix(container): add /start to filtered commands
+712a0e1 feat(new-setup): wrap node/docker installs and add generic set-env step
+ccb676a feat(new-setup-2): use AskUserQuestion for timezone + mounts; number channel list
+0d145ad feat(new-setup-2): add host directory access step
+9870deb feat(new-setup-2): add timezone step with UTC confirmation
+97d9cf1 chore(skills): normalize + broaden setup allowlists
+cdefc97 feat(new-setup-2): broaden install-telegram permission + allow tail/head/grep
+a29f3e5 feat(new-setup-2): bundle Telegram install into one script
+719f97e feat(permissions): unknown-channel registration flow with owner approval
+5f8a138 docs(skills): update add-matrix skill
+a4061a0 refactor(channels,router): move all policy to router; bridge is transport
+4e1cee0 feat(new-setup-2): phase-2 setup skill + --no-cli-bonus flag
+2eb6907 feat(new-setup): silent CLI wiring + post-service branch point
+b159722 refactor(channels): shrink bridge shouldEngage to flood gate + subscribe signal
+ad97829 docs(add-signal-v2): replace inline voice section with reference to add-voice-transcription-free-whisper
+bc0b559 docs(add-signal-v2): document XDG attachment path behaviour and voice fix
+68058cb fix(permissions): authorize unknown-sender approval clicks
+f74df3b fix(router): trust SDK isMention signal; drop broken hasMention regex
+0105de0 fix(host-sweep): skip ceiling check when heartbeat file is absent
+06918f3 feat(channels): add Signal channel adapter (v2) — skill and docs
+f894b5b chore: ignore .env* variants in addition to .env
+31f2da9 fix(container): gate poll loop on trigger=1 to honor accumulate contract
+c38e5b1 fix(channels): wire accumulate mode through the bridge
+ce25e1e style(channels): prettier line-wrap in chat-sdk-bridge.test.ts
+52c6223 fix(channels): register onNewMessage(/./) to fix pattern mode in group chats
+57e0cda Revert "fix(channels): pre-subscribe group threads for pattern / accumulate wirings"
+73b2088 fix(channels): pre-subscribe group threads for pattern / accumulate wirings
+fca3d8d fix(migrations): drop 011 table-rebuild; keep only pending_sender_approvals
+9882c94 fix(channels): use Chat SDK ChatMessage.text, not .content
+a1079da fix(new-setup): always source ONECLI_URL from installer stdout
+aa2c77b Merge pull request #1869 from qwibitai/refactor/v1-v2-action-items
+e9b7265 Merge remote-tracking branch 'origin/v2' into refactor/v1-v2-action-items
+5d5f72e docs(action-items): add item 22 (unknown-channel wiring approval flow)
+622a370 feat(permissions): unknown-sender request_approval flow + flipped default policy
+16b9499 feat(routing): engage modes + sender scope + accumulate/drop + per-agent fan-out
+6a81519 feat(lifecycle): stuck detection + heartbeat lifecycle + SDK tool blocklist
+dcfa12e feat(timezone): recreate v1 TZ-aware formatting + scheduling behavior
+0283391 chore(config): remove dead POLL_INTERVAL / SCHEDULER_POLL_INTERVAL / IPC_POLL_INTERVAL
+4795067 docs: add v1→v2 action-items analysis + SDK signal probe tool
+0dae349 docs(add-opencode): pin SDK/CLI to 1.4.17, document overlay propagation and env vars
+0d09c6e docs(add-linear): OAuth app auth, bridge patch, team routing, wiring
+57ad359 docs(add-github): document bot account, userName, sender policy, and wiring
+96d7656 refactor(new-setup): rewrite probe in pure bash, drop unavailable fallback
+5542107 fix(new-setup): align onecli health path and rework auth flow
+0992979 feat(new-setup): probe host-deps and skip bootstrap when already installed
+f553c81 refactor(new-setup): add step-4 join barrier and drop scripted one-liners
+77fec6c fix(new-setup): avoid double-bootstrap and corepack EACCES on system Node
+77624d7 fix(new-setup): wrap probe in shell script for single-command permission check
+b3e8b2e fix(new-setup): run probe before pnpm is installed
+f6ddd20 feat(new-setup): add skill definition
+6db8155 feat(new-setup): add probe step for dynamic context injection
+01389ff feat(new-setup): add onecli, auth, and cli-agent dispatcher steps
+47e3203 feat: add /add-ollama-provider skill and docs/ollama.md
+5ed5b72 docs: consolidate refactor follow-ups into a single REFACTOR.md
+60ffe34 Merge pull request #1853 from qwibitai/refactor/pr9-cli-channel
+131fc99 feat(channels): add CLI channel — talk to your agent from the terminal
+e5319b3 Merge pull request #1851 from qwibitai/refactor/pr8-slim-and-cli
+7169c25 refactor: relocate outbox I/O to session-manager + dead-code sweep
+3d945db Merge pull request #1849 from qwibitai/refactor/pr7-retier-approvals
+95fdec3 refactor(modules): re-tier approvals as default; extract self-mod as optional
+1f179e0 Merge pull request #1848 from qwibitai/refactor/pr6-agent-to-agent
+46b19dc refactor(modules): extract agent-to-agent as registry-based module
+c80a23e Merge pull request #1847 from qwibitai/refactor/pr5-permissions
+32bcc2c refactor(permissions): preserve pre-PR behavior in three spots
+7cc4ecc refactor(modules): extract permissions as optional module
+e75af5e Merge pull request #1842 from qwibitai/refactor/pr4-scheduling
+473f766 refactor(modules): extract scheduling as registry-based module
+71aab8c Merge pull request #1840 from qwibitai/refactor/pr3-approvals-interactive
+626c565 fix(modules): break circular import TDZ between index.ts and modules
+a457339 refactor(modules): extract approvals + interactive as registry-based modules
+a612c2c Merge pull request #1839 from qwibitai/refactor/pr2-scaffolding
+4202041 refactor: scaffold module registries and default-module layout
+1888ecc Merge pull request #1838 from qwibitai/refactor/pr1-prep
+a1b2272 chore(deps): bump @onecli-sh/sdk to 0.3.1
+53e8135 docs: add module contract for refactor
+86becf8 chore: delete v1 reference code
+27c5220 fix(channels): bridge openDM delegates to adapter directly
+e93292d fix(agent-runner): spawn built-in MCP server with bun, not node
+bd659fd style(v2/delivery): prettier reflow of test import
+ac9535b fix(v2/delivery): prevent double-send from overlapping delivery polls
+bfc626b docs: drop v2 framing across CLAUDE.md and 12 docs
+c37609f docs(skills): drop "v2" from skill content + src/index.ts log lines
+00fb1be chore(skills): rename add-*-v2 → add-* and drop dead v1 channel skills
+4857512 refactor(v2): move setup/groups.ts off trunk + drop pino dep
+712720e refactor(v2): drop @chat-adapter/shared dep — duck-type NetworkError
+a3376c2 docs(channel-skills): rewrite all 13 /add-*-v2 skills for copy-from-channels-branch pattern
+437ba63 refactor(v2): move channel adapters off v2 trunk
+32a973f docs(add-opencode): rewrite skill for copy-from-providers-branch pattern
+03dd559 style: trim trailing whitespace in providers barrel
+e0258e8 refactor(v2): move opencode provider off v2 trunk
+2529c3e Merge pull request #1776 from talmosko-code/feat/add-opencode-v2
+f18d056 Merge pull request #1814 from qwibitai/refactor/provider-barrel-v2
+c9dd6e0 docs: update OpenCode Zen integration details in SKILL.md
+2215026 feat(v2): OpenCode agent provider
+7639f7b style(v2/providers): prettier reflow of provider-container-registry signatures
+1f3b023 refactor(v2/providers): self-registration barrel + host container-config registry
+a38c6a9 Merge pull request #1813 from qwibitai/feat/v2-bun-container
+f04921d docs(v2): runtime-split guide, CLAUDE.md gotchas, setup CJK autodetect
+c5d0ef8 feat(v2): migrate container runtime to Bun, improve image build surface
+45c35a0 docs(v2/db): add database architecture reference
+31063a1 docs(v2/checklist): reflect progress on package install, vercel, and scope adjustments
+f2f76ab Merge pull request #1771 from meeech/feat/v2-pnpm-migration
+22498ae fix: remaining npm→pnpm gaps + dockerignore for pnpm symlinks
+504e529 fix: pnpm-lock sync, per-group build-script allowlist, ppnpm typos
+44e2361 fix: migrate container agent-runner to pnpm with proper build scripts
+994b323 docs: add supply chain security rules for pnpm
+163f570 chore: add .pnpm-store to gitignore and commit formatting fix
+211d2b5 docs: convert all skill instructions from npm to pnpm
+8fbf986 docs: update documentation for pnpm migration
+2b7fef6 chore: migrate setup.sh bootstrap to pnpm
+0b06343 chore: use pnpm in dynamic container commands
+58420e1 chore: migrate container Dockerfile to pnpm with corepack
+d1ddfa0 chore: migrate CI workflows and git hooks to pnpm
+113caa9 chore: replace package-lock.json with pnpm-lock.yaml
+3e1f226 chore: add pnpm packageManager field and workspace config
+1aeb8fb refactor(add-vercel): drop Frontend Engineer delegation, add pre-deploy checks
+cc784ff refactor(v2): remove trigger_credential_collection MCP tool
+e55ed0f fix(whatsapp): upgrade Baileys 6.7→6.17, fix proto import and 515 restart
+cdf18e6 feat(v2): add update_task MCP tool, dedup list_tasks by series
+8ef30ad fix(v2): cancel/pause/resume recurring tasks via series_id
+419d04f chore(agent-runner): sync package-lock for existing deps
+4c46dd3 fix(v2): await handleRecurrence so the DB isn't closed mid-flight
+9617087 fix(v2): compare process_after as datetime, not raw string
+b9f95df feat(v2): add pre-task script hook for scheduled tasks
+82422d2 fix(vercel): complete add-vercel flow for fresh installs
+056d308 feat(welcome): progressive discovery onboarding
+4ae9785 fix(setup): move OpenClaw detection into environment step
+fdece80 fix: reply in the Slack DM thread the user wrote in
+79fd142 improve setup UX: welcome message + AskUserQuestion for pre-approval
+ce80e4e feat(setup): add Linear channel, fix setup permissions
+a1a3240 refactor(telegram-pairing): remove TTL expiry from pairing codes
+39d2af9 feat(v2): track unregistered senders + setup improvements
+57c9bfc improve setup flow: streamline steps, add pre-approval, new manage-mounts skill
+03684d3 style: apply prettier formatting
+81d45b5 refactor(v2): remove builder-agent dev-agent/worktree/swap flow
+20a24df style: apply prettier formatting
+75c2fde feat(v2): builder-agent self-modification WIP + container-config as per-group file
+c54c779 feat(v2/add-vercel): add frontend-engineer skill with agent delegation
+e9a427a docs(v2): add /add-dashboard skill with resource-based pusher
+8ef26d3 fix(v2/telegram): await pairing interceptor work to serialize DB commits
+7732198 feat(pair-telegram): emit REMINDER_TO_ASSISTANT in status block
+1eaf4f8 Revert "docs(skills): print pairing code as final message; drop log-tail verify"
+bd6a26a docs(skills): print pairing code as final message; drop log-tail verify
+6801a14 docs(skills): require pairing code be printed as final user-visible message
+f60b426 docs(skills): surface telegram pairing code outside bash output
+c483860 feat(v2/telegram): send pairing-success confirmation to paired chat
+ed5dc5e fix(v2/chat-sdk): project author into flat sender fields for router gate
+db3aa0b docs(v2/checklist): reflect post-refactor MCP gating, cold-DM infra, and delivery ACL
+4d56252 style: apply prettier formatting
+c60a9be style: apply prettier formatting
+0d3326a feat(v2): user-level privilege model + cold DM infra + init-first-agent skill
+8430e54 style: apply prettier formatting
+63746df fix(v2/delivery): allow agent self-messages without a destination row
+2df81e0 fix(v2/approvals): render correct title + selected label after click
+42467d7 style: apply prettier formatting
+d92d75e feat(v2/approvals): per-card titles and structured options
+8d60af7 feat(v2): add /add-vercel skill for agent Vercel deployments
+1903fab feat(v2/approvals): bundle install_packages + rebuild into one approval
+192a5a7 docs(v2): add /add-whatsapp-v2 setup skill
+c36541b feat(v2/whatsapp): add file attachments, reactions, and inbound media
+c02ac06 feat(v2): add formatting, approvals, and echo filter to WhatsApp adapter
+f304c67 fix(telegram): sanitize outbound markdown for legacy parse mode
+c303b6e feat(v2): add native WhatsApp adapter using Baileys v6
+d16755e docs(v2-checklist): note self-approval UX gap
+871bfa1 fix(v2): use in-tree symlink for global CLAUDE.md @import
+9a955b9 docs(v2-checklist): plan main/non-main -> owner/admin refactor
+ae88d2b fix(telegram): retry adapter setup on transient network errors
+65afcdc feat(telegram-pairing): surface wrong-code attempts + auto-regen with retry cap
+2454444 feat(telegram-pairing): accept bare 4-digit codes
+2017589 feat(telegram): self-contained pairing for chat ownership verification
+af13c23 style: format group-init.ts signature
+2e6dc21 refactor(v2): per-group filesystem init, persistent across spawns
+8676c07 feat(v2): support async channel adapter factories
+3db0dce docs(teams-v2): full setup guide with Azure CLI, manifest, and sideloading
+d4aacfe fix(v2): clear per-group agent-runner src before copy
+b63dd18 refactor(agent-runner): decouple provider interface from Claude specifics
+e07158e fix(agent-runner): preserve thread_id when sending to current channel
+f0e4f07 refactor(v2): extract webhook server into standalone module
+5a606a8 refactor(v2): use Chat SDK webhooks proxy and clean up webhook server
+669a844 refactor(v2): extract session DB operations into src/db/session-db.ts
+2376c88 docs(v2): add delivery-failure-feedback to system actions checklist
+b140b36 fix(agent-runner): reply to originating channel in single-destination shortcut
+7e74bfd feat(v2): Teams adapter env-driven app type and updated skill docs
+a9f9eda docs(slack-v2): update skill with DM setup, webhook URL, and reinstall step
+9476a80 feat(v2): shared webhook server for webhook-based channel adapters
+53e12a6 chore(v2): drop session-DB schema band-aid in writeSessionRouting
+7bd8c6a fix(v2): retry channel adapter setup on transient network errors
+4c477ac fix(v2): retry as plain text when adapter rejects markdown
+9dda75b docs(v2): cross-mount invariants + diagrams; inline a2a routing
+c9fa5cd docs(v2): expand checklist — credential collection, approvals, Chat SDK input
+062b0cb fix(agent-runner): add updated_at column to session_state on older DBs
+e92b245 feat(v2): OneCLI 0.3.1 — approvals, credential collection, threaded routing
+9dc8bc5 docs(v2): expand checklist — chat-first setup, product focus, skills marketplace
+630dd54 chore(container): drop v1 IPC dirs and update entrypoint comment
+b59216c fix(v2): persist SDK session ID across container restarts
+b591d7c refactor: move destinations from JSON file into inbound.db
+09e1861 feat: single-destination shortcut — no wrapping needed when there's only one
+67f0816 style: prettier formatting fixes
+e83ffbc feat: named destinations + permission enforcement + fire-and-forget self-mod
+4004a6b docs: add self-customize skill and refine communication guidance
+6eb81b5 style: prettier formatting fixes
+d8fbd3b feat: agent-to-agent communication, dynamic agent creation, self-modification tools
+9af9bc9 fix(discord-v2): document required DISCORD_PUBLIC_KEY and APPLICATION_ID
+69939b7 docs: fix v2 checklist accuracy — pre-agent scripts, typing, stubs
+e2dbc35 docs: add auto-onboarding to v2 checklist
+5a309a0 fix: only send onboarding message on first wiring, not re-registration
+4a999ec feat: auto-onboarding when a channel is registered
+a2badbd fix: normalize platform ID at registration, not router lookup
+9f5c37f fix: handle platform ID prefix mismatch in router, not register
+6941e37 fix: auto-prefix platform IDs in register.ts to match Chat SDK format
+d656b5c fix: Chat SDK bridge delivery and typing for non-Discord adapters
+57a6491 v2: channel isolation model, manage-channels skill, refactored channel skills
+ed76d51 docs: add v2 setup wiring status and remaining work
+1dc5750 fix: uncomment Discord import in channel barrel
+e7514ed fix: wire v2 setup flow — barrel import, registration, verification
+b76fd42 style: prettier formatting fixes
+82cb363 v2: split session DB into inbound/outbound for write isolation
+320176e fix: remaining -v2 references in scripts, add v1 channels barrel
+2b64fec fix: clean up iMessage adapter type compatibility
+9486d56 v2: make v2 the main entry point, move v1 to src/v1/
+12af451 v2: add Chat SDK channel adapters and skills for 11 platforms
+8a06b01 v2: SQLite state adapter, admin commands, compact feedback
+c31bb02 v2 phase 5: pending questions with interactive cards
+c348fab v2 phase 5: scheduling fixes, media handling, command processing
+afbc20a v2 phase 4+5: Discord via Chat SDK, expanded MCP tools, message seq IDs
+b36f127 style: prettier formatting fixes
+6f2a731 v2: fix agent-runner lifecycle and session DB reliability
+7201fe5 v2 phase 4: channel adapter interface, registry, and host wiring
+d35386a style: apply prettier formatting to v2 source files
+03c4e3b v2: fix container launch for v2 agent-runner
+8535875 v2: add host core integration tests
+d7c68e0 v2 phase 3: host core — router, session manager, delivery, sweep
+18d0b6e v2: add agent-runner integration tests
+5a0098e v2 phase 2: agent-runner — provider interface, poll loop, formatter
+3f0451b v2 phase 1: foundation — types, DB layer, logging
+90acff2 chore: set printWidth to 120 and reformat
+e540df4 docs: add code style (120 char lines, concise logging) and config pattern
+a03f832 docs: add v1 conflict hotspot analysis and isolation strategies
+820c506 docs: add DB file structure and migration strategy
+1b652e1 docs: add code structure principles for skill customization
+b539fdd docs: v2 architecture design — session DB, channel adapters, agent provider
+6ef479d Merge branch 'main' into docs/pr-hygiene-check
+0c420cf docs: align contributing guidelines with updated PR hygiene wording
+5ed74c3 docs: scope PR hygiene check to PR creation only, improve wording
+ad507fa docs: clarify PR hygiene check wording
+94689fc docs: consolidate PR hygiene check from 3 commands to 2
+4743513 docs: add PR hygiene check to CLAUDE.md and contributing guidelines
