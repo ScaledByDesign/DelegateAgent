@@ -1,9 +1,33 @@
 // DelegateAgent Sentry initialization — preloaded via `node --require ./sentry-init.cjs`.
 // Copied to /opt/delegate-agent/sentry-init.cjs on the droplet.
 //
+// Activation rules (all must be true):
+//   1. NODE_ENV === "production"  (or SENTRY_DSN is explicitly set)
+//   2. SENTRY_DSN env var is non-empty
+//   3. SENTRY_DISABLED env var is NOT set to "1" or "true"
+//
+// Opt-out: set SENTRY_DISABLED=1 in the environment to skip init entirely.
+// Opt-in outside production: set SENTRY_DSN + NODE_ENV=production.
+//
 // `@sentry/node` is an OPTIONAL dependency — if it's not installed (e.g. after
 // `npm ci --omit=optional` or during local dev without Sentry), this file
 // no-ops gracefully instead of blocking startup.
+
+const isProduction = process.env.NODE_ENV === 'production';
+const hasDsn = Boolean(process.env.SENTRY_DSN);
+const isDisabled = process.env.SENTRY_DISABLED === '1' || process.env.SENTRY_DISABLED === 'true';
+
+if (!isProduction || !hasDsn || isDisabled) {
+  if (isDisabled) {
+    console.log('[sentry] Disabled via SENTRY_DISABLED env var — skipping init');
+  } else if (!isProduction) {
+    console.log('[sentry] Non-production environment — skipping init (set NODE_ENV=production to enable)');
+  } else {
+    console.log('[sentry] SENTRY_DSN not set — skipping init');
+  }
+  global.__SENTRY__ = null;
+  return;
+}
 
 let Sentry;
 try {

@@ -1,3 +1,21 @@
+// ─── JSON log schema (when LOG_FORMAT=json) ─────────────────────────────────
+// Every line is a single newline-terminated JSON object with these fields:
+//   ts      string  ISO 8601 timestamp (e.g. "2026-05-02T14:23:01.456Z")
+//   level   string  "debug" | "info" | "warn" | "error" | "fatal"
+//   msg     string  Human-readable message
+//   context object  (optional) Arbitrary key/value pairs from the first
+//                   argument when called as log({ key: val }, "msg")
+//
+// Known context keys (not exhaustive):
+//   groupFolder  string  Group folder name
+//   taskId       string  Task ID
+//   chatJid      string  WhatsApp/channel JID
+//   containerName string Container name
+//   err          any     Error object (message + stack serialized)
+//
+// Human-readable format (LOG_FORMAT=pretty or unset) is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const LEVELS = { debug: 20, info: 30, warn: 40, error: 50, fatal: 60 } as const;
 type Level = keyof typeof LEVELS;
 
@@ -15,6 +33,24 @@ const FULL_RESET = '\x1b[0m';
 
 const threshold =
   LEVELS[(process.env.LOG_LEVEL as Level) || 'info'] ?? LEVELS.info;
+
+// JSON output mode: set LOG_FORMAT=json to emit newline-delimited JSON.
+// Default (LOG_FORMAT=pretty or unset) uses human-readable colored output.
+// Checked at call time (not module load) so tests can override via process.env.
+function isJsonFormat(): boolean {
+  return process.env.LOG_FORMAT === 'json';
+}
+
+function serializeErr(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    return {
+      type: err.constructor.name,
+      message: err.message,
+      stack: err.stack,
+    };
+  }
+  return { raw: String(err) };
+}
 
 function formatErr(err: unknown): string {
   if (err instanceof Error) {
@@ -46,8 +82,30 @@ function log(
   msg?: string,
 ): void {
   if (LEVELS[level] < threshold) return;
-  const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
   const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
+
+  if (isJsonFormat()) {
+    // JSON output mode: one compact JSON object per line, no ANSI codes.
+    const data = typeof dataOrMsg === 'string' ? {} : dataOrMsg;
+    const message = typeof dataOrMsg === 'string' ? dataOrMsg : (msg ?? '');
+    const context: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data)) {
+      context[k] = k === 'err' ? serializeErr(v) : v;
+    }
+    const entry: Record<string, unknown> = {
+      ts: new Date().toISOString(),
+      level,
+      msg: message,
+    };
+    if (Object.keys(context).length > 0) {
+      entry.context = context;
+    }
+    stream.write(JSON.stringify(entry) + '\n');
+    return;
+  }
+
+  // Human-readable (pretty) mode — original behavior unchanged.
+  const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
   if (typeof dataOrMsg === 'string') {
     stream.write(
       `[${ts()}] ${tag} (${process.pid}): ${MSG_COLOR}${dataOrMsg}${RESET}\n`,
