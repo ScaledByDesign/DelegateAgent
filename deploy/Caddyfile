@@ -97,10 +97,12 @@ agent.delegate.ws {
 		respond `{"service":"delegate-agent","status":"ok","version":"v5","mode":"poll"}` 200
 	}
 
-	# Everything else behind basic auth
+	# Everything else behind basic auth — except /admin which has its own Bearer auth via group-api
 	@protected {
 		not path /api/*
 		not path /health
+		not path /admin
+		not path /admin/*
 	}
 	basic_auth @protected {
 		admin ***ROTATED-2026-05-11***
