@@ -79,6 +79,18 @@ agent.delegate.ws {
 		reverse_proxy localhost:3001
 	}
 
+	# Admin HTMX dashboard — includes SSE streaming for logs
+	# Proxies /admin* paths to port 3001
+	handle /admin/sse/* {
+		reverse_proxy localhost:3001 {
+			flush_interval -1
+		}
+	}
+
+	handle /admin* {
+		reverse_proxy localhost:3001
+	}
+
 	# Health endpoint — no auth
 	handle /health {
 		header Content-Type application/json
