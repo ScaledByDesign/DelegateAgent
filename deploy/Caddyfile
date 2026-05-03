@@ -79,15 +79,28 @@ agent.delegate.ws {
 		reverse_proxy localhost:3001
 	}
 
-	# Admin HTMX dashboard — includes SSE streaming for logs
-	# Proxies /admin* paths to port 3001
+	# Admin HTMX dashboard — includes SSE streaming for logs.
+	# Auth: browser users hit basic_auth (admin / realm pw); CLI users with
+	# Authorization: Bearer <token> bypass basic_auth. After Caddy auth,
+	# Caddy injects Bearer (from env) so group-api's existing Bearer check
+	# accepts the request — no group-api code changes needed.
+	@adminNoBearer {
+		path /admin /admin/*
+		not header_regexp Authorization "^Bearer\s"
+	}
+	basic_auth @adminNoBearer {
+		admin ***ROTATED-2026-05-11***
+	}
+
 	handle /admin/sse/* {
+		request_header @adminNoBearer Authorization "Bearer {env.DELEGATE_AGENT_TOKEN}"
 		reverse_proxy localhost:3001 {
 			flush_interval -1
 		}
 	}
 
 	handle /admin* {
+		request_header @adminNoBearer Authorization "Bearer {env.DELEGATE_AGENT_TOKEN}"
 		reverse_proxy localhost:3001
 	}
 
