@@ -14,6 +14,14 @@ LOG_PREFIX="[remote-agent-update]"
 
 cd "$AGENT_DIR"
 
+# MERGE_LOCK gate: skip auto-pulls during release-branch big-merges.
+# Engineer commits MERGE_LOCK to release branch; droplets skip pulls.
+# Engineer removes MERGE_LOCK in final merge commit. CI guards main.
+if [ -f "$AGENT_DIR/MERGE_LOCK" ]; then
+  echo "$LOG_PREFIX MERGE_LOCK present at $AGENT_DIR/MERGE_LOCK — skipping pull"
+  exit 0
+fi
+
 # Record current HEAD
 BEFORE=$(git rev-parse HEAD 2>/dev/null || echo "none")
 

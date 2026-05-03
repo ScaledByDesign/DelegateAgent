@@ -1,0 +1,17 @@
+name: Merge Lock Guard
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-merge-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check MERGE_LOCK not present
+        run: test ! -f MERGE_LOCK || (echo "MERGE_LOCK must not be on main" && exit 1)
