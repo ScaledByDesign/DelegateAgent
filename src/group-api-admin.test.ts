@@ -151,6 +151,76 @@ describe('admin dashboard', () => {
     expect(r.body).toContain('Unauthorized');
   });
 
+  it('GET /api/admin/logs.json returns JSON ring buffer with valid Bearer', async () => {
+    // Seed a recognizable log line so the buffer is non-empty
+    const marker = `logs-json-marker-${Date.now()}`;
+    logger.info({ marker }, 'JSON logs endpoint test line');
+
+    const r = await fetchAdmin('/api/admin/logs.json', { token: TEST_TOKEN });
+    expect(r.status).toBe(200);
+    expect(r.contentType).toContain('application/json');
+    const body = JSON.parse(r.body);
+    expect(Array.isArray(body.lines)).toBe(true);
+    expect(typeof body.capturedAt).toBe('string');
+    expect(body.capacity).toBe(500);
+    // marker should be present in at least one line
+    expect(body.lines.some((l: string) => l.includes(marker))).toBe(true);
+  });
+
+  it('GET /api/admin/logs.json without Bearer returns 401', async () => {
+    const r = await fetchAdmin('/api/admin/logs.json');
+    expect(r.status).toBe(401);
+  });
+
+  it('GET /api/admin/scheduled-tasks.json returns JSON tasks array with valid Bearer', async () => {
+    const r = await fetchAdmin('/api/admin/scheduled-tasks.json', {
+      token: TEST_TOKEN,
+    });
+    expect(r.status).toBe(200);
+    expect(r.contentType).toContain('application/json');
+    const body = JSON.parse(r.body);
+    expect(Array.isArray(body.tasks)).toBe(true);
+  });
+
+  it('GET /api/admin/scheduled-tasks.json without Bearer returns 401', async () => {
+    const r = await fetchAdmin('/api/admin/scheduled-tasks.json');
+    expect(r.status).toBe(401);
+  });
+
+  it('GET /api/admin/container-telemetry.json returns JSON containers array with valid Bearer', async () => {
+    const r = await fetchAdmin('/api/admin/container-telemetry.json', {
+      token: TEST_TOKEN,
+    });
+    expect(r.status).toBe(200);
+    expect(r.contentType).toContain('application/json');
+    const body = JSON.parse(r.body);
+    expect(Array.isArray(body.containers)).toBe(true);
+  });
+
+  it('GET /api/admin/container-telemetry.json without Bearer returns 401', async () => {
+    const r = await fetchAdmin('/api/admin/container-telemetry.json');
+    expect(r.status).toBe(401);
+  });
+
+  it('GET /api/admin/channels.json returns JSON channel names with valid Bearer', async () => {
+    const r = await fetchAdmin('/api/admin/channels.json', {
+      token: TEST_TOKEN,
+    });
+    expect(r.status).toBe(200);
+    expect(r.contentType).toContain('application/json');
+    const body = JSON.parse(r.body);
+    expect(Array.isArray(body.channels)).toBe(true);
+    // Every entry must be a string (channel names are string keys from the registry)
+    expect(body.channels.every((c: unknown) => typeof c === 'string')).toBe(
+      true,
+    );
+  });
+
+  it('GET /api/admin/channels.json without Bearer returns 401', async () => {
+    const r = await fetchAdmin('/api/admin/channels.json');
+    expect(r.status).toBe(401);
+  });
+
   it('GET /admin/sse/logs streams text/event-stream and contains a buffered log line', async () => {
     // Emit a log line into the buffer BEFORE connecting so the initial flush carries it
     const marker = `sse-test-marker-${Date.now()}`;

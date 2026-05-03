@@ -33,7 +33,11 @@ import { resolveTokenFromDelegate } from './credential-client.js';
 import { getEnvWithFallback } from './config.js';
 import { renderTemplate, escape, resolveStaticAsset } from './web-ui/render.js';
 import { getContainerTelemetry } from './web-ui/container-telemetry.js';
+import { getScheduledTasks } from './task-scheduler.js';
+import { getRegisteredChannelNames } from './channels/registry.js';
 import type { RegisteredGroup, ScheduledTask } from './types.js';
+
+const LOG_BUFFER_CAPACITY = 500;
 
 const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/delegate-agent/groups';
 
@@ -646,6 +650,80 @@ export function startGroupAPI(): void {
         clearInterval(keepaliveTimer);
       });
 
+      return;
+    }
+
+    // ─── JSON Admin Endpoints (programmatic mirrors of /admin/partials/*) ───
+    // Bearer-token-protected JSON variants of the HTML admin partials. These
+    // exist so Delegate's admin observability routes can proxy structured
+    // data instead of scraping HTML. See `app/api/admin/delegate-agent/*` in
+    // the Delegate repo. Auth uses the same VALID_TOKENS allowlist as all
+    // other /api/* routes (DELEGATE_AGENT_TOKEN / NANOCLAW_TOKEN /
+    // DELEGATE_API_KEY).
+    if (req.method === 'GET' && req.url === '/api/admin/logs.json') {
+      try {
+        const lines = getRecentLogs();
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            lines,
+            capturedAt: new Date().toISOString(),
+            capacity: LOG_BUFFER_CAPACITY,
+          }),
+        );
+      } catch (err: any) {
+        logger.error({ err }, 'Failed to render /api/admin/logs.json');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err?.message || 'Internal error' }));
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/api/admin/scheduled-tasks.json') {
+      try {
+        const tasks = getScheduledTasks();
+        res.writeHead(200);
+        res.end(JSON.stringify({ tasks }));
+      } catch (err: any) {
+        logger.error(
+          { err },
+          'Failed to render /api/admin/scheduled-tasks.json',
+        );
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err?.message || 'Internal error' }));
+      }
+      return;
+    }
+
+    if (
+      req.method === 'GET' &&
+      req.url === '/api/admin/container-telemetry.json'
+    ) {
+      try {
+        const containers = getContainerTelemetry();
+        res.writeHead(200);
+        res.end(JSON.stringify({ containers }));
+      } catch (err: any) {
+        logger.error(
+          { err },
+          'Failed to render /api/admin/container-telemetry.json',
+        );
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err?.message || 'Internal error' }));
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/api/admin/channels.json') {
+      try {
+        const channels = getRegisteredChannelNames();
+        res.writeHead(200);
+        res.end(JSON.stringify({ channels }));
+      } catch (err: any) {
+        logger.error({ err }, 'Failed to render /api/admin/channels.json');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err?.message || 'Internal error' }));
+      }
       return;
     }
 
