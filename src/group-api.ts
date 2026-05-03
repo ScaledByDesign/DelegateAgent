@@ -413,9 +413,15 @@ export function startGroupAPI(): void {
       req.on('end', () => {
         try {
           const data = JSON.parse(body);
-          if (!data.id || typeof data.id !== 'string' || data.id.trim() === '') {
+          if (
+            !data.id ||
+            typeof data.id !== 'string' ||
+            data.id.trim() === ''
+          ) {
             res.writeHead(400);
-            res.end(JSON.stringify({ error: 'id (non-empty string) required' }));
+            res.end(
+              JSON.stringify({ error: 'id (non-empty string) required' }),
+            );
             return;
           }
           if (!data.name || typeof data.name !== 'string') {
