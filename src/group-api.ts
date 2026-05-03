@@ -524,9 +524,7 @@ export function startGroupAPI(): void {
 
 // ─── /admin partial render helpers ───────────────────────────────────────────
 
-function renderGroupsBody(
-  groups: Record<string, RegisteredGroup>,
-): string {
+function renderGroupsBody(groups: Record<string, RegisteredGroup>): string {
   const entries = Object.entries(groups);
   if (entries.length === 0) {
     return '<p class="empty">No groups registered.</p>';
@@ -577,8 +575,7 @@ function renderContainersBody(
           : e.status === 'running'
             ? '<span class="badge pending">running</span>'
             : `<span class="badge fail">${escape(e.status)}</span>`;
-      const dur =
-        typeof e.durationMs === 'number' ? `${e.durationMs} ms` : '—';
+      const dur = typeof e.durationMs === 'number' ? `${e.durationMs} ms` : '—';
       return `<tr>
   <td><code>${escape(e.id)}</code></td>
   <td><code>${escape(e.groupFolder)}</code></td>

@@ -13,16 +13,30 @@ type WriteFn = typeof process.stdout.write;
 function captureStdout(fn: () => void): string {
   const chunks: string[] = [];
   const orig: WriteFn = process.stdout.write.bind(process.stdout);
-  (process.stdout as any).write = (chunk: unknown) => { chunks.push(String(chunk)); return true; };
-  try { fn(); } finally { (process.stdout as any).write = orig; }
+  (process.stdout as any).write = (chunk: unknown) => {
+    chunks.push(String(chunk));
+    return true;
+  };
+  try {
+    fn();
+  } finally {
+    (process.stdout as any).write = orig;
+  }
   return chunks.join('');
 }
 
 function captureStderr(fn: () => void): string {
   const chunks: string[] = [];
   const orig: WriteFn = process.stderr.write.bind(process.stderr);
-  (process.stderr as any).write = (chunk: unknown) => { chunks.push(String(chunk)); return true; };
-  try { fn(); } finally { (process.stderr as any).write = orig; }
+  (process.stderr as any).write = (chunk: unknown) => {
+    chunks.push(String(chunk));
+    return true;
+  };
+  try {
+    fn();
+  } finally {
+    (process.stderr as any).write = orig;
+  }
   return chunks.join('');
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

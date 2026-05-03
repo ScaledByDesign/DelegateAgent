@@ -23,10 +23,7 @@ export interface ContainerTelemetryEntry {
 
 const buffer: ContainerTelemetryEntry[] = [];
 
-export function recordContainerStart(
-  id: string,
-  groupFolder: string,
-): void {
+export function recordContainerStart(id: string, groupFolder: string): void {
   buffer.push({
     id,
     groupFolder,
