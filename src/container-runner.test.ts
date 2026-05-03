@@ -17,6 +17,12 @@ vi.mock('./config.js', () => ({
   ONECLI_API_KEY: '',
   ONECLI_URL: 'http://localhost:10254',
   TIMEZONE: 'America/Los_Angeles',
+  getEnvWithFallback: (primary: string, legacy: string[] = []) => {
+    const v = process.env[primary];
+    if (v) return v;
+    for (const k of legacy) if (process.env[k]) return process.env[k];
+    return undefined;
+  },
 }));
 
 // Mock logger

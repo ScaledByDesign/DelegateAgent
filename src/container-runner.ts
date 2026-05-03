@@ -16,6 +16,7 @@ import {
   ONECLI_API_KEY,
   ONECLI_URL,
   TIMEZONE,
+  getEnvWithFallback,
 } from './config.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
@@ -269,7 +270,9 @@ async function buildContainerArgs(
   // not a shared global key from the .env file.
 
   const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
-  const DELEGATE_API_KEY_ENV = process.env.DELEGATE_API_KEY || '';
+  // Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY.
+  const DELEGATE_AGENT_TOKEN_ENV =
+    getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
   const BIFROST_URL = process.env.BIFROST_URL || 'http://localhost:4000';
   const containerBifrostUrl = BIFROST_URL.replace(
     'localhost',
@@ -281,8 +284,12 @@ async function buildContainerArgs(
     '-e',
     `DELEGATE_URL=${DELEGATE_URL.replace('localhost', 'host.docker.internal')}`,
   );
-  if (DELEGATE_API_KEY_ENV) {
-    args.push('-e', `DELEGATE_API_KEY=${DELEGATE_API_KEY_ENV}`);
+  if (DELEGATE_AGENT_TOKEN_ENV) {
+    // Inject both env vars (same value) so legacy container skills that still
+    // read DELEGATE_API_KEY keep working. DELEGATE_API_KEY will be removed in
+    // a future release once all skills migrate to DELEGATE_AGENT_TOKEN.
+    args.push('-e', `DELEGATE_AGENT_TOKEN=${DELEGATE_AGENT_TOKEN_ENV}`);
+    args.push('-e', `DELEGATE_API_KEY=${DELEGATE_AGENT_TOKEN_ENV}`);
   }
 
   let credentialsResolved = false;

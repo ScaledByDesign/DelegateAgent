@@ -35,9 +35,12 @@ const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/delegate-agent/groups';
 
 export function startGroupAPI(): void {
   const PORT = parseInt(process.env.GROUP_API_PORT || '3001', 10);
+  // Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY (deprecated)
+  // and NANOCLAW_TOKEN (pre-rebrand). Accept any non-empty value during the
+  // transition window so droplets in flight keep authenticating.
   const VALID_TOKENS = [
-    process.env.DELEGATE_API_KEY,
     getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN']),
+    process.env.DELEGATE_API_KEY,
   ].filter(Boolean) as string[];
 
   const server = http.createServer(async (req, res) => {

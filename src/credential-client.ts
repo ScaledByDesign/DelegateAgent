@@ -5,9 +5,12 @@
 // the token wasn't provided in the request body.
 
 import { sanitizeGitUrl } from './git-auth.js';
+import { getEnvWithFallback } from './config.js';
 
 const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
-const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || '';
+// Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY.
+const DELEGATE_AGENT_TOKEN =
+  getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
 
 /**
  * Resolve LLM API keys for a workspace (Anthropic, OpenAI, etc.)
@@ -24,7 +27,7 @@ export async function resolveLLMKeysFromDelegate(
   systemAnthropicKey?: string;
   systemAnthropicBaseUrl?: string;
 } | null> {
-  if (!DELEGATE_API_KEY) return null;
+  if (!DELEGATE_AGENT_TOKEN) return null;
   try {
     const params = new URLSearchParams();
     if (workspaceId) params.set('workspaceId', workspaceId);
@@ -32,7 +35,7 @@ export async function resolveLLMKeysFromDelegate(
     const res = await fetch(
       `${DELEGATE_URL}/api/agent/integrations/llm-keys?${params}`,
       {
-        headers: { Authorization: `Bearer ${DELEGATE_API_KEY}` },
+        headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
         signal: AbortSignal.timeout(5000),
       },
     );
@@ -55,12 +58,12 @@ export async function resolveTokenFromDelegate(
   workspaceId?: string | null,
   provider: string = 'github',
 ): Promise<string | null> {
-  if (!workspaceId || !DELEGATE_API_KEY) return null;
+  if (!workspaceId || !DELEGATE_AGENT_TOKEN) return null;
   try {
     const res = await fetch(
       `${DELEGATE_URL}/api/agent/integrations/token?provider=${provider}&workspaceId=${workspaceId}`,
       {
-        headers: { Authorization: `Bearer ${DELEGATE_API_KEY}` },
+        headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
         signal: AbortSignal.timeout(5000),
       },
     );

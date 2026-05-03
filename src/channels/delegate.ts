@@ -7,7 +7,8 @@
 //   delegate:conv:<convId>
 //   delegate:agent:<agentUserId>
 //
-// Auth: Bearer token (DELEGATE_API_KEY env var)
+// Auth: Bearer token (DELEGATE_AGENT_TOKEN env var; DELEGATE_API_KEY accepted
+// as a deprecated fallback for one release window).
 //
 // This file ships as src/channels/delegate.ts in the DelegateAgent repo
 // (fork of upstream DelegateAgent). Before the rebrand it was injected into
@@ -18,6 +19,7 @@ import * as path from 'path';
 import { registerChannel, type ChannelOpts } from './registry.js';
 import type { Channel } from '../types.js';
 import { dispatchChatFastPath } from '../chat/index.js';
+import { getEnvWithFallback } from '../config.js';
 
 const POLL_INTERVAL = parseInt(
   process.env.DELEGATE_POLL_INTERVAL || '15000',
@@ -26,7 +28,11 @@ const POLL_INTERVAL = parseInt(
 const DELEGATE_URL = (
   process.env.DELEGATE_URL || 'https://delegate.ws'
 ).replace(/\/$/, '');
-const DELEGATE_API_KEY = process.env.DELEGATE_API_KEY || '';
+// Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY (will be
+// removed after the next release window — agents using only the legacy var
+// will trip a deprecation warning at startup via getEnvWithFallback).
+const DELEGATE_AGENT_TOKEN =
+  getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
 
 const CURSOR_FILE_PATH =
   process.env.DELEGATE_CURSOR_PATH ||
@@ -151,8 +157,10 @@ class DelegateChannel implements Channel {
   // ─── Channel interface ────────────────────────────────────────────────────
 
   async connect(): Promise<void> {
-    if (!DELEGATE_API_KEY) {
-      console.log('[delegate] No DELEGATE_API_KEY set — channel disabled');
+    if (!DELEGATE_AGENT_TOKEN) {
+      console.log(
+        '[delegate] No DELEGATE_AGENT_TOKEN set — channel disabled',
+      );
       return;
     }
 
@@ -249,7 +257,7 @@ class DelegateChannel implements Channel {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${DELEGATE_API_KEY}`,
+          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
         },
         body: JSON.stringify({
           jid,
@@ -328,7 +336,7 @@ class DelegateChannel implements Channel {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${DELEGATE_API_KEY}`,
+          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
         },
         body: JSON.stringify({
           jid,
@@ -468,7 +476,7 @@ class DelegateChannel implements Channel {
     let data: PollResponse;
     try {
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${DELEGATE_API_KEY}` },
+        headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
         signal: AbortSignal.timeout(5_000),
       });
 
@@ -602,8 +610,8 @@ class DelegateChannel implements Channel {
 // ─── Self-register at module load (DelegateAgent barrel-import pattern) ─────
 
 registerChannel('delegate', (opts: ChannelOpts) => {
-  if (!DELEGATE_API_KEY) {
-    console.log('[delegate] Skipped: DELEGATE_API_KEY not set');
+  if (!DELEGATE_AGENT_TOKEN) {
+    console.log('[delegate] Skipped: DELEGATE_AGENT_TOKEN not set');
     return null;
   }
   return new DelegateChannel(opts);

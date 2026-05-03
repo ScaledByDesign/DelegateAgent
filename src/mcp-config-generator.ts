@@ -7,12 +7,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { getEnvWithFallback } from './config.js';
 
 const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/remote-agent/groups';
 const SESSIONS_DIR =
   process.env.SESSIONS_DIR || '/opt/remote-agent/data/sessions';
 const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
-const DELEGATE_API_TOKEN = process.env.DELEGATE_API_KEY || '';
+// Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY.
+const DELEGATE_API_TOKEN =
+  getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
 
 export interface MCPServerConfig {
   command?: string;
