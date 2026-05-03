@@ -164,6 +164,20 @@ function createSchema(database: Database.Database): void {
   } catch {
     /* columns already exist */
   }
+
+  // Agent persona registry — stores agent profiles synced from Delegate
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS registered_agents (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT,
+      system_prompt TEXT,
+      personality TEXT,
+      color TEXT,
+      model TEXT,
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    )
+  `);
 }
 
 export function initDatabase(): void {
@@ -616,6 +630,7 @@ export function getRegisteredGroup(
         container_config: string | null;
         requires_trigger: number | null;
         is_main: number | null;
+        workspace_id: string | null;
       }
     | undefined;
   if (!row) return undefined;
@@ -638,6 +653,7 @@ export function getRegisteredGroup(
     requiresTrigger:
       row.requires_trigger === null ? undefined : row.requires_trigger === 1,
     isMain: row.is_main === 1 ? true : undefined,
+    workspaceId: row.workspace_id ?? undefined,
   };
 }
 
@@ -646,8 +662,17 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     throw new Error(`Invalid group folder "${group.folder}" for JID ${jid}`);
   }
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main, workspace_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(jid) DO UPDATE SET
+       name = excluded.name,
+       folder = excluded.folder,
+       trigger_pattern = excluded.trigger_pattern,
+       added_at = excluded.added_at,
+       container_config = excluded.container_config,
+       requires_trigger = excluded.requires_trigger,
+       is_main = excluded.is_main,
+       workspace_id = excluded.workspace_id`,
   ).run(
     jid,
     group.name,
@@ -657,6 +682,7 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     group.containerConfig ? JSON.stringify(group.containerConfig) : null,
     group.requiresTrigger === undefined ? 1 : group.requiresTrigger ? 1 : 0,
     group.isMain ? 1 : 0,
+    group.workspaceId ?? null,
   );
 }
 
@@ -670,6 +696,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     container_config: string | null;
     requires_trigger: number | null;
     is_main: number | null;
+    workspace_id: string | null;
   }>;
   const result: Record<string, RegisteredGroup> = {};
   for (const row of rows) {
@@ -691,6 +718,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
       requiresTrigger:
         row.requires_trigger === null ? undefined : row.requires_trigger === 1,
       isMain: row.is_main === 1 ? true : undefined,
+      workspaceId: row.workspace_id ?? undefined,
     };
   }
   return result;
@@ -756,4 +784,105 @@ function migrateJsonState(): void {
       }
     }
   }
+}
+
+// --- Registered agent accessors ---
+
+export interface RegisteredAgent {
+  id: string;
+  name: string;
+  role?: string | null;
+  systemPrompt?: string | null;
+  personality?: string | null;
+  color?: string | null;
+  model?: string | null;
+  updatedAt?: number | null;
+}
+
+export function setRegisteredAgent(
+  id: string,
+  fields: Omit<RegisteredAgent, 'id' | 'updatedAt'>,
+): void {
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO registered_agents (id, name, role, system_prompt, personality, color, model, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       role = excluded.role,
+       system_prompt = excluded.system_prompt,
+       personality = excluded.personality,
+       color = excluded.color,
+       model = excluded.model,
+       updated_at = excluded.updated_at`,
+  ).run(
+    id,
+    fields.name,
+    fields.role ?? null,
+    fields.systemPrompt ?? null,
+    fields.personality ?? null,
+    fields.color ?? null,
+    fields.model ?? null,
+    now,
+  );
+}
+
+export function getRegisteredAgent(id: string): RegisteredAgent | null {
+  const row = db
+    .prepare('SELECT * FROM registered_agents WHERE id = ?')
+    .get(id) as
+    | {
+        id: string;
+        name: string;
+        role: string | null;
+        system_prompt: string | null;
+        personality: string | null;
+        color: string | null;
+        model: string | null;
+        updated_at: number;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    systemPrompt: row.system_prompt,
+    personality: row.personality,
+    color: row.color,
+    model: row.model,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function listRegisteredAgents(): RegisteredAgent[] {
+  const rows = db
+    .prepare('SELECT * FROM registered_agents ORDER BY updated_at DESC')
+    .all() as Array<{
+    id: string;
+    name: string;
+    role: string | null;
+    system_prompt: string | null;
+    personality: string | null;
+    color: string | null;
+    model: string | null;
+    updated_at: number;
+  }>;
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    systemPrompt: row.system_prompt,
+    personality: row.personality,
+    color: row.color,
+    model: row.model,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export function deleteRegisteredAgent(id: string): boolean {
+  const result = db
+    .prepare('DELETE FROM registered_agents WHERE id = ?')
+    .run(id);
+  return result.changes > 0;
 }

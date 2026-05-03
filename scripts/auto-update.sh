@@ -1,7 +1,7 @@
 #!/bin/bash
-# ─── RemoteAgent Auto-Update ───
+# ─── DelegateAgent Auto-Update ───
 # Checks for new commits on the main branch and rebuilds if changed.
-# Run via cron: * * * * * root /opt/remote-agent/scripts/auto-update.sh
+# Run via cron: * * * * * root /opt/delegate-agent/scripts/auto-update.sh
 # Or triggered via webhook/API.
 #
 # Safe: uses --ff-only so it never forces or creates merge commits.
@@ -9,8 +9,8 @@
 
 set -euo pipefail
 
-AGENT_DIR="${REMOTE_AGENT_DIR:-/opt/remote-agent}"
-LOG_PREFIX="[remote-agent-update]"
+AGENT_DIR="${REMOTE_AGENT_DIR:-/opt/delegate-agent}"
+LOG_PREFIX="[delegate-agent-update]"
 
 cd "$AGENT_DIR"
 
@@ -66,7 +66,7 @@ fi
 
 # Restart the service
 echo "$LOG_PREFIX Restarting service..."
-systemctl restart remote-agent 2>/dev/null || systemctl restart delegate-agent 2>/dev/null || true
+systemctl restart delegate-agent 2>/dev/null || systemctl restart remote-agent 2>/dev/null || true
 
 echo "$LOG_PREFIX Update complete: ${BEFORE:0:8} → ${AFTER:0:8}"
 date

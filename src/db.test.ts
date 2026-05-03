@@ -617,6 +617,59 @@ describe('message query LIMIT', () => {
   });
 });
 
+// --- RegisteredGroup workspaceId round-trip ---
+
+describe('registered group workspaceId', () => {
+  it('persists workspaceId through set/get round-trip via getAllRegisteredGroups', () => {
+    setRegisteredGroup('delegate:task:test-ws', {
+      name: 'Test Task Group',
+      folder: 'delegate_task_test-ws',
+      trigger: 'always',
+      added_at: '2024-01-01T00:00:00.000Z',
+      workspaceId: 'ws_abc',
+    });
+
+    const groups = getAllRegisteredGroups();
+    const group = groups['delegate:task:test-ws'];
+    expect(group).toBeDefined();
+    expect(group.workspaceId).toBe('ws_abc');
+  });
+
+  it('upsert updates workspace_id on conflict', () => {
+    setRegisteredGroup('delegate:task:upsert-ws', {
+      name: 'Upsert Group',
+      folder: 'delegate_task_upsert-ws',
+      trigger: 'always',
+      added_at: '2024-01-01T00:00:00.000Z',
+      workspaceId: 'ws_first',
+    });
+    setRegisteredGroup('delegate:task:upsert-ws', {
+      name: 'Upsert Group',
+      folder: 'delegate_task_upsert-ws',
+      trigger: 'always',
+      added_at: '2024-01-01T00:00:00.000Z',
+      workspaceId: 'ws_second',
+    });
+
+    const groups = getAllRegisteredGroups();
+    expect(groups['delegate:task:upsert-ws'].workspaceId).toBe('ws_second');
+  });
+
+  it('stores null workspace_id when not provided', () => {
+    setRegisteredGroup('delegate:task:no-ws', {
+      name: 'No Workspace Group',
+      folder: 'delegate_task_no-ws',
+      trigger: 'always',
+      added_at: '2024-01-01T00:00:00.000Z',
+    });
+
+    const groups = getAllRegisteredGroups();
+    const group = groups['delegate:task:no-ws'];
+    expect(group).toBeDefined();
+    expect(group.workspaceId).toBeUndefined();
+  });
+});
+
 // --- RegisteredGroup isMain round-trip ---
 
 describe('registered group isMain', () => {

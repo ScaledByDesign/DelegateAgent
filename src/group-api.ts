@@ -24,6 +24,10 @@ import {
   setRegisteredGroup,
   getRegisteredGroup,
   getAllTasks,
+  setRegisteredAgent,
+  getRegisteredAgent,
+  listRegisteredAgents,
+  deleteRegisteredAgent,
 } from './db.js';
 import { resolveTokenFromDelegate } from './credential-client.js';
 import { getEnvWithFallback } from './config.js';
@@ -398,6 +402,78 @@ export function startGroupAPI(): void {
         }
       });
       return;
+    }
+
+    // ─── Agent Registry: POST /api/agents ───
+    if (req.method === 'POST' && req.url === '/api/agents') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (!data.id || typeof data.id !== 'string' || data.id.trim() === '') {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'id (non-empty string) required' }));
+            return;
+          }
+          if (!data.name || typeof data.name !== 'string') {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'name required' }));
+            return;
+          }
+          setRegisteredAgent(data.id.trim(), {
+            name: data.name,
+            role: data.role ?? null,
+            systemPrompt: data.systemPrompt ?? null,
+            personality: data.personality ?? null,
+            color: data.color ?? null,
+            model: data.model ?? null,
+          });
+          logger.info({ id: data.id }, 'Agent registered via API');
+          res.writeHead(200);
+          res.end(JSON.stringify({ ok: true, id: data.id }));
+        } catch (err: any) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    // ─── Agent Registry: GET /api/agents (list) ───
+    if (req.method === 'GET' && req.url === '/api/agents') {
+      const agents = listRegisteredAgents();
+      res.writeHead(200);
+      res.end(JSON.stringify({ agents }));
+      return;
+    }
+
+    // ─── Agent Registry: GET /api/agents/:id and DELETE /api/agents/:id ───
+    const agentMatch = req.url?.match(/^\/api\/agents\/([^/]+)$/);
+    if (agentMatch) {
+      const agentId = decodeURIComponent(agentMatch[1]);
+
+      if (req.method === 'GET') {
+        const agent = getRegisteredAgent(agentId);
+        if (!agent) {
+          res.writeHead(404);
+          res.end(JSON.stringify({ error: 'Agent not found' }));
+          return;
+        }
+        res.writeHead(200);
+        res.end(JSON.stringify(agent));
+        return;
+      }
+
+      if (req.method === 'DELETE') {
+        deleteRegisteredAgent(agentId);
+        logger.info({ id: agentId }, 'Agent removed via API');
+        res.writeHead(200);
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
     }
 
     // ─── Health: GET /api/health ───

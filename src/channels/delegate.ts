@@ -158,9 +158,7 @@ class DelegateChannel implements Channel {
 
   async connect(): Promise<void> {
     if (!DELEGATE_AGENT_TOKEN) {
-      console.log(
-        '[delegate] No DELEGATE_AGENT_TOKEN set — channel disabled',
-      );
+      console.log('[delegate] No DELEGATE_AGENT_TOKEN set — channel disabled');
       return;
     }
 
