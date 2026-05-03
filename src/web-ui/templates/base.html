@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DelegateAgent Console</title>
+  <script src="/admin/static/htmx.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      margin: 0;
+      min-height: 100vh;
+    }
+    header {
+      background: #111;
+      border-bottom: 1px solid #222;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+    header .v { color: #888; font-size: 0.8rem; }
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 56px); }
+    nav {
+      background: #0d0d0d;
+      border-right: 1px solid #1d1d1d;
+      padding: 16px 0;
+    }
+    nav a {
+      display: block;
+      padding: 10px 20px;
+      color: #ccc;
+      text-decoration: none;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      font-size: 0.92rem;
+    }
+    nav a:hover { background: #161616; color: #fff; border-left-color: #60a5fa; }
+    main { padding: 24px; overflow-x: auto; }
+    h2 { margin-top: 0; font-size: 1.05rem; color: #ddd; border-bottom: 1px solid #222; padding-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #1a1a1a; }
+    th { color: #888; font-weight: 500; background: #0d0d0d; }
+    tr:hover td { background: #121212; }
+    code { background: #1a1a1a; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; color: #93c5fd; }
+    .empty { color: #666; font-style: italic; padding: 16px 0; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.78rem; background: #1f2937; color: #93c5fd; }
+    .badge.ok { background: #064e3b; color: #6ee7b7; }
+    .badge.fail { background: #7f1d1d; color: #fca5a5; }
+    .badge.pending { background: #422006; color: #fcd34d; }
+    .placeholder { color: #888; padding: 12px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DelegateAgent Console</h1>
+    <span class="v">/admin</span>
+  </header>
+  <div class="layout">
+    <nav>
+      <a hx-get="/admin/partials/groups" hx-target="#main" hx-swap="innerHTML">Groups</a>
+      <a hx-get="/admin/partials/containers" hx-target="#main" hx-swap="innerHTML">Containers</a>
+      <a hx-get="/admin/partials/scheduler" hx-target="#main" hx-swap="innerHTML">Scheduler</a>
+    </nav>
+    <main id="main" hx-get="/admin/partials/groups" hx-trigger="load" hx-swap="innerHTML">
+      Loading...
+    </main>
+  </div>
+</body>
+</html>

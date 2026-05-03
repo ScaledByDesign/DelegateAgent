@@ -23,9 +23,13 @@ import {
   getAllRegisteredGroups,
   setRegisteredGroup,
   getRegisteredGroup,
+  getAllTasks,
 } from './db.js';
 import { resolveTokenFromDelegate } from './credential-client.js';
 import { getEnvWithFallback } from './config.js';
+import { renderTemplate, escape, resolveStaticAsset } from './web-ui/render.js';
+import { getContainerTelemetry } from './web-ui/container-telemetry.js';
+import type { RegisteredGroup, ScheduledTask } from './types.js';
 
 const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/delegate-agent/groups';
 
@@ -38,6 +42,28 @@ export function startGroupAPI(): void {
 
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
+
+    // ─── Public static assets: GET /admin/static/:filename ───
+    // Bypasses Bearer auth so the dashboard shell can load htmx.min.js
+    // before any HTMX-driven authenticated request fires. Whitelist enforced
+    // in resolveStaticAsset() (only .js + .css; rejects path traversal).
+    const publicStaticMatch = req.url?.match(
+      /^\/admin\/static\/([a-zA-Z0-9._-]+)$/,
+    );
+    if (req.method === 'GET' && publicStaticMatch) {
+      const asset = resolveStaticAsset(publicStaticMatch[1]);
+      if (!asset) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Not found' }));
+        return;
+      }
+      res.setHeader('Content-Type', asset.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const stream = fs.createReadStream(asset.fullPath);
+      res.writeHead(200);
+      stream.pipe(res);
+      return;
+    }
 
     // Auth: accept any valid Delegate/DelegateAgent token
     const auth = req.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
@@ -407,6 +433,70 @@ export function startGroupAPI(): void {
       return;
     }
 
+    // ─── HTMX Admin Dashboard: GET /admin and /admin/partials/* ───
+    if (req.method === 'GET' && req.url === '/admin') {
+      try {
+        const html = renderTemplate('base.html');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.writeHead(200);
+        res.end(html);
+      } catch (err: any) {
+        logger.error({ err }, 'Failed to render /admin shell');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Render failure' }));
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/admin/partials/groups') {
+      try {
+        const groupsBody = renderGroupsBody(getAllRegisteredGroups());
+        const html = renderTemplate('groups.html', { groups_body: groupsBody });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.writeHead(200);
+        res.end(html);
+      } catch (err: any) {
+        logger.error({ err }, 'Failed to render /admin/partials/groups');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Render failure' }));
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/admin/partials/containers') {
+      try {
+        const containersBody = renderContainersBody(getContainerTelemetry());
+        const html = renderTemplate('containers.html', {
+          containers_body: containersBody,
+        });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.writeHead(200);
+        res.end(html);
+      } catch (err: any) {
+        logger.error({ err }, 'Failed to render /admin/partials/containers');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Render failure' }));
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && req.url === '/admin/partials/scheduler') {
+      try {
+        const schedulerBody = renderSchedulerBody(getAllTasks());
+        const html = renderTemplate('scheduler.html', {
+          scheduler_body: schedulerBody,
+        });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.writeHead(200);
+        res.end(html);
+      } catch (err: any) {
+        logger.error({ err }, 'Failed to render /admin/partials/scheduler');
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Render failure' }));
+      }
+      return;
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
   });
@@ -430,4 +520,131 @@ export function startGroupAPI(): void {
       'Group API failed to bind — Delegate cannot register JIDs',
     );
   });
+}
+
+// ─── /admin partial render helpers ───────────────────────────────────────────
+
+function renderGroupsBody(
+  groups: Record<string, RegisteredGroup>,
+): string {
+  const entries = Object.entries(groups);
+  if (entries.length === 0) {
+    return '<p class="empty">No groups registered.</p>';
+  }
+  const rows = entries
+    .map(([jid, g]) => {
+      const main = g.isMain ? '<span class="badge ok">main</span>' : '';
+      return `<tr>
+  <td><code>${escape(jid)}</code></td>
+  <td>${escape(g.name)}</td>
+  <td><code>${escape(g.folder)}</code></td>
+  <td>${escape(g.trigger)}</td>
+  <td>${escape(g.added_at)}</td>
+  <td>${escape(g.workspaceId ?? '')}</td>
+  <td>${main}</td>
+</tr>`;
+    })
+    .join('\n');
+  return `<table>
+  <thead>
+    <tr>
+      <th>JID</th>
+      <th>Name</th>
+      <th>Folder</th>
+      <th>Trigger</th>
+      <th>Added</th>
+      <th>Workspace</th>
+      <th>Flags</th>
+    </tr>
+  </thead>
+  <tbody>
+${rows}
+  </tbody>
+</table>`;
+}
+
+function renderContainersBody(
+  entries: ReturnType<typeof getContainerTelemetry>,
+): string {
+  if (entries.length === 0) {
+    return `<p class="placeholder">Container telemetry buffer is empty. Phase 4 wires container-runner start/end hooks into the in-process ring buffer; until then, this panel renders as empty even when containers are actively running.</p>`;
+  }
+  const rows = entries
+    .map((e) => {
+      const statusBadge =
+        e.status === 'success'
+          ? '<span class="badge ok">success</span>'
+          : e.status === 'running'
+            ? '<span class="badge pending">running</span>'
+            : `<span class="badge fail">${escape(e.status)}</span>`;
+      const dur =
+        typeof e.durationMs === 'number' ? `${e.durationMs} ms` : '—';
+      return `<tr>
+  <td><code>${escape(e.id)}</code></td>
+  <td><code>${escape(e.groupFolder)}</code></td>
+  <td>${escape(e.startedAt)}</td>
+  <td>${escape(e.endedAt ?? '—')}</td>
+  <td>${dur}</td>
+  <td>${statusBadge}</td>
+  <td>${escape(e.errorMessage ?? '')}</td>
+</tr>`;
+    })
+    .join('\n');
+  return `<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Group</th>
+      <th>Started</th>
+      <th>Ended</th>
+      <th>Duration</th>
+      <th>Status</th>
+      <th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+${rows}
+  </tbody>
+</table>`;
+}
+
+function renderSchedulerBody(tasks: ScheduledTask[]): string {
+  if (tasks.length === 0) {
+    return '<p class="empty">No scheduled tasks.</p>';
+  }
+  const rows = tasks
+    .map((t) => {
+      const statusBadge =
+        t.status === 'active'
+          ? '<span class="badge ok">active</span>'
+          : t.status === 'paused'
+            ? '<span class="badge pending">paused</span>'
+            : `<span class="badge">${escape(t.status)}</span>`;
+      return `<tr>
+  <td><code>${escape(t.id)}</code></td>
+  <td><code>${escape(t.group_folder)}</code></td>
+  <td>${escape(t.schedule_type)}</td>
+  <td><code>${escape(t.schedule_value)}</code></td>
+  <td>${escape(t.next_run ?? '—')}</td>
+  <td>${escape(t.last_run ?? '—')}</td>
+  <td>${statusBadge}</td>
+</tr>`;
+    })
+    .join('\n');
+  return `<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Group</th>
+      <th>Type</th>
+      <th>Value</th>
+      <th>Next Run</th>
+      <th>Last Run</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+${rows}
+  </tbody>
+</table>`;
 }
