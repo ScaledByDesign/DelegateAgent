@@ -45,7 +45,8 @@ Load a skill: `cat .claude/skills/<name>/SKILL.md`
 | **delegate-memory** | Session memory lifecycle — load prior context on start, save on exit. **MANDATORY.** |
 | **delegate-context** | Task context (subtasks, comments, deps, project, knowledge, git). **Load first.** |
 | **delegate-tasks** | Task lifecycle — create / patch / delete / comment / subtask. Load when the user asks any task-mutating action. |
-| **delegate-knowledge** | Knowledge base — search guidelines, create entries, link to tasks |
+| **delegate-projects** | Read project metadata (name, repo, branch, tech stack, member counts) bearer-callable. Mutations are session-only. |
+| **delegate-knowledge** | Search workspace knowledge before work, save learnings after. Now bearer-callable at `/api/agent/knowledge*`. |
 | **delegate-api** | Memory, web search, completion callback, dashboard stats. (For tasks specifically, prefer delegate-tasks.) |
 | **delegate-google** | User's Google Calendar, Drive, Gmail, Meet, Contacts |
 | **delegate-contacts** | CRM contacts with AI personality, tonality, relationship context |
