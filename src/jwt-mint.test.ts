@@ -87,7 +87,10 @@ describe('mintAgentJWT', () => {
   });
 
   it('returns null on a 401 response', async () => {
-    globalThis.fetch = makeFetchMock(401, { success: false, error: 'Unauthorized' });
+    globalThis.fetch = makeFetchMock(401, {
+      success: false,
+      error: 'Unauthorized',
+    });
 
     const { mintAgentJWT } = await import('./jwt-mint.js');
     const result = await mintAgentJWT({ workspaceId: 'ws-1' });
@@ -95,7 +98,10 @@ describe('mintAgentJWT', () => {
   });
 
   it('returns null on a 500 response', async () => {
-    globalThis.fetch = makeFetchMock(500, { success: false, error: 'Server error' });
+    globalThis.fetch = makeFetchMock(500, {
+      success: false,
+      error: 'Server error',
+    });
 
     const { mintAgentJWT } = await import('./jwt-mint.js');
     const result = await mintAgentJWT({ workspaceId: 'ws-1' });
@@ -195,7 +201,10 @@ describe('mintAgentJWT', () => {
     // is the authoritative check that getEnvWithFallback wiring is correct at the
     // call-site level. Accept either null (constant frozen) or a valid result.
     // The primary path is covered by the 'missing token' test above.
-    expect([null, expect.objectContaining({ jwt: VALID_RESPONSE.data.jwt })]).toContainEqual(result);
+    expect([
+      null,
+      expect.objectContaining({ jwt: VALID_RESPONSE.data.jwt }),
+    ]).toContainEqual(result);
   });
 
   it('passes workspaceId, taskId, agentProfileId and scope in request body', async () => {

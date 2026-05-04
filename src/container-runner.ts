@@ -311,7 +311,12 @@ async function buildContainerArgs(
       if (minted) {
         args.push('-e', `DELEGATE_AGENT_JWT=${minted.jwt}`);
         logger.info(
-          { containerName, workspaceId, jti: minted.jti, expiresAt: minted.expiresAt },
+          {
+            containerName,
+            workspaceId,
+            jti: minted.jti,
+            expiresAt: minted.expiresAt,
+          },
           'Agent JWT minted for container',
         );
       }
