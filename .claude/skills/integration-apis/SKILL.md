@@ -25,6 +25,28 @@ For the full action list per provider, scroll to [Action Name Reference](#action
 
 > **MCP-or-curl decision**: prefer MCP tools (`delegate_get_token` + native SDK) when working with a single provider for many calls — fewer HTTP round-trips. Use curl for one-off calls or when no MCP server is configured.
 
+## LLM keys (for agent containers configuring their own model SDKs)
+
+Containers that need to call OpenAI/Anthropic/Gemini directly (rather
+than via Bifrost) can fetch the workspace's configured LLM keys from
+`/api/agent/integrations/llm-keys`. Resolves user- or workspace-scoped
+keys from the `LLMProvider` table.
+
+```bash
+curl -sG "$DELEGATE_URL/api/agent/integrations/llm-keys" \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
+  --data-urlencode "workspaceId=<workspaceId>"
+# or
+curl -sG "$DELEGATE_URL/api/agent/integrations/llm-keys" \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
+  --data-urlencode "userId=<userId>"
+```
+
+You usually shouldn't need this — `$BIFROST_URL` already routes Anthropic
++ OpenAI through gateway-managed keys. Reach for `/llm-keys` only when
+you're calling a provider Bifrost doesn't proxy (Gemini, custom OpenAI-
+compatible endpoints).
+
 ## Token Access (via MCP)
 If the `delegate_get_token` MCP tool is available, use it to get fresh tokens:
 ```
