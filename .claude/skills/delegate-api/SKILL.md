@@ -54,6 +54,17 @@ curl -X PATCH $DELEGATE_URL/api/agent/tasks/<taskId> \
   -d '{"status":"done","comment":"What I completed"}'
 ```
 
+**Delete a task** (use only when the user explicitly asks to delete, or the
+task description says "safe to delete" — never delete by inference):
+```bash
+curl -X DELETE $DELEGATE_URL/api/agent/tasks/<taskId> \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN"
+```
+Returns 204 on success, 404 if already gone, 401 if token is wrong.
+Records sync deletions for any active Notion mappings; emits a
+`task.updated` LiveEvent with `action: "deleted"` so the UI can
+hide the row immediately.
+
 ## Web Access
 
 **Search:**
