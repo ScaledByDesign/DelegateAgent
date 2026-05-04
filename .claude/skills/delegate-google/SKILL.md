@@ -23,7 +23,50 @@ All calls require:
 | Google Meet | `/api/agent/integrations/google_meet/<action>` | per-user OAuth |
 | Google Contacts | `/api/agent/integrations/google_contacts/<action>` | per-user OAuth |
 
-The proxy resolves the user's Google access token in this order: explicit `userId` in body → task owner → workspace owner → workspace's linked Google account. If none of those resolve a fresh access token, the route returns 401 "No Google account available" and you should ask the user to (re)connect Google in Settings.
+## Credential resolution order (workspace-scoped FIRST, then per-user fallback)
+
+The proxy resolves Google credentials in this priority order — **workspace-scoped wins** so SaaS multi-tenancy stays clean:
+
+1. **Workspace credentials** (`WorkspaceIntegration` row, provider=`google_drive`)
+   - Service-account key + impersonation subject (preferred for SaaS)
+   - OR workspace-saved OAuth refresh token (transitional)
+   - One credential set per workspace, used by ALL agents in that workspace
+   - Workspace A's agents see Workspace A's data only — never Workspace B's
+2. **Per-user OAuth (legacy fallback)** — the requesting user's NextAuth Google connection
+3. **Workspace owner's per-user OAuth (legacy fallback)** — workspace owner's NextAuth Google connection
+4. **Workspace.googleAccountId linked account (legacy fallback)** — older single-account model
+
+If none of the four paths resolve a fresh access token, the route returns 401 "No Google account available" with guidance: workspace admin should connect at the workspace level OR each user must connect their personal Google.
+
+> **For SaaS isolation** the right answer is path 1. Paths 2–4 are kept for backward compatibility but should not be relied on for multi-tenant deployments.
+
+### How a workspace admin connects Google at the workspace level
+
+The workspace stores credentials in a `WorkspaceIntegration` row with `provider="google_drive"` (the existing enum slot). The credentials JSON expects either:
+
+```json
+{
+  "serviceAccountKey": {
+    "type": "service_account",
+    "client_email": "...@<project>.iam.gserviceaccount.com",
+    "private_key": "-----BEGIN PRIVATE KEY-----\n...",
+    "...": "..."
+  },
+  "impersonateEmail": "user@workspace.com"
+}
+```
+
+— OR (transitional) —
+
+```json
+{
+  "refreshToken": "1//...",
+  "clientId": "<oauth-client-id>",       // optional override
+  "clientSecret": "<oauth-client-secret>" // optional override
+}
+```
+
+Service-account is the **recommended** shape — domain-wide delegation gives the agent access to any workspace user's data without needing them to OAuth individually.
 
 ## Microsoft 365 / Office 365 — NOT supported
 
