@@ -54,6 +54,7 @@ Load a skill: `cat .claude/skills/<name>/SKILL.md`
 | **delegate-notion** | Search pages, query databases, create/update pages |
 | **delegate-cron** | Create and manage scheduled recurring tasks (daily standups, weekly reports) |
 | **delegate-error-handling** | Bounded recovery recipes for 401/404/429/5xx, Bifrost transients, Anthropic 529, connection-pool timeout. **Load when any tool call returns non-2xx.** |
+| **delegate-approvals** | What 409 + approvalId means. How the server-side confirm_action gate works, what NOT to do (re-issue, poll session-gated routes), how the dispatcher auto-replays. |
 | **delegate-bifrost-models** | Pick the right model when calling `$BIFROST_URL/v1/messages`. Cost ratios, cascading-model pattern, embedding-dim warning. |
 | **integration-apis** | Full reference for all integration proxy actions |
 | **gstack** | 28 specialist commands: `/review`, `/investigate`, `/cso`, `/ship`, `/qa` |
