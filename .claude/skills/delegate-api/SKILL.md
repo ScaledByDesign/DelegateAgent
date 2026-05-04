@@ -99,51 +99,42 @@ curl -X POST $DELEGATE_URL/api/agent/integrations/web/fetch \
 
 ## Dashboard & Analytics
 
-> **Auth note**: Dashboard endpoints use `auth()` cookie-based sessions, not the agent bearer
-> token. Agents cannot call them directly. To get workspace stats, query the underlying data
-> via the Task and Agent APIs, or ask the user to fetch and share the dashboard data.
->
-> If you need aggregate counts, use the Task API with status filters instead:
+The agent-facing dashboard + usage endpoints accept the same bearer
+token as everything else here.
 
-**Count tasks by status (agent-accessible alternative):**
+**Workspace dashboard snapshot** (`/api/agent/dashboard`):
 ```bash
-# In-progress tasks
+curl -sG "$DELEGATE_URL/api/agent/dashboard" \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN"
+```
+
+Returns aggregated agent monitoring data (originally built for the Clawket
+mobile app). Used to be marked "session-only" in this skill — that was
+wrong; it accepts bearer auth.
+
+**AI usage by date range** (`/api/agent/usage`):
+```bash
+curl -sG "$DELEGATE_URL/api/agent/usage?startDate=2026-05-01&endDate=2026-05-04" \
+  -H "Authorization: Bearer $DELEGATE_API_TOKEN"
+```
+
+Returns input/output token totals, cache read/write breakdown, and
+cost per call site for the date window.
+
+**Per-status task counts (without dashboard):** if you only need a
+count, hit the tasks list with a status filter and read `total`:
+
+```bash
 curl -sG "$DELEGATE_URL/api/agent/tasks" \
   -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
   --data-urlencode "status=in_progress" \
   --data-urlencode "limit=1" | jq .total
-
-# Done tasks
-curl -sG "$DELEGATE_URL/api/agent/tasks" \
-  -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
-  --data-urlencode "status=done" \
-  --data-urlencode "limit=1" | jq .total
 ```
 
-**If a user session is available** (e.g., in a server-side context or when testing with a
-session cookie), the full dashboard endpoints return rich metrics:
-
-```bash
-# Workspace stats (tasks, meetings, AI usage, agent health, integrations)
-# period: 1d | 7d | 30d (default) | 90d
-curl -s -H "Cookie: next-auth.session-token=SESSION_TOKEN" \
-  "$DELEGATE_URL/api/dashboard/stats?period=30d"
-
-# AI-generated weekly productivity report
-# Returns: { period, summary, highlights[], areasOfAttention[], recommendations[], metrics }
-curl -s -H "Cookie: next-auth.session-token=SESSION_TOKEN" \
-  "$DELEGATE_URL/api/dashboard/report"
-```
-
-Stats response fields (for reference when interpreting user-shared data):
-- `totalTasks`, `completedTasks`, `overdueTasks`, `inProgressTasks`, `todoTasks`
-- `meetingsThisWeek`, `totalConversations`, `pendingSuggestions`
-- `aiCallLog` — `{ totalCalls, totalTokens, totalCostUsd, byCallSite[], byProvider[] }`
-- `agents` — `{ total, active, running, successRate, totalRuns, failedRuns, totalCostCents }`
-- `taskVelocity[]` — daily `{ date, completed, created }` for last 14 days
-- `delegations` — `{ pending, running, failed, blocked, successRate }`
-- `integrations[]` — per-provider `{ provider, status, lastSync, errorCount, recordsSynced }`
-- `orchestrator` — `{ status, lastTickAt, isStalled, tickCount, errorCount }`
+**Session-gated dashboards (NOT bearer-callable):** The richer
+`/api/dashboard/stats` and `/api/dashboard/report` routes require a
+NextAuth session cookie. Agents cannot call those directly — if you
+need a weekly productivity report, ask the user to share it.
 
 ## Completion Callback
 
