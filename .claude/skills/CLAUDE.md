@@ -44,14 +44,17 @@ Load a skill: `cat .claude/skills/<name>/SKILL.md`
 |-------|-------------|
 | **delegate-memory** | Session memory lifecycle — load prior context on start, save on exit. **MANDATORY.** |
 | **delegate-context** | Task context (subtasks, comments, deps, project, knowledge, git). **Load first.** |
+| **delegate-tasks** | Task lifecycle — create / patch / delete / comment / subtask. Load when the user asks any task-mutating action. |
 | **delegate-knowledge** | Knowledge base — search guidelines, create entries, link to tasks |
-| **delegate-api** | Memory, task CRUD, web search, completion callback, dashboard stats |
+| **delegate-api** | Memory, web search, completion callback, dashboard stats. (For tasks specifically, prefer delegate-tasks.) |
 | **delegate-google** | User's Google Calendar, Drive, Gmail, Meet, Contacts |
 | **delegate-contacts** | CRM contacts with AI personality, tonality, relationship context |
 | **delegate-meetings** | Meeting transcripts, action items, AI review, recording bots |
 | **delegate-slack** | Send messages, list channels, read threads |
 | **delegate-notion** | Search pages, query databases, create/update pages |
 | **delegate-cron** | Create and manage scheduled recurring tasks (daily standups, weekly reports) |
+| **delegate-error-handling** | Bounded recovery recipes for 401/404/429/5xx, Bifrost transients, Anthropic 529, connection-pool timeout. **Load when any tool call returns non-2xx.** |
+| **delegate-bifrost-models** | Pick the right model when calling `$BIFROST_URL/v1/messages`. Cost ratios, cascading-model pattern, embedding-dim warning. |
 | **integration-apis** | Full reference for all integration proxy actions |
 | **gstack** | 28 specialist commands: `/review`, `/investigate`, `/cso`, `/ship`, `/qa` |
 
