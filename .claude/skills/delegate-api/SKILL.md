@@ -9,6 +9,20 @@ All endpoints require: `-H "Authorization: Bearer $DELEGATE_API_TOKEN"`
 
 Or use the `delegate_get_token` MCP tool if available.
 
+## Bearer token — env-var aliases
+
+The container injects three env vars that all hold the **same** secret value:
+
+| Name | When to use |
+|------|-------------|
+| `$DELEGATE_API_TOKEN` | **Preferred for skills.** All curl examples in this catalog use this. |
+| `$DELEGATE_AGENT_TOKEN` | Canonical name (matches Delegate's server env). Use when integrating with code that already references this name. |
+| `$DELEGATE_API_KEY` | Legacy alias kept for older container skills. Don't use in new code. |
+
+If you see `Unauthorized` (401) on what should be a working endpoint, the **first thing** to check is whether the token var is empty (`echo ${#DELEGATE_API_TOKEN}` should show > 0). If it's zero you're on a stale container — restart it via the host runtime, don't try to chase it inside the container.
+
+> **Never** hand the user a curl command with the bearer in plaintext. The token is yours, not the user's; it's not transferable to a browser session.
+
 ## Memory API
 
 **Search** (always check before researching):
