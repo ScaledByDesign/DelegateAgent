@@ -300,6 +300,29 @@ async function buildContainerArgs(
     args.push('-e', `DELEGATE_API_TOKEN=${DELEGATE_AGENT_TOKEN_ENV}`);
   }
 
+  // Phase 2: Mint a per-workspace JWT for this container. The platform's
+  // dual-accept auth verifies JWT first; legacy bearer remains accepted as
+  // a fallback during the migration window. On any failure, the container
+  // silently falls back to the legacy bearer injected above.
+  if (workspaceId) {
+    try {
+      const { mintAgentJWT } = await import('./jwt-mint.js');
+      const minted = await mintAgentJWT({ workspaceId });
+      if (minted) {
+        args.push('-e', `DELEGATE_AGENT_JWT=${minted.jwt}`);
+        logger.info(
+          { containerName, workspaceId, jti: minted.jti, expiresAt: minted.expiresAt },
+          'Agent JWT minted for container',
+        );
+      }
+    } catch (e) {
+      logger.warn(
+        { containerName, err: (e as Error).message },
+        'Agent JWT mint failed — container will use legacy bearer',
+      );
+    }
+  }
+
   let credentialsResolved = false;
 
   // Tier 1: Per-workspace keys from Delegate API (preferred for multi-tenant SaaS)

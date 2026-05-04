@@ -34,10 +34,34 @@ description: Agent runtime environment, paths, available tools, and git configur
 
 ## Environment Variables
 - `DELEGATE_URL` — Base URL of the Delegate server
-- `DELEGATE_API_TOKEN` — Auth token for Delegate API calls
+- `DELEGATE_AGENT_JWT` — **Preferred (Phase 2+)**: Short-lived per-workspace JWT minted by the platform at container spawn time. Carries a signed `wid` claim; the server uses this for tenant isolation and cannot be forged. Use this for all API calls when present.
+- `DELEGATE_API_TOKEN` — Legacy bearer token. Continues to work during the Phase 2–4 migration window. All three legacy aliases (`DELEGATE_AGENT_TOKEN`, `DELEGATE_API_KEY`, `DELEGATE_API_TOKEN`) resolve to the same value.
 - `ANTHROPIC_API_KEY` — For Claude Agent SDK
 - `OPENAI_API_KEY` — For Codex fallback (if configured)
 - `GEMINI_API_KEY` — For Gemini fallback (if configured)
+
+### Using the JWT token
+
+Prefer `DELEGATE_AGENT_JWT` when both variables are set:
+
+```bash
+# Preferred (Phase 2+) — scoped to this container's workspace:
+curl -H "Authorization: Bearer $DELEGATE_AGENT_JWT" \
+  "$DELEGATE_URL/api/agent/context/$TASK_ID"
+
+# Legacy fallback — still accepted during migration window:
+curl -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
+  "$DELEGATE_URL/api/agent/context/$TASK_ID"
+```
+
+Shell helper that selects the best available token:
+
+```bash
+AGENT_AUTH="${DELEGATE_AGENT_JWT:-$DELEGATE_API_TOKEN}"
+curl -H "Authorization: Bearer $AGENT_AUTH" "$DELEGATE_URL/api/agent/..."
+```
+
+The JWT expires after ~1 hour. Long-running containers automatically receive a refreshed JWT when the platform re-spawns them. Do not cache `DELEGATE_AGENT_JWT` across container restarts.
 
 ## Runtime Notes
 - You run inside an isolated Docker container
