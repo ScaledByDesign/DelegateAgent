@@ -13,6 +13,27 @@ All calls require:
 -H "Content-Type: application/json"
 ```
 
+## What's supported
+
+| Service | Endpoint | Auth |
+|---|---|---|
+| Gmail | `/api/agent/integrations/gmail/<action>` | per-user OAuth |
+| Google Calendar | `/api/agent/integrations/google_calendar/<action>` | per-user OAuth |
+| Google Drive | `/api/agent/integrations/google_drive/<action>` (alias `gdrive`) | per-user OAuth |
+| Google Meet | `/api/agent/integrations/google_meet/<action>` | per-user OAuth |
+| Google Contacts | `/api/agent/integrations/google_contacts/<action>` | per-user OAuth |
+
+The proxy resolves the user's Google access token in this order: explicit `userId` in body → task owner → workspace owner → workspace's linked Google account. If none of those resolve a fresh access token, the route returns 401 "No Google account available" and you should ask the user to (re)connect Google in Settings.
+
+## Microsoft 365 / Office 365 — NOT supported
+
+Delegate currently has **no** Microsoft integration. The following providers all return `400 Unsupported provider`:
+- `microsoft`, `outlook`, `ms_calendar`, `ms365`
+- `onedrive`, `sharepoint`
+- `teams`, `exchange`
+
+If the user asks about Outlook email, OneDrive files, Teams chat, or Exchange calendar, tell them Microsoft 365 isn't connected and offer the Google equivalent if they have a Google account. Don't pretend to access Microsoft services — the proxy will 400 and the request will fail.
+
 ## Google Calendar
 
 **List events (next week):**
