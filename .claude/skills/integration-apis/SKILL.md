@@ -8,6 +8,23 @@ description: Per-provider API patterns for workspace integrations (Google, GitHu
 Use the Delegate integration proxy or MCP tools to interact with workspace integrations.
 Auth for all: `-H "Authorization: Bearer $DELEGATE_API_TOKEN"`
 
+## Provider quick-jump
+
+| Provider | Section | Common actions |
+|---|---|---|
+| Google Calendar | [Google Calendar](#google-calendar) | `list-events`, `create-event`, `update-event`, `delete-event` |
+| Google Drive | [Google Drive](#google-drive) | `list-files`, `download-file`, `upload-file`, `create-folder` |
+| Gmail | [Gmail](#gmail) | `list-messages`, `get-message`, `send-message`, `mark-read` |
+| Google Meet | [Google Meet](#google-meet) | `create-meeting` |
+| Google Contacts | [Google Contacts](#google-contacts) | `list-contacts`, `search-contacts` |
+| GitHub | [GitHub](#github-also-available-via-mcp) | **read**: `get-repo`, `list-issues`, `list-prs`, `get-pr`, `get-pr-diff`, `get-pr-files`, `get-file`, `get-ref`. **write**: `create-issue`, `create-branch`, `update-file`, `delete-file`, `create-pr`, `create-pr-comment`, `create-pr-review`, `create-repo` |
+| Notion | [Notion](#notion) | `search-pages`, `get-page`, `create-page`, `update-page`, `query-database` |
+| Slack | [Slack](#slack) | `list-channels`, `send-message`, `read-thread` |
+
+For the full action list per provider, scroll to [Action Name Reference](#action-name-reference) at the bottom.
+
+> **MCP-or-curl decision**: prefer MCP tools (`delegate_get_token` + native SDK) when working with a single provider for many calls — fewer HTTP round-trips. Use curl for one-off calls or when no MCP server is configured.
+
 ## Token Access (via MCP)
 If the `delegate_get_token` MCP tool is available, use it to get fresh tokens:
 ```
