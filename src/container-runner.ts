@@ -285,11 +285,19 @@ async function buildContainerArgs(
     `DELEGATE_URL=${DELEGATE_URL.replace('localhost', 'host.docker.internal')}`,
   );
   if (DELEGATE_AGENT_TOKEN_ENV) {
-    // Inject both env vars (same value) so legacy container skills that still
-    // read DELEGATE_API_KEY keep working. DELEGATE_API_KEY will be removed in
-    // a future release once all skills migrate to DELEGATE_AGENT_TOKEN.
+    // Inject all three names (same value) for skill-catalog compatibility:
+    //   - DELEGATE_AGENT_TOKEN — canonical name (matches Delegate's env)
+    //   - DELEGATE_API_KEY     — legacy alias used by older container skills
+    //   - DELEGATE_API_TOKEN   — name used throughout .claude/skills/*/SKILL.md
+    //                            and .claude/skills/CLAUDE.md ("Authorization:
+    //                            Bearer $DELEGATE_API_TOKEN"). Without this
+    //                            alias, every documented skill curl sent an
+    //                            empty Bearer header → 401.
+    // All three will collapse to DELEGATE_AGENT_TOKEN in a future release once
+    // the skill catalog and runtime CLAUDE.md migrate to the canonical name.
     args.push('-e', `DELEGATE_AGENT_TOKEN=${DELEGATE_AGENT_TOKEN_ENV}`);
     args.push('-e', `DELEGATE_API_KEY=${DELEGATE_AGENT_TOKEN_ENV}`);
+    args.push('-e', `DELEGATE_API_TOKEN=${DELEGATE_AGENT_TOKEN_ENV}`);
   }
 
   let credentialsResolved = false;
