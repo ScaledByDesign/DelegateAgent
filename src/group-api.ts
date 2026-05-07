@@ -41,7 +41,14 @@ const LOG_BUFFER_CAPACITY = 500;
 
 const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/delegate-agent/groups';
 
-export function startGroupAPI(): void {
+/** Optional in-memory registerGroup callback — when provided, POST /api/groups
+ * updates both SQLite and the live in-memory registeredGroups map so the
+ * delegate channel's groupSyncInterval picks up the new JID immediately
+ * (within its 10s cycle) rather than requiring a restart.
+ */
+export function startGroupAPI(
+  registerGroupInMemory?: (jid: string, group: import('./types.js').RegisteredGroup) => void,
+): void {
   const PORT = parseInt(process.env.GROUP_API_PORT || '3001', 10);
   // Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY (deprecated)
   // and NANOCLAW_TOKEN (pre-rebrand). Accept any non-empty value during the
@@ -113,7 +120,7 @@ export function startGroupAPI(): void {
             return;
           }
           const folder = data.folder || data.jid.replace(/[^a-zA-Z0-9-]/g, '-');
-          setRegisteredGroup(data.jid, {
+          const groupRecord: import('./types.js').RegisteredGroup = {
             name: data.name,
             folder,
             trigger: data.trigger || 'always',
@@ -122,9 +129,21 @@ export function startGroupAPI(): void {
             containerConfig: data.containerConfig || {},
             requiresTrigger: data.requiresTrigger ?? false,
             workspaceId: data.workspaceId || undefined,
-          });
+          };
+          // Always persist to SQLite
+          setRegisteredGroup(data.jid, groupRecord);
+          // Also update in-memory map when callback is wired (fixes dynamic
+          // group pickup without restart — the delegate channel's
+          // groupSyncInterval reads from this map every 10s).
+          if (registerGroupInMemory) {
+            try {
+              registerGroupInMemory(data.jid, groupRecord);
+            } catch (e) {
+              logger.warn({ jid: data.jid, err: e }, 'in-memory registerGroup failed (non-fatal)');
+            }
+          }
           logger.info(
-            { jid: data.jid, name: data.name },
+            { jid: data.jid, name: data.name, inMemory: !!registerGroupInMemory },
             'Group registered via API',
           );
           res.writeHead(201);
