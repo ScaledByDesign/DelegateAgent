@@ -754,7 +754,7 @@ async function main(): Promise<void> {
     },
   });
   startSessionCleanup();
-  startGroupAPI();
+  startGroupAPI(registerGroup);
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
