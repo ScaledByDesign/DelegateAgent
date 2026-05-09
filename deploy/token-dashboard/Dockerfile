@@ -26,9 +26,11 @@ RUN git clone --depth 1 --branch "${TOKEN_DASHBOARD_REF}" \
       https://github.com/nateherkai/token-dashboard.git . \
  && rm -rf .git
 
+COPY patches.py          /usr/local/bin/patches.py
 COPY symlink-projects.py /usr/local/bin/symlink-projects.py
 COPY entrypoint.sh       /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/symlink-projects.py
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/symlink-projects.py \
+ && python3 /usr/local/bin/patches.py
 
 # Read-only sessions volume mounts here.
 RUN mkdir -p /data/sessions /aggregated-projects /cache
