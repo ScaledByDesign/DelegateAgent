@@ -32,7 +32,14 @@ const DELEGATE_URL = (
 // removed after the next release window — agents using only the legacy var
 // will trip a deprecation warning at startup via getEnvWithFallback).
 const DELEGATE_AGENT_TOKEN =
-  getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
+  // Accept NANOCLAW_TOKEN as a final legacy fallback so pre-rebrand droplets
+  // (which have NANOCLAW_TOKEN in .env but not DELEGATE_AGENT_TOKEN or
+  // DELEGATE_API_KEY) keep their delegate channel connected without a manual
+  // .env edit. This mirrors the alias list in group-api.ts.
+  getEnvWithFallback('DELEGATE_AGENT_TOKEN', [
+    'DELEGATE_API_KEY',
+    'NANOCLAW_TOKEN',
+  ]) || '';
 
 const CURSOR_FILE_PATH =
   process.env.DELEGATE_CURSOR_PATH ||
