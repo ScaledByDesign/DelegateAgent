@@ -86,12 +86,22 @@ export function startGroupAPI(
       return;
     }
 
-    // Auth: accept any valid Delegate/DelegateAgent token
-    const auth = req.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
-    if (!auth || !VALID_TOKENS.includes(auth)) {
-      res.writeHead(401);
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
-      return;
+    // Deploy webhook bypasses the global Bearer gate — it has its own auth
+    // (HMAC-SHA256 from GitHub via X-Hub-Signature-256, or Bearer DEPLOY_SECRET).
+    // Without this bypass, GitHub's webhook hits the global 401 before the
+    // dedicated handler can validate the signature.
+    const isDeployWebhook =
+      req.method === 'POST' &&
+      (req.url === '/webhook/deploy' || req.url === '/deploy');
+
+    // Auth: accept any valid Delegate/DelegateAgent token (skipped for deploy webhook)
+    if (!isDeployWebhook) {
+      const auth = req.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
+      if (!auth || !VALID_TOKENS.includes(auth)) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
     }
 
     if (req.method === 'GET' && req.url === '/api/groups') {
