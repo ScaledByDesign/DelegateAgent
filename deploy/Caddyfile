@@ -146,3 +146,33 @@ agent.delegate.ws {
 		}
 	}
 }
+
+# ── Token Dashboard ──
+# Local cost analytics for agent containers. Reads JSONL transcripts from
+# /opt/delegate-agent/data/sessions/<group>/.claude/projects/ via a Docker
+# container (deploy/token-dashboard/). Single-user admin tool — basic auth.
+tokens.delegate.ws {
+	import security_headers
+
+	basic_auth {
+		admin $2a$14$njuovX6P5t3ZJoExw7BdlOKY4d3p0Sg.mKMOdAFWSD56wv3F/ACjy
+	}
+
+	reverse_proxy localhost:8082 {
+		header_up X-Real-IP {remote_host}
+
+		# Server-sent events for live refresh (token-dashboard pushes updates
+		# every 30s when JSONL files change).
+		flush_interval -1
+		stream_close_delay 5m
+		stream_timeout 1h
+	}
+
+	log {
+		output file /var/log/caddy/tokens.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+	}
+}

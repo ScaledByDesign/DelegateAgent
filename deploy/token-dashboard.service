@@ -1,0 +1,26 @@
+[Unit]
+Description=DelegateAgent Token Dashboard (per-group cost analytics)
+After=network.target docker.service delegate-agent.service
+Requires=docker.service
+Wants=delegate-agent.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/delegate-agent/deploy/token-dashboard
+EnvironmentFile=-/opt/delegate-agent/.env
+Environment=DATA_DIR=/opt/delegate-agent/data
+ExecStartPre=/usr/bin/docker compose pull --quiet 2>/dev/null || true
+ExecStartPre=/usr/bin/docker compose build --quiet
+ExecStart=/usr/bin/docker compose up
+ExecStop=/usr/bin/docker compose down
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=token-dashboard
+
+[Install]
+WantedBy=multi-user.target
