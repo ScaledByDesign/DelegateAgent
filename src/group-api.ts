@@ -756,6 +756,36 @@ export function startGroupAPI(
       return;
     }
 
+    // ─── Admin: build container image ─────────────────────────────────────────
+    // POST /api/admin/build-container
+    // Rebuilds the delegateagent:latest Docker image in the background.
+    // Requires Bearer auth (same VALID_TOKENS as all /api/* routes).
+    if (
+      req.method === 'POST' &&
+      req.url === '/api/admin/build-container'
+    ) {
+      const auth = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+      if (!VALID_TOKENS.includes(auth)) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
+      logger.info('Container image build triggered via admin API');
+      res.writeHead(202);
+      res.end(JSON.stringify({ ok: true, message: 'Container build started in background' }));
+
+      // Non-blocking build
+      const { spawn } = await import('node:child_process');
+      const proc = spawn(
+        'bash',
+        ['-c', 'cd /opt/delegate-agent && bash container/build.sh 2>&1 | tail -20'],
+        { detached: true, stdio: 'ignore' },
+      );
+      proc.unref();
+      return;
+    }
+
     // ─── Webhook deploy endpoint ─────────────────────────────────────────────
     // POST /webhook/deploy  or  POST /deploy
     // Triggers git pull + npm ci + tsc + systemctl restart on the droplet.
@@ -785,8 +815,13 @@ export function startGroupAPI(
         const provided = authHeader.slice(7).trim();
         const { timingSafeEqual } = await import('node:crypto');
         try {
-          authed = timingSafeEqual(Buffer.from(provided), Buffer.from(DEPLOY_SECRET));
-        } catch { authed = false; }
+          authed = timingSafeEqual(
+            Buffer.from(provided),
+            Buffer.from(DEPLOY_SECRET),
+          );
+        } catch {
+          authed = false;
+        }
       }
 
       // Also accept X-Hub-Signature-256 (for GitHub webhook integration)
@@ -800,10 +835,14 @@ export function startGroupAPI(
             req.on('error', reject);
           });
           const { createHmac, timingSafeEqual } = await import('node:crypto');
-          const expected = 'sha256=' + createHmac('sha256', DEPLOY_SECRET).update(body).digest('hex');
+          const expected =
+            'sha256=' +
+            createHmac('sha256', DEPLOY_SECRET).update(body).digest('hex');
           try {
             authed = timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
-          } catch { authed = false; }
+          } catch {
+            authed = false;
+          }
         }
       }
 
@@ -814,7 +853,9 @@ export function startGroupAPI(
       }
 
       // Auth passed — kick off the self-update in the background
-      logger.info('Deploy webhook triggered — running git pull + build + restart');
+      logger.info(
+        'Deploy webhook triggered — running git pull + build + restart',
+      );
       res.writeHead(202);
       res.end(JSON.stringify({ ok: true, message: 'Deploy started' }));
 
@@ -822,12 +863,13 @@ export function startGroupAPI(
       const { spawn } = await import('node:child_process');
       const proc = spawn(
         'bash',
-        ['-c',
+        [
+          '-c',
           'cd /opt/delegate-agent && ' +
-          'git pull --ff-only origin main 2>&1 && ' +
-          'npm ci --omit=dev 2>&1 | tail -3 && ' +
-          'npm run build 2>&1 | tail -5 && ' +
-          'systemctl restart delegate-agent'
+            'git pull --ff-only origin main 2>&1 && ' +
+            'npm ci --omit=dev 2>&1 | tail -3 && ' +
+            'npm run build 2>&1 | tail -5 && ' +
+            'systemctl restart delegate-agent',
         ],
         { detached: true, stdio: 'ignore' },
       );
