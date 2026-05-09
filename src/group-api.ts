@@ -947,14 +947,18 @@ export function startGroupAPI(
           '-c',
           'cd /opt/delegate-agent && ' +
             'git pull --ff-only origin main 2>&1 && ' +
-            // Install full deps so `tsc` (devDep) is available for the build.
+            // NODE_ENV=production is inherited from the agent's systemd unit;
+            // npm ci treats that as "skip devDeps", so tsc is missing and
+            // every build silently fails (`tsc: not found` → dist stays
+            // stale → new code never runs even though git pull succeeded).
+            // Force NODE_ENV=development for the install + build only.
             // --ignore-scripts skips the `prepare: husky` hook that fails
-            // without a git working tree set up for hooks. Trade-off: that
-            // ALSO skips better-sqlite3's `install` script which builds the
-            // native binding, so we explicitly rebuild it next.
-            'npm ci --ignore-scripts 2>&1 | tail -3 && ' +
+            // without a git-hooks worktree. Trade-off: it ALSO skips
+            // better-sqlite3's `install` script which builds the native
+            // binding, so we explicitly rebuild it next.
+            'NODE_ENV=development npm ci --ignore-scripts 2>&1 | tail -3 && ' +
             'npm rebuild better-sqlite3 2>&1 | tail -3 && ' +
-            'npm run build 2>&1 | tail -5 && ' +
+            'NODE_ENV=development npm run build 2>&1 | tail -5 && ' +
             '(test -x deploy/post-deploy.sh && bash deploy/post-deploy.sh 2>&1 | tail -30 || ' +
             'echo "[deploy] post-deploy.sh missing — skipping infra step") && ' +
             'systemctl restart delegate-agent',
