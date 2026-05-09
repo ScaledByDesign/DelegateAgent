@@ -883,8 +883,11 @@ export function startGroupAPI(
             'git pull --ff-only origin main 2>&1 && ' +
             // Install full deps so `tsc` (devDep) is available for the build.
             // --ignore-scripts skips the `prepare: husky` hook that fails
-            // without a git working tree set up for hooks.
+            // without a git working tree set up for hooks. Trade-off: that
+            // ALSO skips better-sqlite3's `install` script which builds the
+            // native binding, so we explicitly rebuild it next.
             'npm ci --ignore-scripts 2>&1 | tail -3 && ' +
+            'npm rebuild better-sqlite3 2>&1 | tail -3 && ' +
             'npm run build 2>&1 | tail -5 && ' +
             '(test -x deploy/post-deploy.sh && bash deploy/post-deploy.sh 2>&1 | tail -30 || ' +
             'echo "[deploy] post-deploy.sh missing — skipping infra step") && ' +
