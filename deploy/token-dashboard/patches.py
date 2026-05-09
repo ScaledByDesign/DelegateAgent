@@ -39,10 +39,10 @@ PATCHES = [
         "file": "/app/token_dashboard/scanner.py",
         "marker": "_walk_jsonl_followlinks",  # presence = already patched
         "edits": [
-            # 1. Insert helper after the first import line
+            # 1. Insert helper after pathlib is in scope
             {
                 "kind": "insert_after",
-                "anchor": "import pathlib",
+                "anchor": "from pathlib import Path",
                 "text": HELPER,
             },
             # 2. Swap the rglob call
