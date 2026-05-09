@@ -137,7 +137,7 @@ interface PollResponse {
 
 // ─── Channel ─────────────────────────────────────────────────────────────────
 
-class DelegateChannel implements Channel {
+export class DelegateChannel implements Channel {
   name = 'delegate';
 
   private opts: ChannelOpts;
@@ -455,9 +455,12 @@ class DelegateChannel implements Channel {
   private startPoll(jid: string): void {
     if (this.pollers.has(jid)) return;
 
-    // Only seed if not already restored from file
+    // Only seed if not already restored from file.
+    // Use epoch (not now) so the first poll fetches ALL messages — including any
+    // that arrived before the JID was registered (the "first message race").
+    // Existing JIDs loaded from delegate-cursors.json keep their persisted cursor.
     if (!this.lastSeen.has(jid)) {
-      this.lastSeen.set(jid, new Date().toISOString());
+      this.lastSeen.set(jid, new Date(0).toISOString());
     }
     if (!this.seenIds.has(jid)) {
       this.seenIds.set(jid, new Set());
