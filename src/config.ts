@@ -7,14 +7,27 @@ import { isValidTimezone } from './timezone.js';
 
 /**
  * Read env var with optional legacy fallback. Logs a deprecation warning if the fallback is used.
+ *
+ * Resolution order:
+ *   1. process.env[primary]          — set by systemd EnvironmentFile, PM2, Docker --env, etc.
+ *   2. process.env[legacy[N]]        — deprecated aliases (deprecation warning emitted)
+ *   3. .env file[primary]            — final fallback for bare `node dist/index.js` runs where
+ *                                       no process-manager injects env vars. Keeps secrets out of
+ *                                       child-process environments (readEnvFile does NOT call
+ *                                       process.env assignment — the value is used in-process only).
+ *   4. .env file[legacy[N]]          — same .env fallback for legacy aliases
+ *
  * @example getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['NANOCLAW_TOKEN'])
  */
 export function getEnvWithFallback(
   primary: string,
   legacy: string[] = [],
 ): string | undefined {
+  // 1. Canonical from process.env
   const primaryVal = process.env[primary];
   if (primaryVal) return primaryVal;
+
+  // 2. Legacy aliases from process.env
   for (const name of legacy) {
     const val = process.env[name];
     if (val) {
@@ -24,6 +37,24 @@ export function getEnvWithFallback(
       return val;
     }
   }
+
+  // 3 & 4. .env file fallback — covers bare node runs without a process manager
+  //         that injects EnvironmentFile / --env. readEnvFile never sets process.env
+  //         so secrets don't leak to child processes spawned later.
+  const allKeys = [primary, ...legacy];
+  const fromFile = readEnvFile(allKeys);
+  const fileVal = fromFile[primary];
+  if (fileVal) return fileVal;
+  for (const name of legacy) {
+    const val = fromFile[name];
+    if (val) {
+      console.warn(
+        `[DEPRECATION] env var ${name} (from .env) is deprecated; rename to ${primary}. See docs/UPSTREAM-SYNC.md.`,
+      );
+      return val;
+    }
+  }
+
   return undefined;
 }
 
