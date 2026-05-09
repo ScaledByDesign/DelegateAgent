@@ -66,14 +66,14 @@ export function generateAgentsMd(): string {
 export function generateToolsMd(appUrl: string): string {
   return `# Environment
 - Workspace: /workspace
-- Skills: /opt/delegate-agent/skills/
+- Skills: /home/node/.claude/skills/
 - Context files: /opt/delegate-agent/context/
 - Node.js, git, tmux available
-- Git auth via delegate_git_auth MCP tool (per-workspace credentials — never use $GITHUB_TOKEN directly)
+- Git auth: a per-workspace credential helper is pre-configured in /workspace; just run \`git push\` and \`gh pr create\` — they pick up the right token automatically. Never use $GITHUB_TOKEN directly.
 
 # Available Skills
 (compact registry — populated dynamically at prompt assembly time)
-To use a skill: cat /opt/delegate-agent/skills/<key>/SKILL.md
+To use a skill: cat /home/node/.claude/skills/<key>/SKILL.md
 
 # API Endpoints (Auth: -H "Authorization: Bearer $DELEGATE_API_TOKEN")
 

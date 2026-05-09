@@ -7,8 +7,47 @@ import os from 'os';
 
 import { logger } from './logger.js';
 
+/**
+ * Resolve the container runtime binary.
+ *
+ * Selection order:
+ *   1. `DELEGATE_CONTAINER_RUNTIME` env var (explicit override).
+ *   2. On macOS: `container` (Apple Container) if installed and `docker` is not.
+ *   3. `docker` (Linux primary, macOS default when Docker Desktop is running).
+ *
+ * NOTE: Apple Container uses a different mount syntax (`--mount
+ * type=bind,...`) than Docker (`-v src:dst:ro`). Setting the binary name to
+ * `container` is necessary but NOT sufficient — run the
+ * `/convert-to-apple-container` skill to migrate the rest of the runtime
+ * code. Until then, override via env var only when the migration is done.
+ */
+function detectRuntimeBin(): string {
+  const override = process.env.DELEGATE_CONTAINER_RUNTIME?.trim();
+  if (override) return override;
+
+  if (os.platform() === 'darwin') {
+    const haveDocker = canRun('docker');
+    const haveAppleContainer = canRun('container');
+    // Prefer Apple Container only when Docker isn't available — keeps the
+    // default unchanged for the common Docker Desktop case but lets a
+    // Docker-free Mac dev box pick up Apple Container automatically.
+    if (haveAppleContainer && !haveDocker) return 'container';
+  }
+
+  return 'docker';
+}
+
+function canRun(bin: string): boolean {
+  try {
+    execSync(`${bin} --version`, { stdio: 'pipe', timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The container runtime binary name. */
-export const CONTAINER_RUNTIME_BIN = 'docker';
+export const CONTAINER_RUNTIME_BIN = detectRuntimeBin();
 
 /** CLI args needed for the container to resolve the host gateway. */
 export function hostGatewayArgs(): string[] {
@@ -58,13 +97,25 @@ export function ensureContainerRuntimeRunning(): void {
       '║  Agents cannot run without a container runtime. To fix:        ║',
     );
     console.error(
-      '║  1. Ensure Docker is installed and running                     ║',
+      `║  1. Ensure ${CONTAINER_RUNTIME_BIN} is installed and running                     ║`.slice(
+        0,
+        67,
+      ) + '║',
     );
     console.error(
-      '║  2. Run: docker info                                           ║',
+      `║  2. Run: ${CONTAINER_RUNTIME_BIN} info                                           ║`.slice(
+        0,
+        67,
+      ) + '║',
     );
     console.error(
-      '║  3. Restart DelegateAgent                                           ║',
+      '║  3. macOS: try Apple Container — run /convert-to-apple-       ║',
+    );
+    console.error(
+      '║     container to switch runtimes natively                      ║',
+    );
+    console.error(
+      '║  4. Restart DelegateAgent                                      ║',
     );
     console.error(
       '╚════════════════════════════════════════════════════════════════╝\n',
