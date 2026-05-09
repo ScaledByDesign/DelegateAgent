@@ -96,13 +96,17 @@ function createFakeProcess() {
 
 let fakeProc: ReturnType<typeof createFakeProcess>;
 
-// Mock child_process.spawn
+// Mock child_process.spawn + execSync
+// execSync is used by the pre-flight image-existence check
+// (`docker image inspect`) — mock it to succeed so tests don't
+// need a real Docker daemon.
 vi.mock('child_process', async () => {
   const actual =
     await vi.importActual<typeof import('child_process')>('child_process');
   return {
     ...actual,
     spawn: vi.fn(() => fakeProc),
+    execSync: vi.fn(() => Buffer.from('')), // image pre-flight passes
     exec: vi.fn(
       (_cmd: string, _opts: unknown, cb?: (err: Error | null) => void) => {
         if (cb) cb(null);
