@@ -5,13 +5,17 @@ Requires=docker.service
 Wants=delegate-agent.service
 
 [Service]
+# `docker compose up` runs in the foreground so systemd can supervise it.
+# Build + image pull happen in deploy/post-deploy.sh on each deploy, not here —
+# that keeps build output visible in deploy logs and avoids systemd's lack of
+# shell support in ExecStartPre. If you `systemctl restart`, the existing
+# container is gracefully recreated. Crash recovery on boot is double-covered:
+# this Restart=always plus `restart: unless-stopped` in docker-compose.yml.
 Type=simple
 User=root
 WorkingDirectory=/opt/delegate-agent/deploy/token-dashboard
 EnvironmentFile=-/opt/delegate-agent/.env
 Environment=DATA_DIR=/opt/delegate-agent/data
-ExecStartPre=/usr/bin/docker compose pull --quiet 2>/dev/null || true
-ExecStartPre=/usr/bin/docker compose build --quiet
 ExecStart=/usr/bin/docker compose up
 ExecStop=/usr/bin/docker compose down
 Restart=always
