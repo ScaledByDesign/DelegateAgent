@@ -123,17 +123,44 @@ agent.delegate.ws {
 	# Prometheus metrics — Bearer token auth enforced by group-api itself
 	# (reuses DELEGATE_AGENT_TOKEN). Caddy is a path-scoped pass-through.
 	# This handle short-circuits @protected basic_auth fallthrough below.
+	# Port is hardcoded: Caddy's reverse_proxy upstream syntax does not
+	# support `{$VAR:-default}`-style defaults, and group-api always
+	# binds 3001 in production (override via GROUP_API_PORT only affects
+	# local dev where Caddy is not in front of group-api).
 	handle /metrics {
-		reverse_proxy localhost:{$GROUP_API_PORT:3001}
+		reverse_proxy localhost:3001
+	}
+
+	# Host metrics: prometheus-node-exporter on :9100 (apt systemd service).
+	# Exposed via basic_auth so Prometheus on the core droplet can scrape
+	# across the public internet without depending on group-api or its token.
+	handle /node-metrics {
+		basic_auth {
+			admin ***ROTATED-2026-05-11***
+		}
+		rewrite * /metrics
+		reverse_proxy localhost:9100
+	}
+
+	# Per-container metrics: cAdvisor v0.55.1 in a docker container, host
+	# port 127.0.0.1:8081. Same basic_auth pattern as /node-metrics.
+	handle /cadvisor-metrics {
+		basic_auth {
+			admin ***ROTATED-2026-05-11***
+		}
+		rewrite * /metrics
+		reverse_proxy localhost:8081
 	}
 
 	# Everything else behind basic auth — except /admin (has Bearer auth via
-	# group-api), /api/*, /health, /metrics, and the deploy webhooks (HMAC/Bearer
-	# auth enforced by group-api itself).
+	# group-api), /api/*, /health, /metrics, /node-metrics, /cadvisor-metrics
+	# (have their own auth above), and the deploy webhooks.
 	@protected {
 		not path /api/*
 		not path /health
 		not path /metrics
+		not path /node-metrics
+		not path /cadvisor-metrics
 		not path /admin
 		not path /admin/*
 		not path /webhook/deploy
