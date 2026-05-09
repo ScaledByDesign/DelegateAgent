@@ -529,7 +529,9 @@ export async function runContainerAgent(
   // Telemetry + metrics: record spawn before the process is created so the
   // ring buffer + Prometheus counter both see the start even if spawn fails.
   recordContainerStart(containerName, group.folder);
-  recordContainerSpawn(jidKind(group.folder), input.isMain);
+  // jidKind() expects the JID format (colon-separated), not the folder
+  // name (which sanitizes colons to hyphens). Use input.chatJid.
+  recordContainerSpawn(jidKind(input.chatJid), input.isMain);
 
   // Single point that flushes BOTH telemetry sources on every terminal branch.
   // Status enum aligned with web-ui/container-telemetry.ts:
@@ -546,7 +548,7 @@ export async function runContainerAgent(
       exitCode ?? undefined,
       errorMessage,
     );
-    recordContainerExit(jidKind(group.folder), status, durationSeconds);
+    recordContainerExit(jidKind(input.chatJid), status, durationSeconds);
   };
 
   return new Promise((resolve) => {

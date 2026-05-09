@@ -294,7 +294,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         { group: group.name },
         'Idle timeout, closing container stdin',
       );
-      recordIdleTimeout(jidKind(group.folder));
+      recordIdleTimeout(jidKind(chatJid));
       queue.closeStdin(chatJid);
     }, IDLE_TIMEOUT);
   };
@@ -367,7 +367,7 @@ async function runAgent(
 
   // Resume vs fresh-start observability — fires once per agent invocation.
   if (sessionId) {
-    recordSessionResume(jidKind(group.folder));
+    recordSessionResume(jidKind(chatJid));
   }
 
   // Update tasks snapshot for container to read (filtered by group)
