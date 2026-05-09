@@ -784,6 +784,42 @@ export function startGroupAPI(
       return;
     }
 
+    // ─── Admin: reload Bifrost config ───────────────────────────────────────
+    // POST /api/admin/reload-bifrost
+    // Re-generates /opt/bifrost/config.json from the template + .env values,
+    // then restarts the bifrost systemd service. Bearer auth required.
+    if (
+      req.method === 'POST' &&
+      req.url === '/api/admin/reload-bifrost'
+    ) {
+      const rba = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+      if (!VALID_TOKENS.includes(rba)) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
+      logger.info('Bifrost config reload triggered via admin API');
+      res.writeHead(202);
+      res.end(JSON.stringify({ ok: true, message: 'Bifrost config reload started' }));
+
+      const { spawn } = await import('node:child_process');
+      const proc = spawn(
+        'bash',
+        ['-c',
+          // Re-generate Bifrost config from template + .env, then restart Bifrost
+          'set -a && source /opt/delegate-agent/.env && set +a && ' +
+          'mkdir -p /opt/bifrost && ' +
+          'envsubst < /opt/delegate-agent/deploy/bifrost-config.template.json > /opt/bifrost/config.json && ' +
+          'echo "Bifrost config written" && ' +
+          'systemctl restart bifrost || (pm2 restart bifrost 2>/dev/null) || echo "Bifrost restart failed"'
+        ],
+        { detached: true, stdio: 'ignore' },
+      );
+      proc.unref();
+      return;
+    }
+
     // ─── Admin: build container image ─────────────────────────────────────────
     // POST /api/admin/build-container
     // Rebuilds the delegateagent:latest Docker image in the background.
