@@ -120,12 +120,16 @@ agent.delegate.ws {
 		respond `{"service":"delegate-agent","status":"ok","version":"v5","mode":"poll"}` 200
 	}
 
-	# Everything else behind basic auth — except /admin which has its own Bearer auth via group-api
+	# Everything else behind basic auth — except /admin (has Bearer auth via
+	# group-api), /api/*, /health, and the deploy webhooks (HMAC/Bearer auth
+	# enforced by group-api itself).
 	@protected {
 		not path /api/*
 		not path /health
 		not path /admin
 		not path /admin/*
+		not path /webhook/deploy
+		not path /deploy
 	}
 	basic_auth @protected {
 		admin $2a$14$njuovX6P5t3ZJoExw7BdlOKY4d3p0Sg.mKMOdAFWSD56wv3F/ACjy
