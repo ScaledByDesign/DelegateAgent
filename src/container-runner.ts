@@ -2,7 +2,7 @@
  * Container Runner for DelegateAgent
  * Spawns agent execution in containers and handles IPC
  */
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -432,6 +432,27 @@ export async function runContainerAgent(
 
   const groupDir = resolveGroupFolderPath(group.folder);
   fs.mkdirSync(groupDir, { recursive: true });
+
+  // Pre-flight: verify the container image exists before attempting spawn.
+  // If the image is missing (first deploy before `container/build.sh` has run),
+  // Docker exits with code 125/"No such image" and the spawn error propagates
+  // as an unhandled rejection that can crash the main process. We catch it
+  // gracefully here so the message is re-queued on the next poll cycle.
+  try {
+    // Use the statically-imported execSync so the child_process mock in tests
+    // intercepts this call without needing `node:child_process` aliasing.
+    execSync(`docker image inspect ${CONTAINER_IMAGE}`, { stdio: 'ignore' });
+  } catch {
+    logger.error(
+      { image: CONTAINER_IMAGE },
+      'Container image not found — run `bash container/build.sh` on the droplet. Message will be re-queued.',
+    );
+    return {
+      status: 'error',
+      result: null,
+      error: `Container image '${CONTAINER_IMAGE}' not found. Run \`bash /opt/delegate-agent/container/build.sh\` on the droplet.`,
+    };
+  }
 
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
