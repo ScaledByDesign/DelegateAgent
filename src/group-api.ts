@@ -760,11 +760,10 @@ export function startGroupAPI(
     // POST /api/admin/build-container
     // Rebuilds the delegateagent:latest Docker image in the background.
     // Requires Bearer auth (same VALID_TOKENS as all /api/* routes).
-    if (
-      req.method === 'POST' &&
-      req.url === '/api/admin/build-container'
-    ) {
-      const auth = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+    if (req.method === 'POST' && req.url === '/api/admin/build-container') {
+      const auth = (req.headers['authorization'] || '')
+        .replace(/^Bearer\s+/i, '')
+        .trim();
       if (!VALID_TOKENS.includes(auth)) {
         res.writeHead(401);
         res.end(JSON.stringify({ error: 'Unauthorized' }));
@@ -773,13 +772,21 @@ export function startGroupAPI(
 
       logger.info('Container image build triggered via admin API');
       res.writeHead(202);
-      res.end(JSON.stringify({ ok: true, message: 'Container build started in background' }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          message: 'Container build started in background',
+        }),
+      );
 
       // Non-blocking build
       const { spawn } = await import('node:child_process');
       const proc = spawn(
         'bash',
-        ['-c', 'cd /opt/delegate-agent && bash container/build.sh 2>&1 | tail -20'],
+        [
+          '-c',
+          'cd /opt/delegate-agent && bash container/build.sh 2>&1 | tail -20',
+        ],
         { detached: true, stdio: 'ignore' },
       );
       proc.unref();
@@ -874,7 +881,10 @@ export function startGroupAPI(
           '-c',
           'cd /opt/delegate-agent && ' +
             'git pull --ff-only origin main 2>&1 && ' +
-            'npm ci --omit=dev 2>&1 | tail -3 && ' +
+            // Install full deps so `tsc` (devDep) is available for the build.
+            // --ignore-scripts skips the `prepare: husky` hook that fails
+            // without a git working tree set up for hooks.
+            'npm ci --ignore-scripts 2>&1 | tail -3 && ' +
             'npm run build 2>&1 | tail -5 && ' +
             '(test -x deploy/post-deploy.sh && bash deploy/post-deploy.sh 2>&1 | tail -30 || ' +
             'echo "[deploy] post-deploy.sh missing — skipping infra step") && ' +
