@@ -294,6 +294,58 @@ export function recordSessionResume(jidKind_: JidKind): void {
   });
 }
 
+// ─── Seed counters at startup so dashboards show 0 instead of "No data" ──────
+// prom-client only emits a label combo once .inc() has been called for it.
+// On a freshly-started process with no traffic yet, every Counter is invisible
+// in /metrics — Grafana panels using rate(...) over those counters render
+// "No data" instead of a confidence-inspiring 0. We seed the enumerable label
+// combinations once at module load so each `recordX` path is visible
+// immediately, even before any traffic.
+//
+// Only ENUM-LIKE labels (with bounded, known value sets) are seeded — labels
+// like `tier` (open-ended for credentials) are intentionally left to populate
+// organically.
+
+function seedCounters(): void {
+  safeMetric(() => {
+    const KINDS: JidKind[] = [
+      'main',
+      'delegate_task',
+      'delegate_conv',
+      'delegate_agent',
+      'whatsapp',
+      'telegram',
+      'slack',
+      'discord',
+      'gmail',
+      'unknown',
+    ];
+    const CHANNELS = ['delegate', 'whatsapp', 'telegram', 'slack', 'discord', 'gmail'];
+    const POLL_KINDS = ['http_4xx', 'http_5xx', 'network', 'timeout'];
+    const FASTPATH_OUTCOMES = ['hit', 'miss', 'skip'];
+    const JWT_OUTCOMES = ['success', 'failure'];
+    const IPC_TYPES = ['message', 'task'];
+
+    for (const k of KINDS) {
+      containerSpawnedTotal.inc({ jid_kind: k, isMain: 'false' }, 0);
+      idleTimeoutTotal.inc({ jid_kind: k }, 0);
+      sessionResumesTotal.inc({ jid_kind: k }, 0);
+    }
+    for (const ch of CHANNELS) {
+      messagesProcessedTotal.inc({ channel: ch }, 0);
+      channelMessagesDeliveredTotal.inc({ channel: ch }, 0);
+      for (const pk of POLL_KINDS) {
+        channelPollErrorsTotal.inc({ channel: ch, kind: pk }, 0);
+      }
+    }
+    for (const o of FASTPATH_OUTCOMES) chatFastpathTotal.inc({ outcome: o }, 0);
+    for (const o of JWT_OUTCOMES) jwtMintTotal.inc({ outcome: o }, 0);
+    for (const t of IPC_TYPES) ipcMessagesProcessedTotal.inc({ type: t }, 0);
+  });
+}
+
+seedCounters();
+
 // ─── HTTP handler ─────────────────────────────────────────────────────────────
 
 export async function metricsHandler(
