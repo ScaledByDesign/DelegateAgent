@@ -1,0 +1,51 @@
+# Token Dashboard for DelegateAgent
+#
+# Runs alongside DelegateAgent (which is a host-level systemd service, not
+# Dockerized itself — only its agent containers are). Mounts the host's
+# session transcripts read-only and serves a local web UI behind Caddy.
+#
+# Usage:
+#   cd /opt/delegate-agent/deploy/token-dashboard
+#   docker compose up -d --build
+#
+# Or via systemd: see ../token-dashboard.service
+#
+# DATA_DIR defaults to /opt/delegate-agent/data on the production droplet.
+# Override locally with: DATA_DIR=/path/to/data docker compose up
+
+services:
+  token-dashboard:
+    build:
+      context: .
+      args:
+        # Pin upstream commit; bump to refresh.
+        TOKEN_DASHBOARD_REF: main
+    image: delegate-token-dashboard:latest
+    container_name: delegate-token-dashboard
+    restart: unless-stopped
+    volumes:
+      # Read-only mount of agent session transcripts. The dashboard scans
+      # this and only ever reads.
+      - ${DATA_DIR:-/opt/delegate-agent/data}/sessions:/data/sessions:ro
+      # SQLite cache lives on a named volume so it survives restarts.
+      - token-dashboard-cache:/cache
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      SESSIONS_DIR: /data/sessions
+      AGGREGATED_DIR: /aggregated-projects
+      CLAUDE_PROJECTS_DIR: /aggregated-projects
+      TOKEN_DASHBOARD_DB: /cache/token-dashboard.db
+      SYMLINK_REFRESH_SECONDS: 30
+    ports:
+      # Bind to localhost only — Caddy fronts this with auth+TLS.
+      - "127.0.0.1:8082:8080"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  token-dashboard-cache:
