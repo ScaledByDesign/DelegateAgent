@@ -124,7 +124,7 @@ agent.delegate.ws {
 	# (reuses DELEGATE_AGENT_TOKEN). Caddy is a path-scoped pass-through.
 	# This handle short-circuits @protected basic_auth fallthrough below.
 	handle /metrics {
-		reverse_proxy localhost:{$GROUP_API_PORT:-3001}
+		reverse_proxy localhost:{$GROUP_API_PORT:3001}
 	}
 
 	# Everything else behind basic auth — except /admin (has Bearer auth via
