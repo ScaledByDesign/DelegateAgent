@@ -23,6 +23,7 @@ import {
   PreCompactHookInput,
 } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
+import { isRetryableStreamError, withRetryableStream } from './retry-stream.js';
 
 interface ContainerInput {
   prompt: string;
@@ -437,117 +438,144 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
-  for await (const message of query({
-    prompt: stream,
-    options: {
-      // Claude Code native binary is installed globally by the Dockerfile
-      // (`npm install -g @anthropic-ai/claude-code`). The SDK's auto-resolver
-      // looks for a platform-specific path (`.../claude-agent-sdk-linux-x64-musl/claude`)
-      // which doesn't exist on glibc-based node:22-slim. Point at the global bin.
-      pathToClaudeCodeExecutable:
-        process.env.CLAUDE_CODE_EXECUTABLE_PATH || '/usr/local/bin/claude',
-      cwd: '/workspace/group',
-      additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
-      resume: sessionId,
-      resumeSessionAt: resumeAt,
-      systemPrompt: globalClaudeMd
-        ? {
-            type: 'preset' as const,
-            preset: 'claude_code' as const,
-            append: globalClaudeMd,
-          }
-        : undefined,
-      allowedTools: [
-        'Bash',
-        'Read',
-        'Write',
-        'Edit',
-        'Glob',
-        'Grep',
-        'WebSearch',
-        'WebFetch',
-        'Task',
-        'TaskOutput',
-        'TaskStop',
-        'TeamCreate',
-        'TeamDelete',
-        'SendMessage',
-        'TodoWrite',
-        'ToolSearch',
-        'Skill',
-        'NotebookEdit',
-        'mcp__delegateagent__*',
-      ],
-      env: sdkEnv,
-      permissionMode: 'bypassPermissions',
-      allowDangerouslySkipPermissions: true,
-      settingSources: ['project', 'user'],
-      mcpServers: {
-        // MCP server wire name is `delegateagent` (single word, no hyphen
-        // so it's a valid JS identifier + a clean `mcp__delegateagent__*`
-        // tool namespace). Tool allowlist above + MCP binary env-key
-        // readers below stay in sync.
-        delegateagent: {
-          command: 'node',
-          args: [mcpServerPath],
-          env: {
-            DELEGATEAGENT_CHAT_JID: containerInput.chatJid,
-            DELEGATEAGENT_GROUP_FOLDER: containerInput.groupFolder,
-            DELEGATEAGENT_IS_MAIN: containerInput.isMain ? '1' : '0',
+  // Wrap the SDK iterator with a single-retry guard for transient stream
+  // errors (e.g. "Content block not found" from Bifrost SSE drops, ECONNRESET).
+  // On retry, isFreshSession=true — caller clears resumeSessionAt so the SDK
+  // starts from a clean parser state instead of resuming mid-conversation.
+  await withRetryableStream({
+    makeIterable: (isFreshSession) => {
+      const effectiveResumeAt = isFreshSession ? undefined : resumeAt;
+      if (isFreshSession) {
+        log(
+          `[stream-retry] Starting fresh session (cleared resumeSessionAt)`,
+        );
+        resumeAt = undefined;
+      }
+      return query({
+        prompt: stream,
+        options: {
+          // Claude Code native binary is installed globally by the Dockerfile
+          // (`npm install -g @anthropic-ai/claude-code`). The SDK's auto-resolver
+          // looks for a platform-specific path (`.../claude-agent-sdk-linux-x64-musl/claude`)
+          // which doesn't exist on glibc-based node:22-slim. Point at the global bin.
+          pathToClaudeCodeExecutable:
+            process.env.CLAUDE_CODE_EXECUTABLE_PATH || '/usr/local/bin/claude',
+          cwd: '/workspace/group',
+          additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
+          resume: sessionId,
+          resumeSessionAt: effectiveResumeAt,
+          systemPrompt: globalClaudeMd
+            ? {
+                type: 'preset' as const,
+                preset: 'claude_code' as const,
+                append: globalClaudeMd,
+              }
+            : undefined,
+          allowedTools: [
+            'Bash',
+            'Read',
+            'Write',
+            'Edit',
+            'Glob',
+            'Grep',
+            'WebSearch',
+            'WebFetch',
+            'Task',
+            'TaskOutput',
+            'TaskStop',
+            'TeamCreate',
+            'TeamDelete',
+            'SendMessage',
+            'TodoWrite',
+            'ToolSearch',
+            'Skill',
+            'NotebookEdit',
+            'mcp__delegateagent__*',
+          ],
+          env: sdkEnv,
+          permissionMode: 'bypassPermissions',
+          allowDangerouslySkipPermissions: true,
+          settingSources: ['project', 'user'],
+          mcpServers: {
+            // MCP server wire name is `delegateagent` (single word, no hyphen
+            // so it's a valid JS identifier + a clean `mcp__delegateagent__*`
+            // tool namespace). Tool allowlist above + MCP binary env-key
+            // readers below stay in sync.
+            delegateagent: {
+              command: 'node',
+              args: [mcpServerPath],
+              env: {
+                DELEGATEAGENT_CHAT_JID: containerInput.chatJid,
+                DELEGATEAGENT_GROUP_FOLDER: containerInput.groupFolder,
+                DELEGATEAGENT_IS_MAIN: containerInput.isMain ? '1' : '0',
+              },
+            },
+          },
+          hooks: {
+            PreCompact: [
+              { hooks: [createPreCompactHook(containerInput.assistantName)] },
+            ],
           },
         },
-      },
-      hooks: {
-        PreCompact: [
-          { hooks: [createPreCompactHook(containerInput.assistantName)] },
-        ],
-      },
-    },
-  })) {
-    messageCount++;
-    const msgType =
-      message.type === 'system'
-        ? `system/${(message as { subtype?: string }).subtype}`
-        : message.type;
-    log(`[msg #${messageCount}] type=${msgType}`);
-
-    if (message.type === 'assistant' && 'uuid' in message) {
-      lastAssistantUuid = (message as { uuid: string }).uuid;
-    }
-
-    if (message.type === 'system' && message.subtype === 'init') {
-      newSessionId = message.session_id;
-      log(`Session initialized: ${newSessionId}`);
-    }
-
-    if (
-      message.type === 'system' &&
-      (message as { subtype?: string }).subtype === 'task_notification'
-    ) {
-      const tn = message as {
-        task_id: string;
-        status: string;
-        summary: string;
-      };
-      log(
-        `Task notification: task=${tn.task_id} status=${tn.status} summary=${tn.summary}`,
-      );
-    }
-
-    if (message.type === 'result') {
-      resultCount++;
-      const textResult =
-        'result' in message ? (message as { result?: string }).result : null;
-      log(
-        `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
-      );
-      writeOutput({
-        status: 'success',
-        result: textResult || null,
-        newSessionId,
       });
-    }
-  }
+    },
+    onRetry: (attempt, err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      log(
+        `[stream-retry] Retryable stream error (attempt ${attempt}): ${msg}`,
+      );
+      log(
+        `[stream-retry] Retrying with fresh session after ${attempt}s backoff`,
+      );
+    },
+    onMessage: async (message) => {
+      messageCount++;
+      const msgType =
+        message.type === 'system'
+          ? `system/${(message as { subtype?: string }).subtype}`
+          : message.type;
+      log(`[msg #${messageCount}] type=${msgType}`);
+
+      if (message.type === 'assistant' && 'uuid' in message) {
+        lastAssistantUuid = (message as { uuid: string }).uuid;
+      }
+
+      if (message.type === 'system' && message.subtype === 'init') {
+        newSessionId = message.session_id;
+        log(`Session initialized: ${newSessionId}`);
+      }
+
+      if (
+        message.type === 'system' &&
+        (message as { subtype?: string }).subtype === 'task_notification'
+      ) {
+        const tn = message as {
+          task_id: string;
+          status: string;
+          summary: string;
+        };
+        log(
+          `Task notification: task=${tn.task_id} status=${tn.status} summary=${tn.summary}`,
+        );
+      }
+
+      if (message.type === 'result') {
+        resultCount++;
+        const textResult =
+          'result' in message
+            ? (message as { result?: string }).result
+            : null;
+        log(
+          `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
+        );
+        writeOutput({
+          status: 'success',
+          result: textResult || null,
+          newSessionId,
+        });
+      }
+    },
+  });
 
   ipcPolling = false;
   log(
