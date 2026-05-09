@@ -33,6 +33,7 @@ import { resolveTokenFromDelegate } from './credential-client.js';
 import { getEnvWithFallback } from './config.js';
 import { renderTemplate, escape, resolveStaticAsset } from './web-ui/render.js';
 import { getContainerTelemetry } from './web-ui/container-telemetry.js';
+import { metricsHandler } from './metrics.js';
 import { getScheduledTasks } from './task-scheduler.js';
 import { getRegisteredChannelNames } from './channels/registry.js';
 import type { RegisteredGroup, ScheduledTask } from './types.js';
@@ -558,6 +559,23 @@ export function startGroupAPI(
           worktreeCount,
         }),
       );
+      return;
+    }
+
+    // ─── Prometheus /metrics ───
+    // Bearer-auth-gated by the global check at the top of this handler.
+    // Returns text/plain Prometheus exposition. When
+    // DELEGATE_AGENT_METRICS_DISABLED=1, the handler returns 404.
+    if (req.method === 'GET' && req.url === '/metrics') {
+      try {
+        await metricsHandler(req, res);
+      } catch (err) {
+        logger.error({ err }, '/metrics handler failed');
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: 'metrics failure' }));
+        }
+      }
       return;
     }
 

@@ -71,6 +71,12 @@ import { startSessionCleanup } from './session-cleanup.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import {
+  recordIdleTimeout,
+  recordSessionResume,
+  recordMessageProcessed,
+  jidKind,
+} from './metrics.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -245,6 +251,13 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
 
+  // Pre-dispatch counter — increments once per inbound message that survives
+  // the cursor/dedup gate. Channel-side _channel_messages_delivered_total
+  // increments separately at the channel ingress layer.
+  for (let i = 0; i < missedMessages.length; i++) {
+    recordMessageProcessed(channel.name);
+  }
+
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
     const triggerPattern = getTriggerPattern(group.trigger);
@@ -281,6 +294,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         { group: group.name },
         'Idle timeout, closing container stdin',
       );
+      recordIdleTimeout(jidKind(group.folder));
       queue.closeStdin(chatJid);
     }, IDLE_TIMEOUT);
   };
@@ -350,6 +364,11 @@ async function runAgent(
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
+
+  // Resume vs fresh-start observability — fires once per agent invocation.
+  if (sessionId) {
+    recordSessionResume(jidKind(group.folder));
+  }
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();

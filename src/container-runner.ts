@@ -29,6 +29,17 @@ import {
 import { OneCLI } from '@onecli-sh/sdk';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
+import {
+  recordContainerStart,
+  recordContainerEnd,
+} from './web-ui/container-telemetry.js';
+import {
+  recordContainerSpawn,
+  recordContainerExit,
+  recordCredentialResolution,
+  recordCredentialAttempt,
+  jidKind,
+} from './metrics.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL, apiKey: ONECLI_API_KEY });
 
@@ -329,6 +340,7 @@ async function buildContainerArgs(
   }
 
   let credentialsResolved = false;
+  let resolvedTier: 'workspace' | 'onecli' | 'static' | 'none' = 'none';
 
   // Tier 1: Per-workspace keys from Delegate API (preferred for multi-tenant SaaS)
   if (workspaceId) {
@@ -350,15 +362,20 @@ async function buildContainerArgs(
           );
         }
         credentialsResolved = true;
+        resolvedTier = 'workspace';
+        recordCredentialAttempt('workspace', 'success');
         logger.info(
           { containerName, workspaceId },
           'LLM keys resolved from workspace integration',
         );
+      } else {
+        recordCredentialAttempt('workspace', 'miss');
       }
       if (keys?.openaiKey) {
         args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
       }
     } catch (e) {
+      recordCredentialAttempt('workspace', 'error');
       logger.warn(
         { containerName, err: (e as Error).message },
         'Workspace LLM key resolution failed — falling back',
@@ -374,8 +391,14 @@ async function buildContainerArgs(
     });
     if (onecliApplied) {
       credentialsResolved = true;
+      resolvedTier = 'onecli';
+      recordCredentialAttempt('onecli', 'success');
       logger.info({ containerName }, 'OneCLI gateway config applied');
+    } else {
+      recordCredentialAttempt('onecli', 'unavailable');
     }
+  } else {
+    recordCredentialAttempt('onecli', 'skipped');
   }
 
   // Tier 3: Static .env keys through Bifrost (admin/dev fallback only)
@@ -384,17 +407,26 @@ async function buildContainerArgs(
     if (BIFROST_KEY) {
       args.push('-e', `ANTHROPIC_API_KEY=${BIFROST_KEY}`);
       args.push('-e', `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`);
+      credentialsResolved = true;
+      resolvedTier = 'static';
+      recordCredentialAttempt('static', 'success');
       logger.warn(
         { containerName },
         'Using static Bifrost key — no workspace-specific credentials resolved',
       );
     } else {
+      recordCredentialAttempt('static', 'missing');
       logger.error(
         { containerName },
         'No credentials available — container will have no LLM access',
       );
     }
+  } else {
+    recordCredentialAttempt('static', 'skipped');
   }
+
+  // Winner-takes-all: one increment per buildContainerArgs call.
+  recordCredentialResolution(resolvedTier);
 
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
@@ -493,6 +525,29 @@ export async function runContainerAgent(
 
   const logsDir = path.join(groupDir, 'logs');
   fs.mkdirSync(logsDir, { recursive: true });
+
+  // Telemetry + metrics: record spawn before the process is created so the
+  // ring buffer + Prometheus counter both see the start even if spawn fails.
+  recordContainerStart(containerName, group.folder);
+  recordContainerSpawn(jidKind(group.folder), input.isMain);
+
+  // Single point that flushes BOTH telemetry sources on every terminal branch.
+  // Status enum aligned with web-ui/container-telemetry.ts:
+  // 'success' | 'error' | 'timeout'.
+  const finalize = (
+    status: 'success' | 'error' | 'timeout',
+    exitCode: number | null,
+    errorMessage?: string,
+  ): void => {
+    const durationSeconds = (Date.now() - startTime) / 1000;
+    recordContainerEnd(
+      containerName,
+      status,
+      exitCode ?? undefined,
+      errorMessage,
+    );
+    recordContainerExit(jidKind(group.folder), status, durationSeconds);
+  };
 
   return new Promise((resolve) => {
     const container = spawn(CONTAINER_RUNTIME_BIN, containerArgs, {
@@ -648,6 +703,7 @@ export async function runContainerAgent(
             { group: group.name, containerName, duration, code },
             'Container timed out after output (idle cleanup)',
           );
+          finalize('success', code);
           outputChain.then(() => {
             resolve({
               status: 'success',
@@ -663,6 +719,11 @@ export async function runContainerAgent(
           'Container timed out with no output',
         );
 
+        finalize(
+          'timeout',
+          code,
+          `Container timed out after ${configTimeout}ms`,
+        );
         resolve({
           status: 'error',
           result: null,
@@ -752,6 +813,7 @@ export async function runContainerAgent(
           'Container exited with error',
         );
 
+        finalize('error', code, `Container exited with code ${code}`);
         resolve({
           status: 'error',
           result: null,
@@ -762,6 +824,7 @@ export async function runContainerAgent(
 
       // Streaming mode: wait for output chain to settle, return completion marker
       if (onOutput) {
+        finalize('success', code);
         outputChain.then(() => {
           logger.info(
             { group: group.name, duration, newSessionId },
@@ -805,6 +868,7 @@ export async function runContainerAgent(
           'Container completed',
         );
 
+        finalize(output.status === 'success' ? 'success' : 'error', code);
         resolve(output);
       } catch (err) {
         logger.error(
@@ -817,6 +881,11 @@ export async function runContainerAgent(
           'Failed to parse container output',
         );
 
+        finalize(
+          'error',
+          code,
+          err instanceof Error ? err.message : String(err),
+        );
         resolve({
           status: 'error',
           result: null,
@@ -831,6 +900,7 @@ export async function runContainerAgent(
         { group: group.name, containerName, error: err },
         'Container spawn error',
       );
+      finalize('error', null, err.message);
       resolve({
         status: 'error',
         result: null,

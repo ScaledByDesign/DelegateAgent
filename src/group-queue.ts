@@ -4,6 +4,7 @@ import path from 'path';
 
 import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
 import { logger } from './logger.js';
+import { setQueueDepth, jidKind } from './metrics.js';
 
 interface QueuedTask {
   id: string;
@@ -34,6 +35,12 @@ export class GroupQueue {
   private processMessagesFn: ((groupJid: string) => Promise<boolean>) | null =
     null;
   private shuttingDown = false;
+
+  private emitDepth(groupJid: string, state: GroupState): void {
+    const kind = jidKind(groupJid);
+    setQueueDepth(kind, 'messages', state.pendingMessages ? 1 : 0);
+    setQueueDepth(kind, 'tasks', state.pendingTasks.length);
+  }
 
   private getGroup(groupJid: string): GroupState {
     let state = this.groups.get(groupJid);
@@ -66,12 +73,14 @@ export class GroupQueue {
 
     if (state.active) {
       state.pendingMessages = true;
+      this.emitDepth(groupJid, state);
       logger.debug({ groupJid }, 'Container active, message queued');
       return;
     }
 
     if (this.activeCount >= MAX_CONCURRENT_CONTAINERS) {
       state.pendingMessages = true;
+      this.emitDepth(groupJid, state);
       if (!this.waitingGroups.includes(groupJid)) {
         this.waitingGroups.push(groupJid);
       }
@@ -104,6 +113,7 @@ export class GroupQueue {
 
     if (state.active) {
       state.pendingTasks.push({ id: taskId, groupJid, fn });
+      this.emitDepth(groupJid, state);
       if (state.idleWaiting) {
         this.closeStdin(groupJid);
       }
@@ -113,6 +123,7 @@ export class GroupQueue {
 
     if (this.activeCount >= MAX_CONCURRENT_CONTAINERS) {
       state.pendingTasks.push({ id: taskId, groupJid, fn });
+      this.emitDepth(groupJid, state);
       if (!this.waitingGroups.includes(groupJid)) {
         this.waitingGroups.push(groupJid);
       }
@@ -202,6 +213,7 @@ export class GroupQueue {
     state.idleWaiting = false;
     state.isTaskContainer = false;
     state.pendingMessages = false;
+    this.emitDepth(groupJid, state);
     this.activeCount++;
 
     logger.debug(
@@ -291,6 +303,7 @@ export class GroupQueue {
     // Tasks first (they won't be re-discovered from SQLite like messages)
     if (state.pendingTasks.length > 0) {
       const task = state.pendingTasks.shift()!;
+      this.emitDepth(groupJid, state);
       this.runTask(groupJid, task).catch((err) =>
         logger.error(
           { groupJid, taskId: task.id, err },
@@ -326,6 +339,7 @@ export class GroupQueue {
       // Prioritize tasks over messages
       if (state.pendingTasks.length > 0) {
         const task = state.pendingTasks.shift()!;
+        this.emitDepth(nextJid, state);
         this.runTask(nextJid, task).catch((err) =>
           logger.error(
             { groupJid: nextJid, taskId: task.id, err },
