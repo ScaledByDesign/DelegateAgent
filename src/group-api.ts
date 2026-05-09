@@ -47,7 +47,10 @@ const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/delegate-agent/groups';
  * (within its 10s cycle) rather than requiring a restart.
  */
 export function startGroupAPI(
-  registerGroupInMemory?: (jid: string, group: import('./types.js').RegisteredGroup) => void,
+  registerGroupInMemory?: (
+    jid: string,
+    group: import('./types.js').RegisteredGroup,
+  ) => void,
 ): void {
   const PORT = parseInt(process.env.GROUP_API_PORT || '3001', 10);
   // Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY (deprecated)
@@ -139,11 +142,18 @@ export function startGroupAPI(
             try {
               registerGroupInMemory(data.jid, groupRecord);
             } catch (e) {
-              logger.warn({ jid: data.jid, err: e }, 'in-memory registerGroup failed (non-fatal)');
+              logger.warn(
+                { jid: data.jid, err: e },
+                'in-memory registerGroup failed (non-fatal)',
+              );
             }
           }
           logger.info(
-            { jid: data.jid, name: data.name, inMemory: !!registerGroupInMemory },
+            {
+              jid: data.jid,
+              name: data.name,
+              inMemory: !!registerGroupInMemory,
+            },
             'Group registered via API',
           );
           res.writeHead(201);
@@ -743,6 +753,85 @@ export function startGroupAPI(
         res.writeHead(500);
         res.end(JSON.stringify({ error: err?.message || 'Internal error' }));
       }
+      return;
+    }
+
+    // ─── Webhook deploy endpoint ─────────────────────────────────────────────
+    // POST /webhook/deploy  or  POST /deploy
+    // Triggers git pull + npm ci + tsc + systemctl restart on the droplet.
+    // Auth: HMAC-SHA256 signature in X-Hub-Signature-256 (GitHub webhook style)
+    // OR a static DEPLOY_SECRET bearer token as a simpler alternative.
+    // The webhook_secret is stored in delegate_agent_servers.webhook_secret and
+    // configured in Caddy at the host level — Caddy rejects unsigned requests
+    // before they reach this handler.
+    if (
+      req.method === 'POST' &&
+      (req.url === '/webhook/deploy' || req.url === '/deploy')
+    ) {
+      const DEPLOY_SECRET = process.env.DEPLOY_SECRET;
+      if (!DEPLOY_SECRET) {
+        logger.warn('DEPLOY_SECRET not set — deploy endpoint disabled');
+        res.writeHead(503);
+        res.end(JSON.stringify({ error: 'Deploy endpoint not configured' }));
+        return;
+      }
+
+      // Accept either:
+      //   a) X-Hub-Signature-256: sha256=<hmac>  (GitHub-style webhook)
+      //   b) Authorization: Bearer <DEPLOY_SECRET>  (simple token)
+      let authed = false;
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader.startsWith('Bearer ')) {
+        const provided = authHeader.slice(7).trim();
+        const { timingSafeEqual } = await import('node:crypto');
+        try {
+          authed = timingSafeEqual(Buffer.from(provided), Buffer.from(DEPLOY_SECRET));
+        } catch { authed = false; }
+      }
+
+      // Also accept X-Hub-Signature-256 (for GitHub webhook integration)
+      if (!authed) {
+        const sig = (req.headers['x-hub-signature-256'] as string) || '';
+        if (sig.startsWith('sha256=')) {
+          const body = await new Promise<Buffer>((resolve, reject) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (c: Buffer) => chunks.push(c));
+            req.on('end', () => resolve(Buffer.concat(chunks)));
+            req.on('error', reject);
+          });
+          const { createHmac, timingSafeEqual } = await import('node:crypto');
+          const expected = 'sha256=' + createHmac('sha256', DEPLOY_SECRET).update(body).digest('hex');
+          try {
+            authed = timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
+          } catch { authed = false; }
+        }
+      }
+
+      if (!authed) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
+      // Auth passed — kick off the self-update in the background
+      logger.info('Deploy webhook triggered — running git pull + build + restart');
+      res.writeHead(202);
+      res.end(JSON.stringify({ ok: true, message: 'Deploy started' }));
+
+      // Non-blocking: run deploy script then restart via systemctl
+      const { spawn } = await import('node:child_process');
+      const proc = spawn(
+        'bash',
+        ['-c',
+          'cd /opt/delegate-agent && ' +
+          'git pull --ff-only origin main 2>&1 && ' +
+          'npm ci --omit=dev 2>&1 | tail -3 && ' +
+          'npm run build 2>&1 | tail -5 && ' +
+          'systemctl restart delegate-agent'
+        ],
+        { detached: true, stdio: 'ignore' },
+      );
+      proc.unref();
       return;
     }
 

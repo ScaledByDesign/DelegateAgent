@@ -104,6 +104,16 @@ agent.delegate.ws {
 		reverse_proxy localhost:3001
 	}
 
+	# Deploy webhook — GitHub-style HMAC or Bearer DEPLOY_SECRET
+	# Caddy passes the request through to group-api which validates the signature.
+	# The group-api handler spawns git pull + build + systemctl restart non-blocking.
+	handle /webhook/deploy {
+		reverse_proxy localhost:3001
+	}
+	handle /deploy {
+		reverse_proxy localhost:3001
+	}
+
 	# Health endpoint — no auth
 	handle /health {
 		header Content-Type application/json
