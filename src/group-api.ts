@@ -859,7 +859,14 @@ export function startGroupAPI(
       res.writeHead(202);
       res.end(JSON.stringify({ ok: true, message: 'Deploy started' }));
 
-      // Non-blocking: run deploy script then restart via systemctl
+      // Non-blocking: pull → install → build → provision infra → restart agent.
+      //
+      // post-deploy.sh is the seam where infra changes (new systemd units,
+      // Caddyfile updates, docker-compose stacks under deploy/*/) get picked
+      // up. It's idempotent and tracks content hashes, so unchanged files
+      // don't trigger spurious restarts. See deploy/post-deploy.sh for what
+      // it does. If post-deploy.sh is absent (older checkout, e.g. mid-roll)
+      // we fall back to the bare flow so the agent still updates itself.
       const { spawn } = await import('node:child_process');
       const proc = spawn(
         'bash',
@@ -869,6 +876,8 @@ export function startGroupAPI(
             'git pull --ff-only origin main 2>&1 && ' +
             'npm ci --omit=dev 2>&1 | tail -3 && ' +
             'npm run build 2>&1 | tail -5 && ' +
+            '(test -x deploy/post-deploy.sh && bash deploy/post-deploy.sh 2>&1 | tail -30 || ' +
+            'echo "[deploy] post-deploy.sh missing — skipping infra step") && ' +
             'systemctl restart delegate-agent',
         ],
         { detached: true, stdio: 'ignore' },
