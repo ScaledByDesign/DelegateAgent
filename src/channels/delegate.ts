@@ -20,6 +20,10 @@ import { registerChannel, type ChannelOpts } from './registry.js';
 import type { Channel } from '../types.js';
 import { dispatchChatFastPath } from '../chat/index.js';
 import { getEnvWithFallback } from '../config.js';
+import {
+  recordChannelPollError,
+  recordChannelMessageDelivered,
+} from '../metrics.js';
 
 const POLL_INTERVAL = parseInt(
   process.env.DELEGATE_POLL_INTERVAL || '15000',
@@ -488,6 +492,8 @@ class DelegateChannel implements Channel {
       if (!res.ok) {
         const failures = (this.pollFailures.get(jid) ?? 0) + 1;
         this.pollFailures.set(jid, failures);
+        const kind = res.status >= 500 ? 'http_5xx' : 'http_4xx';
+        recordChannelPollError('delegate', kind);
         if (failures === 1 || failures % 100 === 0) {
           captureSentryError(new Error(`Poll HTTP ${res.status}`), {
             jid,
@@ -505,6 +511,14 @@ class DelegateChannel implements Channel {
     } catch (err: unknown) {
       const failures = (this.pollFailures.get(jid) ?? 0) + 1;
       this.pollFailures.set(jid, failures);
+      const errName = (err as Error)?.name;
+      const errKind: 'timeout' | 'parse' | 'network' =
+        errName === 'AbortError' || errName === 'TimeoutError'
+          ? 'timeout'
+          : err instanceof SyntaxError
+            ? 'parse'
+            : 'network';
+      recordChannelPollError('delegate', errKind);
       if (failures === 5 || failures % 100 === 0) {
         captureSentryError(err, {
           jid,
@@ -586,6 +600,7 @@ class DelegateChannel implements Channel {
         });
         // Route to DelegateAgent orchestrator (NewMessage format) — only
         // when fast-path doesn't handle it.
+        recordChannelMessageDelivered('delegate');
         this.opts.onMessage(jid, {
           id: msg.id,
           chat_jid: jid,

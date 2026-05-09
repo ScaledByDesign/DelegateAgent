@@ -9,6 +9,7 @@
 
 import { getEnvWithFallback } from './config.js';
 import { logger } from './logger.js';
+import { recordJwtMint } from './metrics.js';
 
 const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
 // Bootstrap bearer — used only to call /api/agent/jwt/issue.
@@ -48,6 +49,11 @@ export async function mintAgentJWT(
       { workspaceId: opts.workspaceId },
       'Agent JWT mint skipped — DELEGATE_AGENT_TOKEN not set',
     );
+    // Count missing-token early-returns as failures so the
+    // `JWT mint rate` panel and any future alert capture droplets that
+    // never managed to mint at all (not just droplets where the platform
+    // returned a non-2xx).
+    recordJwtMint('failure');
     return null;
   }
 
@@ -76,6 +82,7 @@ export async function mintAgentJWT(
         { workspaceId: opts.workspaceId, status: res.status },
         'Agent JWT mint failed — non-2xx response',
       );
+      recordJwtMint('failure');
       return null;
     }
 
@@ -95,9 +102,11 @@ export async function mintAgentJWT(
         { workspaceId: opts.workspaceId },
         'Agent JWT mint failed — malformed response envelope',
       );
+      recordJwtMint('failure');
       return null;
     }
 
+    recordJwtMint('success');
     return {
       jwt: data.jwt,
       jti: data.jti,
@@ -118,6 +127,7 @@ export async function mintAgentJWT(
         'Agent JWT mint failed — fetch error',
       );
     }
+    recordJwtMint('failure');
     return null;
   } finally {
     clearTimeout(timeout);

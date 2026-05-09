@@ -120,12 +120,20 @@ agent.delegate.ws {
 		respond `{"service":"delegate-agent","status":"ok","version":"v5","mode":"poll"}` 200
 	}
 
+	# Prometheus metrics — Bearer token auth enforced by group-api itself
+	# (reuses DELEGATE_AGENT_TOKEN). Caddy is a path-scoped pass-through.
+	# This handle short-circuits @protected basic_auth fallthrough below.
+	handle /metrics {
+		reverse_proxy localhost:{$GROUP_API_PORT:-3001}
+	}
+
 	# Everything else behind basic auth — except /admin (has Bearer auth via
-	# group-api), /api/*, /health, and the deploy webhooks (HMAC/Bearer auth
-	# enforced by group-api itself).
+	# group-api), /api/*, /health, /metrics, and the deploy webhooks (HMAC/Bearer
+	# auth enforced by group-api itself).
 	@protected {
 		not path /api/*
 		not path /health
+		not path /metrics
 		not path /admin
 		not path /admin/*
 		not path /webhook/deploy

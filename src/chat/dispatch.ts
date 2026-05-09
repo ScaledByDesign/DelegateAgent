@@ -11,6 +11,7 @@
 import { chatComplete } from './bifrost-client.js';
 import { classifyForFastPath } from './heuristic.js';
 import type { ChatDispatchResult, ChatInbound } from './types.js';
+import { recordFastpath } from '../metrics.js';
 
 // Marker the Delegate poll-handler emits when wrapping a user message with
 // task context (see app/api/agent/channel/poll/poll-handler.ts ~L666). When
@@ -77,6 +78,7 @@ export async function dispatchChatFastPath(
 
   const skip = classifyForFastPath(userText);
   if (skip) {
+    recordFastpath(`skip-${skip}`);
     return { handled: false, reason: skip };
   }
 
@@ -100,6 +102,7 @@ export async function dispatchChatFastPath(
       system,
       userMessage: userText,
     });
+    recordFastpath('hit');
     return {
       handled: true,
       replyText: reply.text,
@@ -107,6 +110,7 @@ export async function dispatchChatFastPath(
       model: reply.model,
     };
   } catch {
+    recordFastpath('skip-bifrost-error');
     return { handled: false, reason: 'bifrost-error' };
   }
 }
