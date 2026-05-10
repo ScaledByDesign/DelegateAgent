@@ -62,3 +62,30 @@ Wrap status updates in `<progress>` tags. The UI parses these for real-time disp
 4. **Don't spam** — one event per logical action, not per line of code
 5. **Heartbeats during long waits** — if a command takes >30s, emit heartbeats so the user knows you're not stuck
 6. Progress events are **separate from your response text** — they're metadata, not conversation
+
+## Long-running tool operations (Hephaestus Port 4)
+
+The host now captures Claude Agent SDK `tool_use` and `tool_result` blocks as
+structured `AgentEvent` rows and streams them to the UI's "Trace" timeline in
+real time. **Whenever a tool call would otherwise show as a stale-looking
+`tool_use` waiting on its `tool_result`** (build commands >10s, large
+downloads, slow integrations), emit a `progress` heartbeat so the timeline
+shows continuous motion instead of a frozen-looking row.
+
+```xml
+<!-- Before kicking off a long-running command -->
+<progress type="thinking">Running full test suite (~90s)</progress>
+
+<!-- Every ~15s while waiting for the command -->
+<progress type="heartbeat">Tests in progress: 142/300 passed</progress>
+
+<!-- When the command completes -->
+<progress type="command_result" cmd="npm test" exit="0">All 300 tests passed</progress>
+```
+
+Why this matters: the Trace UI ranks rows by `sequence`. A `progress` event
+between the `tool_use` and `tool_result` keeps the most-recent-event indicator
+moving, so users can tell the agent is alive — not stuck. The host's
+`/api/agent/channel/event` endpoint persists every event with a 32KB payload
+cap and server-side redaction (Authorization headers, AWS keys, JWTs, etc.),
+so it's safe to mention what the command is doing in the heartbeat text.

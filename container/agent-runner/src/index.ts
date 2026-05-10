@@ -120,10 +120,128 @@ async function readStdin(): Promise<string> {
 const OUTPUT_START_MARKER = '---DELEGATE_AGENT_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---DELEGATE_AGENT_OUTPUT_END---';
 
+// Hephaestus Port 4 — separate marker pair for tool-call events.
+// Host-side parser (src/container-runner.ts) recognizes these and forwards
+// to the chat event-emitter, which batches + POSTs to Delegate.
+const EVENT_START_MARKER = '---DELEGATE_AGENT_EVENT_START---';
+const EVENT_END_MARKER = '---DELEGATE_AGENT_EVENT_END---';
+
 function writeOutput(output: ContainerOutput): void {
   console.log(OUTPUT_START_MARKER);
   console.log(JSON.stringify(output));
   console.log(OUTPUT_END_MARKER);
+}
+
+/** Hephaestus Port 4 — write a single tool-call event to stdout for the host to forward. */
+function writeEvent(event: {
+  eventType: string;
+  payload: unknown;
+  agentMessageId?: string;
+  durationMs?: number;
+}): void {
+  console.log(EVENT_START_MARKER);
+  console.log(JSON.stringify(event));
+  console.log(EVENT_END_MARKER);
+}
+
+/**
+ * Hephaestus Port 4 — extract tool-call events from a Claude Agent SDK
+ * message and emit one writeEvent() per relevant content block.
+ *
+ * SDK message shapes we care about:
+ *   - assistant: BetaMessage.content[] with tool_use / thinking blocks
+ *   - user: MessageParam.content[] may contain tool_result blocks (replays)
+ *   - tool_progress: top-level message → progress event
+ *   - tool_use_summary: top-level → phase_marker (we treat summaries as
+ *     phase markers since the SDK uses them to demarcate sub-task batches)
+ *
+ * We stay defensive — the SDK shapes evolve, so we type-guard every field.
+ */
+function emitEventsFromSdkMessage(
+  message: unknown,
+  agentMessageId: string | undefined,
+): void {
+  if (!message || typeof message !== 'object') return;
+  const msg = message as Record<string, unknown>;
+  const type = typeof msg.type === 'string' ? msg.type : '';
+
+  if (type === 'assistant') {
+    const inner = (msg.message ?? {}) as Record<string, unknown>;
+    const blocks = Array.isArray(inner.content) ? (inner.content as unknown[]) : [];
+    for (const block of blocks) {
+      if (!block || typeof block !== 'object') continue;
+      const b = block as Record<string, unknown>;
+      const btype = typeof b.type === 'string' ? b.type : '';
+      if (btype === 'tool_use') {
+        writeEvent({
+          eventType: 'tool_use',
+          agentMessageId,
+          payload: {
+            tool: b.name,
+            tool_use_id: b.id,
+            args: b.input,
+          },
+        });
+      } else if (btype === 'thinking') {
+        writeEvent({
+          eventType: 'thinking',
+          agentMessageId,
+          payload: { text: b.thinking ?? b.text },
+        });
+      }
+    }
+    return;
+  }
+
+  if (type === 'user') {
+    const inner = (msg.message ?? {}) as Record<string, unknown>;
+    const blocks = Array.isArray(inner.content) ? (inner.content as unknown[]) : [];
+    for (const block of blocks) {
+      if (!block || typeof block !== 'object') continue;
+      const b = block as Record<string, unknown>;
+      if (b.type === 'tool_result') {
+        writeEvent({
+          eventType: 'tool_result',
+          agentMessageId,
+          payload: {
+            tool_use_id: b.tool_use_id,
+            output: b.content,
+            is_error: b.is_error === true,
+          },
+        });
+      }
+    }
+    return;
+  }
+
+  if (type === 'tool_progress') {
+    writeEvent({
+      eventType: 'progress',
+      agentMessageId,
+      durationMs:
+        typeof msg.elapsed_time_seconds === 'number'
+          ? Math.round(msg.elapsed_time_seconds * 1000)
+          : undefined,
+      payload: {
+        tool: msg.tool_name,
+        tool_use_id: msg.tool_use_id,
+        elapsed_seconds: msg.elapsed_time_seconds,
+      },
+    });
+    return;
+  }
+
+  if (type === 'tool_use_summary') {
+    writeEvent({
+      eventType: 'phase_marker',
+      agentMessageId,
+      payload: {
+        summary: msg.summary,
+        preceding_tool_use_ids: msg.preceding_tool_use_ids,
+      },
+    });
+    return;
+  }
 }
 
 function log(message: string): void {
@@ -543,6 +661,15 @@ async function runQuery(
       if (message.type === 'system' && message.subtype === 'init') {
         newSessionId = message.session_id;
         log(`Session initialized: ${newSessionId}`);
+      }
+
+      // Hephaestus Port 4 — emit tool-call events to stdout. Host forwards
+      // to Delegate via the chat event-emitter; we never call out from the
+      // container directly (sandboxed, no API access).
+      try {
+        emitEventsFromSdkMessage(message, lastAssistantUuid);
+      } catch (err) {
+        log(`event-emit error: ${err instanceof Error ? err.message : String(err)}`);
       }
 
       if (
