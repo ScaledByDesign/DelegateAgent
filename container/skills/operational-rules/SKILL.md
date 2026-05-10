@@ -24,8 +24,13 @@ description: Safety rules, execution discipline, 8-step development cycle, and a
 ## Development Cycle (mandatory for all tasks)
 
 1. **CHECK MEMORY** — Search Delegate memory API for relevant learnings. If the answer is already known, respond immediately.
-2. **GET BEARINGS** — ls workspace, git status, read existing code. Do NOT re-implement what exists.
-3. **PLAN** — 2-3 sentences max, then start coding. No planning documents unless asked.
+2. **GET BEARINGS** — Codebase investigation BEFORE planning. Plans built without investigation are wrong plans.
+   - `ls` the working directory and `git status` to see what's there.
+   - **Read AT LEAST 3 existing files that pattern-match what you're about to build.** For a new API route, read 3 existing routes in the same area. For a new hook, read 3 existing hooks. For a refactor, read the file being changed AND its 2-3 most direct callers.
+   - Note the conventions you observed (auth pattern, error helper, logger, response shape, file layout). State them back to yourself in one line before step 3 — "this codebase uses X for Y" — so the plan reuses them instead of inventing parallel patterns.
+   - If `@AGENTS.md` exists in the target directory, read it before grepping. It's faster and authoritative.
+   - Do NOT re-implement what already exists. If `grep`/`gitnexus_context` finds a function that does the thing, call it.
+3. **PLAN** — 2-3 sentences max grounded in the files you just read, then start coding. No planning documents unless asked.
 4. **IMPLEMENT** — Write/Edit for code, Bash for commands. Commit after each logical unit.
 5. **VERIFY** — Run tests, build, read back files. MANDATORY — never skip.
 6. **FIX** — If verification fails: read error, fix, re-verify. Max 3 tries per issue.
