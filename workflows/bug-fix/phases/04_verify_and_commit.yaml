@@ -1,0 +1,31 @@
+id: "04_verify_and_commit"
+name: "Verify and commit"
+description: |
+  Final verification before handing the fix back. Run the full test suite,
+  re-run the original reproduction from phase 1 to confirm the symptom is
+  gone, push the branch, and post a structured summary comment to the task.
+  This is the phase the human reviewer reads first.
+done_definitions:
+  - "The full test suite passes on the fix branch (`npm test` or project-equivalent — record exit code 0 verbatim)."
+  - "The Phase 1 reproduction has been re-run with the fix applied and the broken behaviour is gone (record the same inputs producing the expected output)."
+  - "The fix branch is pushed to origin (`git push -u origin agent-deliverable/<slug>`) and the remote URL is recorded."
+  - "A summary comment is posted to the task containing: root cause from phase 2, the fix one-liner, the regression test path, the branch URL, and the test-run output."
+  - "If the fix changed any public API, the breaking-change risk is noted explicitly in the summary."
+working_directory: "."
+additional_notes: |
+  - If `npm test` fails on a flake unrelated to this fix, retry once and
+    record both runs. Do not paper over.
+  - Do NOT open a PR unless the user explicitly asked. The branch push is
+    sufficient — humans handle PR creation per project conventions.
+  - This is the terminal phase. After emitting `phase_complete:04_verify_and_commit`
+    the workflow transitions the delegation to `completed`. Do not attempt
+    further changes after this marker.
+outputs:
+  - "Full test suite exit status"
+  - "Re-run reproduction confirmation"
+  - "Pushed branch URL"
+  - "Task comment ID with the summary"
+next_steps:
+  - "Workflow complete — delegation will transition to `completed`."
+cli_tool: ""
+cli_model: ""

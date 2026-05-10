@@ -1,0 +1,29 @@
+id: "01_reproduce"
+name: "Reproduce the bug"
+description: |
+  Reproduce the bug deterministically before attempting any fix. Without a
+  reliable reproduction, the rest of the workflow is guesswork. Capture the
+  exact steps, the observed (broken) behaviour, and the expected (correct)
+  behaviour. If the original report is vague, narrow it down with specific
+  inputs/clicks/API calls.
+done_definitions:
+  - "A minimal, deterministic reproduction is documented in plain prose with concrete inputs (URLs, payloads, click targets, env vars)."
+  - "The observed broken behaviour is captured (error message, wrong output, stack trace, screenshot path) with verbatim copy/paste where applicable."
+  - "The expected correct behaviour is stated explicitly — what SHOULD happen for the same inputs."
+  - "The reproduction has been confirmed on the current `main` branch (not a stale local working copy) and the commit SHA is recorded."
+working_directory: "."
+additional_notes: |
+  - If the bug is intermittent, run the reproduction at least 3 times and
+    record the failure rate.
+  - Do NOT start writing the fix in this phase. The next phase (root cause)
+    needs the reproduction artefact unchanged.
+  - If you cannot reproduce on `main`, STOP and post a comment asking the
+    user for additional context — do not invent a reproduction.
+outputs:
+  - "Reproduction steps (markdown block, can be pasted into a comment)"
+  - "Observed vs expected behaviour summary"
+  - "Commit SHA of `main` confirmed reproducing"
+next_steps:
+  - "Move to phase 02_locate_root_cause once all done_definitions are met"
+cli_tool: ""
+cli_model: ""

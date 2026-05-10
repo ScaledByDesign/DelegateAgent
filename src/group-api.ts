@@ -36,6 +36,12 @@ import { getContainerTelemetry } from './web-ui/container-telemetry.js';
 import { metricsHandler } from './metrics.js';
 import { getScheduledTasks } from './task-scheduler.js';
 import { getRegisteredChannelNames } from './channels/registry.js';
+import {
+  loadAllWorkflows,
+  loadWorkflow,
+  reloadWorkflows,
+} from './workflows/loader.js';
+import { WorkflowSchemaError } from './workflows/types.js';
 import type { RegisteredGroup, ScheduledTask } from './types.js';
 
 const LOG_BUFFER_CAPACITY = 500;
@@ -524,6 +530,70 @@ export function startGroupAPI(
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+    }
+
+    // ─── Workflows: GET /workflows (Hephaestus Port 2) ───
+    // Lists all registered workflow names with their description + phase count.
+    if (req.method === 'GET' && req.url === '/workflows') {
+      try {
+        const all = loadAllWorkflows();
+        const workflows = Array.from(all.entries()).map(([name, wf]) => ({
+          name,
+          description: wf.config.description,
+          phaseCount: wf.phases.length,
+          phaseOrder: wf.config.phase_order,
+        }));
+        res.writeHead(200);
+        res.end(JSON.stringify({ workflows }));
+      } catch (err: any) {
+        logger.error({ err }, 'GET /workflows failed');
+        const status = err instanceof WorkflowSchemaError ? 400 : 500;
+        res.writeHead(status);
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
+    // ─── Workflows: GET /workflows/:name (Hephaestus Port 2) ───
+    // Returns the unified `{ config, phases: Phase[] }` object for a single workflow.
+    {
+      const wfMatch = req.url?.match(/^\/workflows\/([^/]+)$/);
+      if (req.method === 'GET' && wfMatch) {
+        const name = decodeURIComponent(wfMatch[1]);
+        try {
+          const wf = loadWorkflow(name);
+          if (!wf) {
+            res.writeHead(404);
+            res.end(JSON.stringify({ error: `workflow "${name}" not found` }));
+            return;
+          }
+          res.writeHead(200);
+          res.end(JSON.stringify(wf));
+        } catch (err: any) {
+          logger.error({ err, name }, 'GET /workflows/:name failed');
+          const status = err instanceof WorkflowSchemaError ? 400 : 500;
+          res.writeHead(status);
+          res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+      }
+    }
+
+    // ─── Workflows: POST /workflows/reload (Hephaestus Port 2) ───
+    // Re-runs the loader without a process restart. Bearer-gated like every
+    // other /workflows route.
+    if (req.method === 'POST' && req.url === '/workflows/reload') {
+      try {
+        const digest = reloadWorkflows();
+        res.writeHead(200);
+        res.end(JSON.stringify({ ok: true, ...digest }));
+      } catch (err: any) {
+        logger.error({ err }, 'POST /workflows/reload failed');
+        const status = err instanceof WorkflowSchemaError ? 400 : 500;
+        res.writeHead(status);
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
     }
 
     // ─── Health: GET /api/health ───
