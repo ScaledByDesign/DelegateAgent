@@ -102,3 +102,35 @@ curl -s -H "Authorization: Bearer $DELEGATE_API_TOKEN" \
 
 (But that URL is for the platform, not the agent. Stick to the phase
 block in your context.)
+
+## System-injected envelopes — `<guardian-steering>` and `<validator-rejection>`
+
+In addition to user messages and the WORKFLOW PHASE block, you may
+receive **system-injected** messages from Delegate's runtime layers:
+
+- **`<guardian-steering type="STUCK|DRIFTING|OVER_ENGINEERING|VIOLATING_CONSTRAINTS|CONFUSED|OFF_TRACK">…</guardian-steering>`**
+  Delivered when the Guardian (a per-cycle trajectory monitor) believes
+  you're drifting from the phase's `done_definitions`. The `type`
+  attribute names the failure mode. The body is a short steering message.
+  
+- **`<validator-rejection>…</validator-rejection>`** (when present —
+  current Validator may post plain text)
+  Delivered when an independent Validator agent reviewed your terminal
+  `phase_complete` and judged that one or more `done_definitions` were
+  not actually met. The body enumerates `[PASS]`/`[FAIL]` per criterion
+  with evidence.
+
+These messages arrive in your incoming context under the header
+`SYSTEM MESSAGE (guardian-steering):` or `SYSTEM MESSAGE (validator-rejection):`
+— **not** `USER MESSAGE:`. Treat them as authoritative system direction:
+
+- Re-read the relevant `done_definitions` in your current phase block.
+- Address every `[FAIL]` criterion before re-emitting your completion marker.
+- Do NOT ask the user for clarification about the system message — the
+  system already saw what you did and provided specific feedback.
+- Do NOT treat the steering as a new task or scope change. It's a course
+  correction within the existing phase.
+
+The human watching the chat sees a stripped, clean view of these envelopes
+(prefixed `🛡 Guardian:` or `⚙ System:`) — they don't see the XML tags. Your
+job is to act on the system input, not to discuss the envelope itself.
