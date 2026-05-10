@@ -1,0 +1,29 @@
+id: "02_locate_root_cause"
+name: "Locate the root cause"
+description: |
+  Trace the reproduction from symptom to source. The goal of this phase is a
+  precise statement of the cause — file, line range, and the incorrect
+  assumption or invariant violation — NOT a fix. Use the codebase tools (grep,
+  ast-grep, gitnexus) to map the call chain. Read git blame on suspected lines.
+done_definitions:
+  - "The buggy file path AND a tight line range (≤ 30 lines) are identified."
+  - "A 1-3 sentence root-cause statement is written: what the code does today, what it should do, and the specific incorrect assumption / off-by-one / missing branch / etc."
+  - "Any nearby callers/callees that must change with the fix are listed (or explicitly noted as 'none')."
+  - "git blame for the buggy lines has been read and the introducing commit/PR is recorded (helps assess regression vs longstanding)."
+working_directory: "."
+additional_notes: |
+  - Resist the urge to keep digging once you have a confident root cause. If
+    you find yourself reading 5+ files, stop and write down the leading
+    hypothesis — verifying it in phase 3 is cheaper than perfect analysis here.
+  - If the root cause turns out to be in a dependency you cannot fix, note
+    that explicitly and propose a workaround as the cause statement.
+  - Do NOT modify any code in this phase. Read-only investigation.
+outputs:
+  - "File path + line range of the bug"
+  - "Root-cause statement (1-3 sentences)"
+  - "List of co-changing callers/callees (or 'none')"
+  - "Introducing commit SHA from git blame"
+next_steps:
+  - "Move to phase 03_fix_and_test"
+cli_tool: ""
+cli_model: ""

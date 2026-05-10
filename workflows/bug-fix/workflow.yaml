@@ -1,0 +1,34 @@
+name: "Bug Fix"
+description: |
+  Reproduce, locate, fix, and verify a bug end-to-end. Each phase has explicit
+  done_definitions the agent must satisfy before emitting `phase_complete:<id>`.
+  The terminal phase ends with a verified fix on a branch ready for review.
+has_result: true
+result_criteria: |
+  All four phases completed in order. The final phase produced:
+    - A regression test that fails on `main` and passes on the fix branch.
+    - A green `npm test` (or project-equivalent) run on the fix branch.
+    - A pushed `agent-deliverable/<slug>` branch with a clear commit message
+      referencing the original issue/task identifier.
+on_result_found: "stop_all"
+launch_template: |
+  You are working on bug fix task: {{task.title}}
+
+  Task ID: {{task.identifier}}
+  Description: {{task.description}}
+
+  This task uses the Bug Fix workflow. You will work through 4 phases in order:
+    1. Reproduce the bug
+    2. Locate the root cause
+    3. Fix and add a regression test
+    4. Verify and commit
+
+  Begin with Phase 1 (`01_reproduce`). Read the phase block carefully — the
+  `done_definitions` list is your acceptance criteria. When EVERY item in
+  done_definitions is satisfied, emit a single line: `phase_complete:01_reproduce`
+  and stop. The system will inject the Phase 2 block on your next turn.
+phase_order:
+  - "01_reproduce"
+  - "02_locate_root_cause"
+  - "03_fix_and_test"
+  - "04_verify_and_commit"
