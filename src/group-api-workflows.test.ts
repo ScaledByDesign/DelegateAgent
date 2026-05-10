@@ -138,12 +138,12 @@ afterAll(() => {
 
 describe('/workflows endpoints', () => {
   it('GET /workflows without Bearer returns 401', async () => {
-    const r = await apiRequest('GET', '/workflows');
+    const r = await apiRequest('GET', '/api/workflows');
     expect(r.status).toBe(401);
   });
 
   it('GET /workflows lists registered workflows', async () => {
-    const r = await apiRequest('GET', '/workflows', { token: TEST_TOKEN });
+    const r = await apiRequest('GET', '/api/workflows', { token: TEST_TOKEN });
     expect(r.status).toBe(200);
     const json = JSON.parse(r.body);
     expect(Array.isArray(json.workflows)).toBe(true);
@@ -156,7 +156,7 @@ describe('/workflows endpoints', () => {
   });
 
   it('GET /workflows/:name returns the unified shape', async () => {
-    const r = await apiRequest('GET', '/workflows/demo', {
+    const r = await apiRequest('GET', '/api/workflows/demo', {
       token: TEST_TOKEN,
     });
     expect(r.status).toBe(200);
@@ -173,14 +173,14 @@ describe('/workflows endpoints', () => {
   });
 
   it('GET /workflows/:name returns 404 for unknown workflow', async () => {
-    const r = await apiRequest('GET', '/workflows/nonexistent', {
+    const r = await apiRequest('GET', '/api/workflows/nonexistent', {
       token: TEST_TOKEN,
     });
     expect(r.status).toBe(404);
   });
 
   it('POST /workflows/reload without Bearer returns 401', async () => {
-    const r = await apiRequest('POST', '/workflows/reload');
+    const r = await apiRequest('POST', '/api/workflows/reload');
     expect(r.status).toBe(401);
   });
 
@@ -217,7 +217,7 @@ describe('/workflows endpoints', () => {
       ].join('\n'),
     );
 
-    const r = await apiRequest('POST', '/workflows/reload', {
+    const r = await apiRequest('POST', '/api/workflows/reload', {
       token: TEST_TOKEN,
     });
     expect(r.status).toBe(200);
@@ -227,7 +227,7 @@ describe('/workflows endpoints', () => {
     expect(json.names).toEqual(['demo', 'second']);
 
     // GET should now reflect the new workflow.
-    const list = await apiRequest('GET', '/workflows', { token: TEST_TOKEN });
+    const list = await apiRequest('GET', '/api/workflows', { token: TEST_TOKEN });
     const parsed = JSON.parse(list.body);
     const names = parsed.workflows.map((w: { name: string }) => w.name).sort();
     expect(names).toEqual(['demo', 'second']);
