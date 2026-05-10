@@ -532,9 +532,11 @@ export function startGroupAPI(
       }
     }
 
-    // ─── Workflows: GET /workflows (Hephaestus Port 2) ───
+    // ─── Workflows: GET /api/workflows (Hephaestus Port 2) ───
     // Lists all registered workflow names with their description + phase count.
-    if (req.method === 'GET' && req.url === '/workflows') {
+    // Mounted under /api/* so Caddy's bearer-auth pass-through covers it
+    // (root paths are blocked by @protected basic_auth in the droplet Caddyfile).
+    if (req.method === 'GET' && req.url === '/api/workflows') {
       try {
         const all = loadAllWorkflows();
         const workflows = Array.from(all.entries()).map(([name, wf]) => ({
@@ -546,7 +548,7 @@ export function startGroupAPI(
         res.writeHead(200);
         res.end(JSON.stringify({ workflows }));
       } catch (err: any) {
-        logger.error({ err }, 'GET /workflows failed');
+        logger.error({ err }, 'GET /api/workflows failed');
         const status = err instanceof WorkflowSchemaError ? 400 : 500;
         res.writeHead(status);
         res.end(JSON.stringify({ error: err.message }));
@@ -554,10 +556,10 @@ export function startGroupAPI(
       return;
     }
 
-    // ─── Workflows: GET /workflows/:name (Hephaestus Port 2) ───
+    // ─── Workflows: GET /api/workflows/:name (Hephaestus Port 2) ───
     // Returns the unified `{ config, phases: Phase[] }` object for a single workflow.
     {
-      const wfMatch = req.url?.match(/^\/workflows\/([^/]+)$/);
+      const wfMatch = req.url?.match(/^\/api\/workflows\/([^/]+)$/);
       if (req.method === 'GET' && wfMatch) {
         const name = decodeURIComponent(wfMatch[1]);
         try {
@@ -570,7 +572,7 @@ export function startGroupAPI(
           res.writeHead(200);
           res.end(JSON.stringify(wf));
         } catch (err: any) {
-          logger.error({ err, name }, 'GET /workflows/:name failed');
+          logger.error({ err, name }, 'GET /api/workflows/:name failed');
           const status = err instanceof WorkflowSchemaError ? 400 : 500;
           res.writeHead(status);
           res.end(JSON.stringify({ error: err.message }));
@@ -579,16 +581,16 @@ export function startGroupAPI(
       }
     }
 
-    // ─── Workflows: POST /workflows/reload (Hephaestus Port 2) ───
-    // Re-runs the loader without a process restart. Bearer-gated like every
-    // other /workflows route.
-    if (req.method === 'POST' && req.url === '/workflows/reload') {
+    // ─── Workflows: POST /api/workflows/reload (Hephaestus Port 2) ───
+    // Re-runs the loader without a process restart. Bearer-gated via the
+    // same /api/* Caddy pass-through.
+    if (req.method === 'POST' && req.url === '/api/workflows/reload') {
       try {
         const digest = reloadWorkflows();
         res.writeHead(200);
         res.end(JSON.stringify({ ok: true, ...digest }));
       } catch (err: any) {
-        logger.error({ err }, 'POST /workflows/reload failed');
+        logger.error({ err }, 'POST /api/workflows/reload failed');
         const status = err instanceof WorkflowSchemaError ? 400 : 500;
         res.writeHead(status);
         res.end(JSON.stringify({ error: err.message }));
