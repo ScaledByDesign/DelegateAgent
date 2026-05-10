@@ -47,6 +47,11 @@ const onecli = new OneCLI({ url: ONECLI_URL, apiKey: ONECLI_API_KEY });
 const OUTPUT_START_MARKER = '---DELEGATE_AGENT_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---DELEGATE_AGENT_OUTPUT_END---';
 
+// Hephaestus Port 4 — separate marker pair for tool-call events
+// (must match agent-runner). Forwarded to src/chat/event-emitter.ts.
+const EVENT_START_MARKER = '---DELEGATE_AGENT_EVENT_START---';
+const EVENT_END_MARKER = '---DELEGATE_AGENT_EVENT_END---';
+
 export interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -454,11 +459,24 @@ async function buildContainerArgs(
   return args;
 }
 
+/**
+ * Hephaestus Port 4 — onEvent callback shape. The agent-runner emits one
+ * event per Claude Agent SDK tool_use / tool_result / progress / thinking /
+ * phase_marker block (see container/agent-runner/src/index.ts emitEventsFromSdkMessage).
+ */
+export interface AgentToolCallEvent {
+  eventType: string;
+  payload: unknown;
+  agentMessageId?: string;
+  durationMs?: number;
+}
+
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
+  onEvent?: (event: AgentToolCallEvent) => void,
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
 
@@ -589,35 +607,77 @@ export async function runContainerAgent(
         }
       }
 
-      // Stream-parse for output markers
-      if (onOutput) {
+      // Stream-parse for OUTPUT and EVENT markers (interleaved). EVENT
+      // markers (Hephaestus Port 4) carry per-message tool-call events that
+      // are forwarded to the chat event-emitter for batched POSTs to Delegate.
+      if (onOutput || onEvent) {
         parseBuffer += chunk;
-        let startIdx: number;
-        while ((startIdx = parseBuffer.indexOf(OUTPUT_START_MARKER)) !== -1) {
-          const endIdx = parseBuffer.indexOf(OUTPUT_END_MARKER, startIdx);
+        // Scan-and-consume loop. Each iteration: find the earliest marker
+        // start in the buffer; if its end marker isn't present, stop and wait
+        // for more data. Otherwise extract the JSON, slice the buffer, and
+        // dispatch.
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const outStart = parseBuffer.indexOf(OUTPUT_START_MARKER);
+          const evStart = parseBuffer.indexOf(EVENT_START_MARKER);
+          let startIdx: number;
+          let isEvent: boolean;
+          if (outStart === -1 && evStart === -1) break;
+          if (outStart === -1) {
+            startIdx = evStart;
+            isEvent = true;
+          } else if (evStart === -1) {
+            startIdx = outStart;
+            isEvent = false;
+          } else {
+            isEvent = evStart < outStart;
+            startIdx = isEvent ? evStart : outStart;
+          }
+
+          const startMarker = isEvent ? EVENT_START_MARKER : OUTPUT_START_MARKER;
+          const endMarker = isEvent ? EVENT_END_MARKER : OUTPUT_END_MARKER;
+          const endIdx = parseBuffer.indexOf(endMarker, startIdx);
           if (endIdx === -1) break; // Incomplete pair, wait for more data
 
           const jsonStr = parseBuffer
-            .slice(startIdx + OUTPUT_START_MARKER.length, endIdx)
+            .slice(startIdx + startMarker.length, endIdx)
             .trim();
-          parseBuffer = parseBuffer.slice(endIdx + OUTPUT_END_MARKER.length);
+          parseBuffer = parseBuffer.slice(endIdx + endMarker.length);
 
-          try {
-            const parsed: ContainerOutput = JSON.parse(jsonStr);
-            if (parsed.newSessionId) {
-              newSessionId = parsed.newSessionId;
+          if (isEvent) {
+            // EVENT marker — forward to onEvent. Failures in onEvent must NEVER
+            // affect the agent run; we only log + drop.
+            if (onEvent) {
+              try {
+                const parsed = JSON.parse(jsonStr);
+                onEvent(parsed);
+              } catch (err) {
+                logger.warn(
+                  { group: group.name, error: err },
+                  'Failed to parse streamed event chunk',
+                );
+              }
             }
-            hadStreamingOutput = true;
-            // Activity detected — reset the hard timeout
-            resetTimeout();
-            // Call onOutput for all markers (including null results)
-            // so idle timers start even for "silent" query completions.
-            outputChain = outputChain.then(() => onOutput(parsed));
-          } catch (err) {
-            logger.warn(
-              { group: group.name, error: err },
-              'Failed to parse streamed output chunk',
-            );
+          } else {
+            try {
+              const parsed: ContainerOutput = JSON.parse(jsonStr);
+              if (parsed.newSessionId) {
+                newSessionId = parsed.newSessionId;
+              }
+              hadStreamingOutput = true;
+              // Activity detected — reset the hard timeout
+              resetTimeout();
+              // Call onOutput for all markers (including null results)
+              // so idle timers start even for "silent" query completions.
+              if (onOutput) {
+                outputChain = outputChain.then(() => onOutput(parsed));
+              }
+            } catch (err) {
+              logger.warn(
+                { group: group.name, error: err },
+                'Failed to parse streamed output chunk',
+              );
+            }
           }
         }
       }

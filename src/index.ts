@@ -31,6 +31,7 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
+import { enqueueEvent } from './chat/event-emitter.js';
 import {
   cleanupOrphans,
   ensureContainerRuntimeRunning,
@@ -407,6 +408,13 @@ async function runAgent(
       }
     : undefined;
 
+  // Hephaestus Port 4 — wire the agent-runner's stdout EVENT markers into the
+  // chat event-emitter. Fire-and-forget: `enqueueEvent` swallows non-task JIDs
+  // and never throws.
+  const onEvent = (event: { eventType: string; payload: unknown; agentMessageId?: string; durationMs?: number }) => {
+    enqueueEvent(chatJid, event);
+  };
+
   try {
     const output = await runContainerAgent(
       group,
@@ -421,6 +429,7 @@ async function runAgent(
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
+      onEvent,
     );
 
     if (output.newSessionId) {
