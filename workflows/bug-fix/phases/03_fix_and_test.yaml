@@ -1,0 +1,30 @@
+id: "03_fix_and_test"
+name: "Fix the bug and add a regression test"
+description: |
+  Implement the smallest correct change that eliminates the bug. Add a
+  regression test that fails on `main` (proving it catches the bug) and passes
+  on your fix. Tests come BEFORE the fix is considered complete — without
+  them, future refactors will silently regress.
+done_definitions:
+  - "A new automated regression test exists at the appropriate location for this codebase (e.g. `*.test.ts` next to source, or `tests/` directory). The test name references the bug or task identifier."
+  - "The regression test fails when run against `main` (without the fix applied) — verified by checking out `main` or stashing and re-running."
+  - "The fix itself is the minimum change to pass the test. No drive-by refactors, formatting churn, or unrelated improvements."
+  - "All tests pass locally with the fix applied (`npm test`, `pytest`, or project-equivalent run is green)."
+  - "No new lint or type errors introduced (`tsc --noEmit` / `eslint` / project-equivalent are clean for the changed files)."
+working_directory: "."
+additional_notes: |
+  - The "fails on main" check is non-negotiable. A test that doesn't catch
+    the bug isn't a regression test — it's wallpaper.
+  - If the smallest fix touches a public API, surface that to the user via a
+    task comment BEFORE implementing — don't quietly break callers.
+  - Commit on a branch named `agent-deliverable/<slug>` so the deliverable
+    detector picks it up downstream.
+outputs:
+  - "Path of the new regression test file"
+  - "Verbatim test output before the fix (failing) and after (passing)"
+  - "Diff or file paths of the fix change"
+  - "Branch name (`agent-deliverable/<slug>`) where commits live"
+next_steps:
+  - "Move to phase 04_verify_and_commit"
+cli_tool: ""
+cli_model: ""
