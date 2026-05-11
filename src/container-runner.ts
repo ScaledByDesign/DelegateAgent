@@ -316,6 +316,16 @@ async function buildContainerArgs(
     args.push('-e', `DELEGATE_API_TOKEN=${DELEGATE_AGENT_TOKEN_ENV}`);
   }
 
+  // Forgetful (memory MCP server, hosted on core droplet). Containers reach it
+  // via https://forgetful.delegate.ws/mcp; bearer-gated by core-caddy. Resolves
+  // ${FORGETFUL_BEARER} placeholder in .mcp.json's forgetful server entry.
+  // Optional: if unset, the MCP client logs an auth failure but the agent keeps
+  // running with no semantic memory.
+  const FORGETFUL_BEARER_ENV = process.env.FORGETFUL_BEARER;
+  if (FORGETFUL_BEARER_ENV) {
+    args.push('-e', `FORGETFUL_BEARER=${FORGETFUL_BEARER_ENV}`);
+  }
+
   // Phase 2: Mint a per-workspace JWT for this container. The platform's
   // dual-accept auth verifies JWT first; legacy bearer remains accepted as
   // a fallback during the migration window. On any failure, the container
@@ -634,7 +644,9 @@ export async function runContainerAgent(
             startIdx = isEvent ? evStart : outStart;
           }
 
-          const startMarker = isEvent ? EVENT_START_MARKER : OUTPUT_START_MARKER;
+          const startMarker = isEvent
+            ? EVENT_START_MARKER
+            : OUTPUT_START_MARKER;
           const endMarker = isEvent ? EVENT_END_MARKER : OUTPUT_END_MARKER;
           const endIdx = parseBuffer.indexOf(endMarker, startIdx);
           if (endIdx === -1) break; // Incomplete pair, wait for more data

@@ -1,3 +1,11 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "forgetful": {
+      "type": "http",
+      "url": "https://forgetful.delegate.ws/mcp",
+      "headers": {
+        "Authorization": "Bearer ${FORGETFUL_BEARER}"
+      }
+    }
+  }
 }
