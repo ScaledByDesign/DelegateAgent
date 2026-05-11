@@ -75,6 +75,27 @@ describe('event-emitter batching', () => {
     expect(body.taskId).toBe('t1');
     expect(body.events).toHaveLength(1);
     expect(body.events[0].sequence).toBe(0);
+    // D8: instanceId must be a valid UUID in every emitted event.
+    expect(body.events[0].instanceId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it('D8: instanceId is stable within one process — all events carry the same UUID', async () => {
+    for (let i = 0; i < 3; i++) {
+      enqueueEvent('delegate:task:t-instance', {
+        eventType: 'tool_use',
+        payload: { idx: i },
+      });
+    }
+    await _flushAllForTests();
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const ids = body.events.map((e: { instanceId: string }) => e.instanceId);
+    // All events in this process share the same module-level INSTANCE_ID.
+    expect(new Set(ids).size).toBe(1);
+    expect(ids[0]).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
   });
 
   it('caps batches at 10 events — 10th enqueue triggers immediate flush', async () => {

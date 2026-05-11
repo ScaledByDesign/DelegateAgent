@@ -10,11 +10,18 @@
 // agent on event-stream failures.
 //
 // Sequence numbers are monotonic per delegationId for a given emitter
-// process. They reset on agent restart; the Delegate side handles overlap
-// via the (delegationId, sequence) unique constraint + skipDuplicates.
+// process. On restart the counter resets to 0, but INSTANCE_ID changes, so
+// the Delegate side's (delegationId, instanceId, sequence) unique key avoids
+// any collision. skipDuplicates handles exact-replay retries within one run.
 
 import { logger } from '../logger.js';
 import { getEnvWithFallback } from '../config.js';
+
+// ─── Per-process instance identity ────────────────────────────────────────
+// A fresh UUID per process start. Paired with sequence in the Delegate-side
+// unique key so that counter resets across restarts never produce a collision.
+// instanceId guarantees uniqueness across emitter restarts; (delegationId, instanceId, sequence) is the canonical key.
+const INSTANCE_ID = crypto.randomUUID();
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -28,6 +35,7 @@ const MAX_BATCH = 100;
 
 export interface OutboundEvent {
   sequence: number;
+  instanceId: string;
   eventType: string;
   payload: unknown;
   agentMessageId?: string;
@@ -46,17 +54,8 @@ interface PerJidState {
   queue: OutboundEvent[];
   /**
    * Monotonic intra-process counter, starts at 0 per JID.
-   *
-   * KNOWN GAP (architect concern A1, Port 4 review): on host restart the
-   * counter resets to 0. If the new process emits events for the same
-   * delegationId that's still alive in Postgres, the (delegationId, sequence)
-   * unique constraint + `createMany skipDuplicates` will silently drop them.
-   *
-   * This is bounded in practice: agent runner usually restarts the delegation
-   * (new id → no collision) when its host crashes mid-run. Long-lived
-   * delegations across emitter restarts are rare today. Proper fix is a
-   * BigInt sequence column (or an `instanceId` companion column in the
-   * unique key), tracked as a follow-up.
+   * Paired with the module-level INSTANCE_ID so that resets on restart
+   * never produce a (delegationId, instanceId, sequence) collision.
    */
   sequenceCounter: number;
   flushTimer: ReturnType<typeof setTimeout> | null;
@@ -122,7 +121,7 @@ export function chatJidToTaskId(chatJid: string): string | null {
  */
 export function enqueueEvent(
   chatJid: string,
-  event: Omit<OutboundEvent, 'sequence'>,
+  event: Omit<OutboundEvent, 'sequence' | 'instanceId'>,
 ): void {
   const taskId = chatJidToTaskId(chatJid);
   if (!taskId) return; // Only task JIDs map to delegations.
@@ -133,7 +132,7 @@ export function enqueueEvent(
     _state.set(chatJid, st);
   }
 
-  st.queue.push({ ...event, sequence: st.sequenceCounter++ });
+  st.queue.push({ ...event, instanceId: INSTANCE_ID, sequence: st.sequenceCounter++ });
 
   if (st.queue.length >= BATCH_SIZE_CAP) {
     if (st.flushTimer) {
@@ -188,31 +187,40 @@ async function postBatch(
 
   const body = JSON.stringify({ taskId, events });
 
+  let lastInfo: PostInfo;
   try {
-    const ok = await tryPost(baseUrl, token, body);
-    if (ok) return;
+    lastInfo = await tryPost(baseUrl, token, body);
+    if (lastInfo.ok) return;
   } catch (err) {
-    logger.debug(
-      { err: err instanceof Error ? err.message : String(err) },
-      'event-emitter first attempt failed; retrying',
-    );
+    lastInfo = { ok: false, status: 0, bodyPreview: err instanceof Error ? err.message : String(err) };
+    logger.warn({ ...lastInfo }, 'event-emitter first attempt threw; retrying');
   }
 
   // One retry after backoff.
   await new Promise<void>((r) => setTimeout(r, RETRY_BACKOFF_MS));
   try {
-    const ok = await tryPost(baseUrl, token, body);
-    if (!ok) throw new Error('non-2xx response on retry');
+    const info = await tryPost(baseUrl, token, body);
+    if (!info.ok) {
+      throw new Error(
+        `non-2xx ${info.status}: ${info.bodyPreview ?? ''}`.slice(0, 500),
+      );
+    }
   } catch (err) {
     throw err instanceof Error ? err : new Error(String(err));
   }
+}
+
+interface PostInfo {
+  ok: boolean;
+  status: number;
+  bodyPreview?: string;
 }
 
 async function tryPost(
   baseUrl: string,
   token: string,
   body: string,
-): Promise<boolean> {
+): Promise<PostInfo> {
   const res = await _deps.fetch(`${baseUrl}/api/agent/channel/event`, {
     method: 'POST',
     headers: {
@@ -221,5 +229,13 @@ async function tryPost(
     },
     body,
   });
-  return res.ok;
+  if (res.ok) return { ok: true, status: res.status };
+  let bodyPreview = '';
+  try {
+    const text = await res.text();
+    bodyPreview = text.slice(0, 300);
+  } catch {
+    bodyPreview = '<unreadable>';
+  }
+  return { ok: false, status: res.status, bodyPreview };
 }
