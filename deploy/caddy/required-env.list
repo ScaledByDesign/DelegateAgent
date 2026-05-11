@@ -1,0 +1,10 @@
+# Vars Caddy needs at runtime to resolve {env.X} placeholders in deploy/Caddyfile.
+# post-deploy.sh reads each name from /opt/delegate-agent/.env and writes
+# KEY=value lines to /etc/caddy/secrets.env (loaded by the caddy.service drop-in
+# at deploy/systemd/caddy.service.d/admin-token.conf). Caddy is restarted if the
+# file content changes (reload won't pick up EnvironmentFile changes).
+#
+# Lines starting with # and blank lines are ignored.
+# One variable name per line.
+
+DELEGATE_AGENT_TOKEN
