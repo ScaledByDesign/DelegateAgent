@@ -6,5 +6,8 @@
         "us.i.posthog.com"
       ]
     }
+  },
+  "enabledPlugins": {
+    "vercel@claude-plugins-official": true
   }
 }
