@@ -10,14 +10,29 @@ Layout (Hephaestus split — one workflow per directory, one file per phase):
 
 ```
 workflows/
-  bug-fix/
-    workflow.yaml              # top-level config
-    phases/
-      01_reproduce.yaml        # phase id "01_reproduce"
-      02_locate_root_cause.yaml
-      03_fix_and_test.yaml
-      04_verify_and_commit.yaml
+  bug-fix/                       # 4 phases — reproduce → locate → fix → verify
+  doc-gen/                       # 2 phases — discover → generate
+  feature-dev/                   # 3 phases — analyse → design+implement → validate+integrate
+  index-repo/                    # 2 phases — initial scan → component deep dive
+  prd-to-software/               # 3 phases — requirements → plan+implement → validate+document
 ```
+
+Each directory follows:
+
+```
+workflows/<name>/
+  workflow.yaml                # top-level config
+  phases/
+    NN_<id>.yaml               # one file per phase, phase id "NN_<id>"
+```
+
+The five workflows above are direct ports of upstream Hephaestus's
+`example_workflows/` set (`Ido-Levi/Hephaestus`), translated from Python +
+`mcp__hephaestus__*` SDK calls into YAML for our runtime. Cross-phase
+ticket/board mechanics in the upstream are dropped here: phases run
+sequentially within a single Delegate task, and cross-stage rotation
+(handing the work to a different specialist) belongs to the BMAD
+stage-handoff axis (`ProjectStageAgent`), not the workflow itself.
 
 This is intentionally NOT a single flat YAML. The split makes per-phase
 overrides (a future Phase 2: `WorkspaceWorkflowOverride`) trivial — overlays

@@ -1,0 +1,42 @@
+name: "Feature Development"
+description: |
+  Add a feature to an existing codebase. Three phases: analyse the request,
+  design + implement, validate + integrate. Ported from Hephaestus
+  `example_workflows/feature_development` with ticket-board mechanics dropped
+  — phases run sequentially within one task. Cross-stage rotation (handing
+  the feature to a different specialist) belongs to the BMAD stage-handoff
+  axis, not this workflow.
+has_result: true
+result_criteria: |
+  The feature is implemented on a branch ready for review:
+    - Code follows the existing repo's conventions (style, layering, naming).
+    - New tests cover the feature's golden path and a representative edge case.
+    - The full test suite (or project-equivalent) passes locally.
+    - A pushed `agent-deliverable/<slug>` branch references the task identifier
+      in its commit message.
+    - The implementation does not regress any tests that were green on `main`
+      at the start of the workflow.
+on_result_found: "stop_all"
+launch_template: |
+  You are adding a feature for task: {{task.title}}
+
+  Task ID: {{task.identifier}}
+  Description: {{task.description}}
+
+  This task uses the Feature Development workflow. You will work through 3
+  phases in order:
+    1. Analyse the feature request and plan work items
+    2. Design and implement
+    3. Validate and integrate
+
+  Begin with Phase 1 (`01_feature_analysis`). Read the phase block carefully —
+  the `done_definitions` list is your acceptance criteria. When EVERY item is
+  satisfied, emit a single line: `phase_complete:01_feature_analysis` and stop.
+  The system will inject Phase 2 on your next turn.
+
+  Search memory first with `delegate_recall_memory` — `index-repo` may have
+  already mapped this codebase.
+phase_order:
+  - "01_feature_analysis"
+  - "02_design_and_implementation"
+  - "03_validate_and_integrate"

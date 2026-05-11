@@ -1,0 +1,33 @@
+id: "02_plan_and_implementation"
+name: "Plan and implementation"
+description: |
+  Build the software according to `build_plan.md` from Phase 1. Scaffold the
+  project, implement infrastructure first, then foundations, then features.
+  Write tests alongside the code.
+done_definitions:
+  - "Project scaffold exists (package manager initialised, framework configured, lint/format/test commands wired up)."
+  - "Every item from `build_plan.md` is implemented in dependency order; any item that turned out to be unnecessary is explicitly marked `skipped:<reason>` in the plan."
+  - "Code follows conventional layering and naming for the chosen stack — no exotic patterns invented without justification."
+  - "Tests covering each functional requirement's golden path are added next to the implementation."
+  - "Each test was actually run and observed to pass; the command used is recorded."
+  - "Self-validation: a representative end-to-end path was exercised (script, curl, UI click, etc.) and the result matched expectations."
+  - "Commits are atomic with clear messages referencing `{{task.identifier}}`."
+  - "Architecture and stack decisions worth remembering across sessions are saved via `delegate_save_memory` (`type: domain` or `type: guideline`)."
+working_directory: "."
+additional_notes: |
+  - If the plan is wrong (encountered a deeper blocker, dependency was
+    misjudged), STOP and revise `build_plan.md` before continuing — don't
+    paper over it with workarounds.
+  - Stay inside the repo's directory. Don't write outside the working tree.
+  - If a requirement cannot be implemented (e.g. needs an external service
+    the agent has no access to), note it in `build_plan.md` and emit a
+    `human_input_needed` reply rather than faking the integration.
+outputs:
+  - "Project scaffold and implementation on the work branch"
+  - "Tests next to each requirement's implementation"
+  - "Updated `build_plan.md` reflecting any mid-flight scope changes"
+  - "Memory entries on non-obvious decisions"
+next_steps:
+  - "Move to phase `03_validate_and_document` once all done_definitions are met"
+cli_tool: ""
+cli_model: ""

@@ -1,0 +1,33 @@
+id: "03_validate_and_document"
+name: "Validate and document"
+description: |
+  Confirm the implementation meets the success criteria from Phase 1, fix any
+  small bugs surfaced during validation, then write the documentation needed
+  for a reviewer to evaluate the work.
+done_definitions:
+  - "The full test suite (or project-equivalent) runs to completion and is green."
+  - "Each success-criterion line from `requirements.md` is checked off in a brief test report (inline or `test_report.md`)."
+  - "Each functional requirement's end-to-end path was exercised at least once and the outcome recorded."
+  - "Any small bug discovered during validation was fixed in this phase, and the fix has its own test."
+  - "A README exists at the project root explaining what the software does, how to run it, and how to test it."
+  - "Minimal usage docs under `docs/` (or extended README sections) cover each functional requirement's golden path."
+  - "A pushed `agent-deliverable/<slug>` branch contains the work, and its commit message references `{{task.identifier}}`."
+  - "The validation + documentation outcome is saved via `delegate_save_memory` (`type: process`)."
+working_directory: "."
+additional_notes: |
+  - If validation reveals a fundamental design issue rather than a small bug,
+    STOP and emit a reply flagging this for the user. Don't redesign in-place
+    — that's a new task.
+  - Documentation must match the code that ACTUALLY exists. Pasting from
+    spec is not enough; spot-check every command, flag, and endpoint.
+  - The push step must use the agent's own credentials via the integration
+    proxy; do NOT prompt the user for git auth.
+outputs:
+  - "Green test-suite output (or `test_report.md`)"
+  - "README + `docs/` covering every functional requirement"
+  - "Pushed `agent-deliverable/<slug>` branch"
+  - "Memory entry summarising validation + doc deltas"
+next_steps:
+  - "Terminal phase — workflow's `result_criteria` checks deliverability on `phase_complete:03_validate_and_document`."
+cli_tool: ""
+cli_model: ""

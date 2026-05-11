@@ -1,0 +1,38 @@
+name: "Documentation Generation"
+description: |
+  Generate comprehensive documentation for an existing codebase. Discovery
+  phase identifies what to document; generation phase produces or updates each
+  document. Ported from Hephaestus `example_workflows/documentation_generation`
+  with ticket/board mechanics dropped — phases run sequentially within one task.
+has_result: true
+result_criteria: |
+  All documentation areas identified in Phase 1 have corresponding files under
+  `docs/` (created or updated) with:
+    - Markdown content appropriate for the stated target audience.
+    - Cross-links into `docs/README.md` (created or updated if it exists).
+    - Internal accuracy verified against the actual code (no fabricated APIs,
+      no stale signatures).
+  No fabricated content, no placeholder TODOs, no untouched files left behind.
+on_result_found: "stop_all"
+launch_template: |
+  You are documenting the codebase for task: {{task.title}}
+
+  Task ID: {{task.identifier}}
+  Description: {{task.description}}
+
+  This task uses the Documentation Generation workflow. You will work through
+  2 phases in order:
+    1. Discover what to document (scope + targets + existing-doc audit)
+    2. Generate the documentation files under `docs/`
+
+  Begin with Phase 1 (`01_documentation_discovery`). Read the phase block
+  carefully — the `done_definitions` list is your acceptance criteria. When
+  EVERY item in done_definitions is satisfied, emit a single line:
+  `phase_complete:01_documentation_discovery` and stop. The system will inject
+  the Phase 2 block on your next turn.
+
+  Use `delegate_recall_memory` BEFORE you start — prior index-repo runs may
+  have already mapped this codebase.
+phase_order:
+  - "01_documentation_discovery"
+  - "02_documentation_generation"

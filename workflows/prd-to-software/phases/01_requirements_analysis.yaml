@@ -1,0 +1,33 @@
+id: "01_requirements_analysis"
+name: "Requirements analysis"
+description: |
+  Extract functional + non-functional requirements from the PRD, decide
+  infrastructure needs, and produce an ordered build plan. The output is a
+  written plan you (or a follow-up agent) can implement against without
+  re-reading the PRD end-to-end.
+done_definitions:
+  - "The PRD document is located (could be PRD.md, REQUIREMENTS.md, README.md, or the task description body itself) and read in full."
+  - "Functional requirements are extracted as a numbered list (`requirements.md`)."
+  - "Non-functional requirements (performance, security, accessibility, observability) are extracted as a separate list."
+  - "Infrastructure needs are identified: project scaffold, build tools, framework, runtime, database, deploy target."
+  - "System components are identified and their dependencies are mapped (`<X> depends on <Y>`)."
+  - "Success criteria are stated explicitly — concrete checks that will mark the build \"done\"."
+  - "An ordered build plan is written to `build_plan.md` with infra first, foundations next, and features last."
+  - "Decisions worth carrying across sessions are saved via `delegate_save_memory` (`type: process` and `type: domain` as appropriate)."
+working_directory: "."
+additional_notes: |
+  - Don't write any production code in this phase. Phase 2 owns implementation.
+  - If the PRD is missing or ambiguous beyond reasonable interpretation,
+    emit a `human_input_needed` reply listing concrete open questions instead
+    of guessing.
+  - Tech-stack choices should respect any explicit preference in the task
+    description; if none is given, pick the smallest stack that meets the
+    requirements and justify the choice inline.
+outputs:
+  - "`requirements.md` — functional + non-functional requirements"
+  - "`build_plan.md` — ordered components with dependencies"
+  - "Memory entries for tech-stack decisions and constraints"
+next_steps:
+  - "Move to phase `02_plan_and_implementation` once all done_definitions are met"
+cli_tool: ""
+cli_model: ""

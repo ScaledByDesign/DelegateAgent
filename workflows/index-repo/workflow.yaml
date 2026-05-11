@@ -1,0 +1,40 @@
+name: "Index Repository"
+description: |
+  Scan a repository and extract durable knowledge into the unified memory
+  system (`KnowledgeEntry` + Forgetful semantic index). Run this BEFORE
+  bug-fix or feature-dev workflows so downstream agents have rich context.
+  Ported from Hephaestus `example_workflows/index_repo` with ticket-board
+  mechanics dropped — phases run sequentially within one task.
+has_result: true
+result_criteria: |
+  Memory contains a navigable map of the codebase:
+    - One overview memory describing the project's purpose and surface area.
+    - At least one memory per discovered top-level component (purpose,
+      key files, integration points, conventions, gotchas).
+    - Tech-stack and run/test instructions captured as a `process`-typed
+      memory.
+    - No top-level component left undocumented in memory.
+  Memories use the unified `delegate_save_memory` helper — they appear in
+  the workspace's vault and are semantically searchable.
+on_result_found: "stop_all"
+launch_template: |
+  You are indexing the repository for task: {{task.title}}
+
+  Task ID: {{task.identifier}}
+  Description: {{task.description}}
+
+  This task uses the Index Repository workflow. You will work through 2
+  phases in order:
+    1. Initial scan (purpose, tech stack, directory layout, component list)
+    2. Component deep-dive (read each component, save detailed memories)
+
+  Begin with Phase 1 (`01_initial_scan`). Read the phase block carefully —
+  the `done_definitions` list is your acceptance criteria. When EVERY item
+  is satisfied, emit a single line: `phase_complete:01_initial_scan` and
+  stop. The system will inject Phase 2 on your next turn.
+
+  Recall existing memories first with `delegate_recall_memory` — if this repo
+  was indexed before, build on the prior pass instead of duplicating it.
+phase_order:
+  - "01_initial_scan"
+  - "02_component_deep_dive"

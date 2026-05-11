@@ -1,0 +1,29 @@
+id: "03_validate_and_integrate"
+name: "Validate and integrate"
+description: |
+  Verify the feature works end-to-end, run the broader test suite to catch
+  regressions, and prepare the work for review.
+done_definitions:
+  - "The full test suite (or project-equivalent: `npm test`, `pytest`, `cargo test`, etc.) runs to completion and is green."
+  - "Tests that were green on `main` before this workflow started are still green (no regressions)."
+  - "The feature's acceptance criteria from `feature_plan.md` are each checked off in a brief test report (inline or `test_report.md`)."
+  - "Any small bug discovered during validation was fixed in this phase, and the fix has its own test."
+  - "A pushed `agent-deliverable/<slug>` branch contains the work, its commit message references `{{task.identifier}}`."
+  - "The validation outcome (pass/fail, regressions caught, scope deltas) is saved to memory via `delegate_save_memory` (`type: process`)."
+working_directory: "."
+additional_notes: |
+  - If validation reveals a fundamental design issue rather than a small bug,
+    STOP and emit a reply that flags this for the user instead of looping
+    silently in this phase. Don't redesign in-place — that's a new task.
+  - The push step must use the agent's own credentials via the integration
+    proxy; do NOT prompt the user for git auth.
+  - "All tests green" means run from a clean checkout — re-run if you touched
+    a non-test file after the last suite run.
+outputs:
+  - "Green test-suite output (or `test_report.md` summarising it)"
+  - "Pushed `agent-deliverable/<slug>` branch"
+  - "Memory entry summarising the validation outcome"
+next_steps:
+  - "Terminal phase — workflow's `result_criteria` checks deliverability on `phase_complete:03_validate_and_integrate`."
+cli_tool: ""
+cli_model: ""

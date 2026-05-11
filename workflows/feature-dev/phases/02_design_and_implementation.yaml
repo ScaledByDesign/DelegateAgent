@@ -1,0 +1,33 @@
+id: "02_design_and_implementation"
+name: "Design and implementation"
+description: |
+  Implement the feature following the plan from Phase 1. Stick to existing
+  patterns, keep the diff focused, and write tests alongside the code rather
+  than after.
+done_definitions:
+  - "Every work item from `feature_plan.md` is implemented in dependency order; any item that turned out to be unnecessary is explicitly marked `skipped:<reason>` in the plan."
+  - "Code follows the existing repo conventions (style, layering, naming, import order). No new abstractions invented unless the plan called for them."
+  - "Tests covering the feature's golden path AND at least one representative edge case are added next to the implementation."
+  - "Each test was actually run and observed to pass; the command used is recorded."
+  - "Self-validation: the feature was exercised end-to-end (script, curl, UI click, etc.) and the result matched expectations."
+  - "Commits are atomic and have clear messages referencing `{{task.identifier}}`."
+  - "Implementation decisions worth remembering across sessions are saved via `delegate_save_memory` (`type: domain` or `type: guideline`)."
+working_directory: "."
+additional_notes: |
+  - Don't grow the diff for cleanup or refactoring not in the plan. Phase 1
+    is the time to expand scope; Phase 2 stays focused.
+  - If the plan is wrong (encountered unexpected blocker, dependency was
+    deeper than imagined), STOP and revise `feature_plan.md` before
+    continuing — don't just paper over it.
+  - If a test cannot be written for a piece of functionality (e.g. it depends
+    on a non-deterministic external service), note the reason inline in the
+    test file as a comment.
+outputs:
+  - "Implementation code on the work branch"
+  - "New tests next to the implementation"
+  - "Updated `feature_plan.md` reflecting any mid-flight scope changes"
+  - "Memory entries on non-obvious decisions"
+next_steps:
+  - "Move to phase `03_validate_and_integrate` once all done_definitions are met"
+cli_tool: ""
+cli_model: ""

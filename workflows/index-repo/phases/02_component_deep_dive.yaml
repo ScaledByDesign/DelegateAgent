@@ -1,0 +1,31 @@
+id: "02_component_deep_dive"
+name: "Component deep dive"
+description: |
+  Walk through every component listed in `components.md` from Phase 1, read
+  its code carefully, and produce dense, specific memories that downstream
+  agents (bug-fix, feature-dev) can recall.
+done_definitions:
+  - "Every component in `components.md` has been visited; any explicitly deferred ones are still marked deferred with a reason."
+  - "For each visited component, a memory exists describing its purpose and primary responsibilities (`type: domain`)."
+  - "Key classes/functions/interfaces and the file:line where they live are captured (`type: domain`)."
+  - "Code patterns and conventions specific to the component are captured (`type: guideline`)."
+  - "Integration points with other components are captured (`type: domain`) — who calls whom, which events flow."
+  - "Gotchas, performance notes, and known weak spots are captured (`type: constraint`)."
+  - "Per-component memories are linked to the overview memory by including the project name in the title."
+  - "A final summary memory (`type: process`, title `Index complete: <name>`) lists every component that was indexed."
+working_directory: "."
+additional_notes: |
+  - Bias toward specific over abstract. \"State lives in `windowsAtom` at
+    `components/webos/lib/atoms.ts:42`\" beats \"WebOS uses Jotai for state.\"
+  - Memories must be workspace-safe. The unified `delegate_save_memory`
+    helper handles scoping; just keep secrets and personal data out of the
+    body.
+  - If a component is genuinely opaque (vendored binary, generated code),
+    say so in a memory rather than fabricating a description.
+outputs:
+  - "Per-component memories (purpose, structure, patterns, integration, gotchas)"
+  - "Final `Index complete` summary memory"
+next_steps:
+  - "Terminal phase — workflow's `result_criteria` checks coverage on `phase_complete:02_component_deep_dive`."
+cli_tool: ""
+cli_model: ""

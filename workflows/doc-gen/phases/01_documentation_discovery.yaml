@@ -1,0 +1,30 @@
+id: "01_documentation_discovery"
+name: "Documentation discovery"
+description: |
+  Decide what to document and produce a concrete plan. Read the task
+  description and the codebase, check what is already documented, and emit a
+  list of documentation targets with audiences and priorities.
+done_definitions:
+  - "The user's documentation request is restated in your own words and any ambiguity is resolved or flagged."
+  - "Prior codebase memories were searched via `delegate_recall_memory` (e.g. `index-repo` output); findings are summarised inline."
+  - "If no relevant memories existed, a quick top-level scan of the repo was performed and the structure is summarised."
+  - "An audit of the existing `docs/` folder is recorded — what exists, what is stale, what is missing."
+  - "A concrete `documentation_plan.md` lists every doc target: title, target path under `docs/`, intended audience, priority, and whether it is a new file or an update."
+  - "The plan was saved to memory via `delegate_save_memory` so Phase 2 has it without re-deriving."
+working_directory: "."
+additional_notes: |
+  - Target audiences from the upstream Hephaestus workflow: `developers`,
+    `end-users`, `administrators`, `contributors`, `all`. Pick one per
+    document — they drive depth and tone.
+  - Do NOT start writing the documentation in this phase. Phase 2 owns it.
+  - If the codebase has no detectable surface area for the request (empty
+    repo, vendored-only, etc.), abort with a `human_input_needed` reply
+    instead of fabricating a plan.
+outputs:
+  - "`documentation_plan.md` — table of doc targets (title, path, audience, priority, new/update)"
+  - "Memory entry (`type: process`) summarising the plan for cross-session recall"
+  - "Inline notes capturing every existing-doc gap or staleness flag"
+next_steps:
+  - "Move to phase `02_documentation_generation` once all done_definitions are met"
+cli_tool: ""
+cli_model: ""

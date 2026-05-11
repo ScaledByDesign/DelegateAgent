@@ -1,0 +1,29 @@
+id: "01_initial_scan"
+name: "Initial scan"
+description: |
+  Read the top-level surface of the repository: README, docs, configs, and
+  the directory tree. Form a one-page mental model of what the project is,
+  the tech stack, and the major components. Save that model to memory.
+done_definitions:
+  - "Existing memories were searched via `delegate_recall_memory` — if a prior index pass exists, gaps are noted instead of work being duplicated."
+  - "README and obvious top-level documentation (CONTRIBUTING, ARCHITECTURE, docs/index) were read."
+  - "The project's purpose and primary surface area are captured in a memory (`type: domain`, title `Project overview: <name>`)."
+  - "Tech stack (languages, frameworks, build tools, runtimes, package manager) is captured in a memory (`type: domain`, title `Tech stack: <name>`)."
+  - "Directory structure is mapped at top + 1 level and captured in a memory (`type: domain`, title `Directory layout: <name>`)."
+  - "Run, build, and test commands are extracted from package scripts / Makefiles / README and captured in a memory (`type: process`, title `How to build/test: <name>`)."
+  - "A `components.md` file at the repo root lists every top-level component (path + one-line purpose) so Phase 2 has a checklist."
+working_directory: "."
+additional_notes: |
+  - Keep memory bodies short and specific — Forgetful indexes the content,
+    so dense factual prose beats long marketing-style summaries.
+  - Don't deep-read individual component code in this phase. Phase 2 owns
+    that. The goal here is breadth + map.
+  - If the repo is enormous (>50 top-level components), pick the load-bearing
+    ones and explicitly defer the rest with a note in `components.md`.
+outputs:
+  - "`components.md` — top-level component checklist for Phase 2"
+  - "Overview / tech-stack / layout / build-test memories saved via `delegate_save_memory`"
+next_steps:
+  - "Move to phase `02_component_deep_dive` once all done_definitions are met"
+cli_tool: ""
+cli_model: ""

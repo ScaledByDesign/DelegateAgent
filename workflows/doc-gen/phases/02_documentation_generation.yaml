@@ -1,0 +1,30 @@
+id: "02_documentation_generation"
+name: "Documentation generation"
+description: |
+  Produce each documentation target identified in Phase 1. Read the relevant
+  code first, then write or update the markdown. Verify content matches the
+  code — no fabricated APIs, no stale signatures.
+done_definitions:
+  - "Every target listed in `documentation_plan.md` has a corresponding file under `docs/` that is created or updated in this phase."
+  - "Each doc is written in clean markdown, scoped to the audience recorded in the plan."
+  - "Code references in the docs (function names, file paths, CLI flags, env vars) are spot-checked against the actual source — no fabricated APIs."
+  - "`docs/README.md` is created or updated as an index of the documentation set, linking every target."
+  - "If a target turned out to be unnecessary (the docs already exist and are correct), it is explicitly marked `skipped:<reason>` in the plan rather than silently dropped."
+  - "A short memory entry (`type: process`) records the generated set and any decisions made."
+working_directory: "."
+additional_notes: |
+  - Update beats rewrite. If a doc already exists, edit it in place; do not
+    duplicate it under a new name.
+  - Code blocks inside docs must be syntactically valid for the language —
+    paste from source rather than typing from memory.
+  - If you cannot understand a component well enough to document it, leave a
+    `TODO(human-review):` line inline AND list it in the final reply so the
+    user can fill in the gap; do NOT fabricate behaviour.
+outputs:
+  - "Generated/updated markdown files under `docs/`"
+  - "Updated `docs/README.md` index"
+  - "Memory entry summarising the docs produced"
+next_steps:
+  - "Terminal phase — the workflow's `result_criteria` checks doc completeness on `phase_complete:02_documentation_generation`."
+cli_tool: ""
+cli_model: ""

@@ -1,0 +1,30 @@
+id: "01_feature_analysis"
+name: "Feature analysis"
+description: |
+  Understand the feature request, scan the codebase for relevant existing
+  patterns, break the feature into ordered work items, and decide on a
+  technical approach. The output is a written plan you (or a follow-up agent)
+  can implement against without rediscovery.
+done_definitions:
+  - "The feature request is restated in your own words and any ambiguity is resolved or flagged."
+  - "Prior memories were searched via `delegate_recall_memory` (especially `index-repo` output if it exists); relevant findings are summarised inline."
+  - "If no relevant memories existed, a targeted scan of the codebase's relevant area was performed and the tech stack + entry points are noted."
+  - "The feature is broken down into an ordered list of work items, each with a one-line description and explicit dependency (e.g. `depends on item 2`)."
+  - "For each work item, the affected file(s) and the existing pattern to follow are identified (`see X.ts pattern Y`)."
+  - "The analysis is written to `feature_plan.md` at the repo root and saved to memory via `delegate_save_memory` (type `process`)."
+working_directory: "."
+additional_notes: |
+  - Don't write any production code in this phase. Phase 2 owns implementation.
+  - Reuse beats reinvention. If the codebase already has helpers/components
+    for what you need, the plan must reference them by path.
+  - If the feature is too ambiguous to plan (missing acceptance criteria,
+    conflicting requirements), emit a `human_input_needed` reply listing the
+    open questions instead of guessing.
+outputs:
+  - "`feature_plan.md` — work-item breakdown with ordering and dependencies"
+  - "Memory entry (`type: process`) capturing the plan"
+  - "Inline notes on existing patterns to follow"
+next_steps:
+  - "Move to phase `02_design_and_implementation` once all done_definitions are met"
+cli_tool: ""
+cli_model: ""

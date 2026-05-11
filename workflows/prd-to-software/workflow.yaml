@@ -1,0 +1,42 @@
+name: "PRD to Software"
+description: |
+  Take a Product Requirements Document and build working software from it.
+  Three phases: extract structured requirements, design + implement, validate
+  + document. Ported from Hephaestus `example_workflows/prd_to_software` with
+  ticket-board mechanics dropped — phases run sequentially within one task.
+  Cross-stage rotation (handing the build to a different specialist) belongs
+  to the BMAD stage-handoff axis, not this workflow.
+has_result: true
+result_criteria: |
+  A functional initial implementation exists:
+    - Project scaffold matches the requirements (language, framework, layout).
+    - The functional requirements identified in Phase 1 are each implemented.
+    - The full test suite (or project-equivalent) passes locally.
+    - A README + minimal usage docs exist under `docs/` or at the project root.
+    - The work is on a pushed `agent-deliverable/<slug>` branch and its commit
+      message references `{{task.identifier}}`.
+on_result_found: "stop_all"
+launch_template: |
+  You are building software from a PRD for task: {{task.title}}
+
+  Task ID: {{task.identifier}}
+  Description: {{task.description}}
+
+  This task uses the PRD-to-Software workflow. You will work through 3 phases
+  in order:
+    1. Requirements analysis (extract structure from the PRD)
+    2. Plan and implementation (build it)
+    3. Validate and document (test + write docs)
+
+  Begin with Phase 1 (`01_requirements_analysis`). Read the phase block
+  carefully — the `done_definitions` list is your acceptance criteria. When
+  EVERY item is satisfied, emit a single line:
+  `phase_complete:01_requirements_analysis` and stop. The system will inject
+  Phase 2 on your next turn.
+
+  Search memory first with `delegate_recall_memory` — prior runs may have
+  already established conventions or made earlier decisions worth honouring.
+phase_order:
+  - "01_requirements_analysis"
+  - "02_plan_and_implementation"
+  - "03_validate_and_document"
