@@ -8,3 +8,4 @@
 # One variable name per line.
 
 DELEGATE_AGENT_TOKEN
+CADDY_ADMIN_HASH

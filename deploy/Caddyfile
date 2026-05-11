@@ -8,8 +8,17 @@
 # Bifrost listens on localhost:4000 (systemd binary).
 # DelegateAgent group API listens on localhost:3001.
 #
-# Credentials: admin / ***ROTATED-2026-05-11***
-# To change password: caddy hash-password --plaintext "newpassword"
+# Basic-auth realm (admin) is shared by gateway.delegate.ws, agent.delegate.ws
+# (the /admin browser path, /node-metrics, /cadvisor-metrics, and the catch-all
+# @protected matcher), and tokens.delegate.ws.
+#
+# The bcrypt hash is injected from /etc/caddy/secrets.env at Caddy startup
+# (see deploy/systemd/caddy.service.d/admin-token.conf for EnvironmentFile) —
+# never committed to the repo. To rotate:
+#   1. caddy hash-password --plaintext "newpassword"
+#   2. Set CADDY_ADMIN_HASH=<bcrypt> in /opt/delegate-agent/.env on the droplet
+#   3. Run ./deploy/post-deploy.sh — it syncs required-env.list → secrets.env
+#      and restarts caddy automatically.
 {
 	email admin@delegate.ws
 }
@@ -36,7 +45,7 @@ gateway.delegate.ws {
 		path / /api/governance/* /workspace/* /_next/* /favicon.ico
 	}
 	basic_auth @admin {
-		admin ***ROTATED-2026-05-11***
+		admin {$CADDY_ADMIN_HASH}
 	}
 
 	# Allowed without auth: /anthropic/*, /openai/*, /health, /v1/*
@@ -89,7 +98,7 @@ agent.delegate.ws {
 		not header_regexp Authorization "^Bearer\s"
 	}
 	basic_auth @adminNoBearer {
-		admin ***ROTATED-2026-05-11***
+		admin {$CADDY_ADMIN_HASH}
 	}
 
 	handle /admin/sse/* {
@@ -136,7 +145,7 @@ agent.delegate.ws {
 	# across the public internet without depending on group-api or its token.
 	handle /node-metrics {
 		basic_auth {
-			admin ***ROTATED-2026-05-11***
+			admin {$CADDY_ADMIN_HASH}
 		}
 		rewrite * /metrics
 		reverse_proxy localhost:9100
@@ -146,7 +155,7 @@ agent.delegate.ws {
 	# port 127.0.0.1:8081. Same basic_auth pattern as /node-metrics.
 	handle /cadvisor-metrics {
 		basic_auth {
-			admin ***ROTATED-2026-05-11***
+			admin {$CADDY_ADMIN_HASH}
 		}
 		rewrite * /metrics
 		reverse_proxy localhost:8081
@@ -167,7 +176,7 @@ agent.delegate.ws {
 		not path /deploy
 	}
 	basic_auth @protected {
-		admin ***ROTATED-2026-05-11***
+		admin {$CADDY_ADMIN_HASH}
 	}
 
 
@@ -194,7 +203,7 @@ tokens.delegate.ws {
 	import security_headers
 
 	basic_auth {
-		admin ***ROTATED-2026-05-11***
+		admin {$CADDY_ADMIN_HASH}
 	}
 
 	reverse_proxy localhost:8082 {
