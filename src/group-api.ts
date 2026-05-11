@@ -9,6 +9,7 @@
 import http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import { timingSafeEqual } from 'node:crypto';
 import {
   setupWorktreeAsync,
   removeWorktree,
@@ -68,6 +69,26 @@ export function startGroupAPI(
     process.env.DELEGATE_API_KEY,
   ].filter(Boolean) as string[];
 
+  // Pre-encode candidate tokens once. timingSafeEqual requires equal-length
+  // buffers (throws otherwise), so we compare against each candidate inside a
+  // try/catch and never short-circuit on length match — keeping the compare
+  // constant-time across candidates.
+  const VALID_TOKEN_BUFS = VALID_TOKENS.map((t) => Buffer.from(t, 'utf8'));
+  const isValidBearer = (provided: string): boolean => {
+    if (!provided) return false;
+    const got = Buffer.from(provided, 'utf8');
+    let ok = false;
+    for (const candidate of VALID_TOKEN_BUFS) {
+      if (got.length !== candidate.length) continue;
+      try {
+        if (timingSafeEqual(got, candidate)) ok = true;
+      } catch {
+        // length-mismatch or other crypto error — treat as no-match
+      }
+    }
+    return ok;
+  };
+
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
 
@@ -104,7 +125,7 @@ export function startGroupAPI(
     // Auth: accept any valid Delegate/DelegateAgent token (skipped for deploy webhook)
     if (!isDeployWebhook) {
       const auth = req.headers.authorization?.replace(/^Bearer\s+/i, '') || '';
-      if (!auth || !VALID_TOKENS.includes(auth)) {
+      if (!isValidBearer(auth)) {
         res.writeHead(401);
         res.end(JSON.stringify({ error: 'Unauthorized' }));
         return;
@@ -864,7 +885,7 @@ export function startGroupAPI(
       const rba = (req.headers['authorization'] || '')
         .replace(/^Bearer\s+/i, '')
         .trim();
-      if (!VALID_TOKENS.includes(rba)) {
+      if (!isValidBearer(rba)) {
         res.writeHead(401);
         res.end(JSON.stringify({ error: 'Unauthorized' }));
         return;
@@ -902,7 +923,7 @@ export function startGroupAPI(
       const auth = (req.headers['authorization'] || '')
         .replace(/^Bearer\s+/i, '')
         .trim();
-      if (!VALID_TOKENS.includes(auth)) {
+      if (!isValidBearer(auth)) {
         res.writeHead(401);
         res.end(JSON.stringify({ error: 'Unauthorized' }));
         return;

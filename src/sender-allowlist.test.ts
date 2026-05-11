@@ -4,6 +4,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  hasOpenWildcardDefault,
   isSenderAllowed,
   isTriggerAllowed,
   loadSenderAllowlist,
@@ -32,9 +33,9 @@ afterEach(() => {
 });
 
 describe('loadSenderAllowlist', () => {
-  it('returns allow-all defaults when file is missing', () => {
+  it('returns deny-all defaults when file is missing (fail-closed)', () => {
     const cfg = loadSenderAllowlist(cfgPath());
-    expect(cfg.default.allow).toBe('*');
+    expect(cfg.default.allow).toEqual([]);
     expect(cfg.default.mode).toBe('trigger');
     expect(cfg.logDenied).toBe(true);
   });
@@ -79,17 +80,17 @@ describe('loadSenderAllowlist', () => {
     expect(cfg.chats['group-a'].mode).toBe('drop');
   });
 
-  it('returns allow-all on invalid JSON', () => {
+  it('returns deny-all on invalid JSON (fail-closed)', () => {
     const p = cfgPath();
     fs.writeFileSync(p, '{ not valid json }}}');
     const cfg = loadSenderAllowlist(p);
-    expect(cfg.default.allow).toBe('*');
+    expect(cfg.default.allow).toEqual([]);
   });
 
-  it('returns allow-all on invalid schema', () => {
+  it('returns deny-all on invalid schema (fail-closed)', () => {
     const p = writeConfig({ default: { oops: true } });
     const cfg = loadSenderAllowlist(p);
-    expect(cfg.default.allow).toBe('*');
+    expect(cfg.default.allow).toEqual([]);
   });
 
   it('rejects non-string allow array items', () => {
@@ -98,7 +99,7 @@ describe('loadSenderAllowlist', () => {
       chats: {},
     });
     const cfg = loadSenderAllowlist(p);
-    expect(cfg.default.allow).toBe('*'); // falls back to default
+    expect(cfg.default.allow).toEqual([]); // falls back to deny-all default
   });
 
   it('skips invalid per-chat entries', () => {
@@ -212,5 +213,37 @@ describe('isTriggerAllowed', () => {
     };
     isTriggerAllowed('g1', 'eve', cfg);
     // Logger.debug is called — we just verify no crash; logger is a real pino instance
+  });
+});
+
+describe('hasOpenWildcardDefault', () => {
+  it('returns true when default.allow is "*"', () => {
+    expect(
+      hasOpenWildcardDefault({
+        default: { allow: '*', mode: 'trigger' },
+        chats: {},
+        logDenied: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for empty deny-all default', () => {
+    expect(
+      hasOpenWildcardDefault({
+        default: { allow: [], mode: 'trigger' },
+        chats: {},
+        logDenied: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false for explicit allowlist default', () => {
+    expect(
+      hasOpenWildcardDefault({
+        default: { allow: ['alice'], mode: 'trigger' },
+        chats: {},
+        logDenied: true,
+      }),
+    ).toBe(false);
   });
 });

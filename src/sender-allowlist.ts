@@ -14,11 +14,23 @@ export interface SenderAllowlistConfig {
   logDenied: boolean;
 }
 
+// Fail-closed default: when the config file is missing or unreadable, deny
+// every sender rather than allow everyone. Inbound channels (WhatsApp,
+// Telegram, Slack, Discord, Gmail) that depend on this allowlist will
+// effectively refuse to act on external messages until the operator writes
+// a config file with an explicit `allow` list — or `"allow": "*"` for the
+// historical wildcard behavior. Outbound-only channels (e.g. Delegate poll)
+// never reach `isTriggerAllowed`, so this change has no effect on them.
 const DEFAULT_CONFIG: SenderAllowlistConfig = {
-  default: { allow: '*', mode: 'trigger' },
+  default: { allow: [], mode: 'trigger' },
   chats: {},
   logDenied: true,
 };
+
+/** True if the resolved config would allow every sender by default. */
+export function hasOpenWildcardDefault(cfg: SenderAllowlistConfig): boolean {
+  return cfg.default.allow === '*';
+}
 
 function isValidEntry(entry: unknown): entry is ChatAllowlistEntry {
   if (!entry || typeof entry !== 'object') return false;
@@ -39,10 +51,17 @@ export function loadSenderAllowlist(
   try {
     raw = fs.readFileSync(filePath, 'utf-8');
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_CONFIG;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      logger.warn(
+        { path: filePath },
+        'sender-allowlist: config not found — defaulting to deny-all. ' +
+          'Write a config file with an explicit allow list to enable any inbound channel.',
+      );
+      return DEFAULT_CONFIG;
+    }
     logger.warn(
       { err, path: filePath },
-      'sender-allowlist: cannot read config',
+      'sender-allowlist: cannot read config — defaulting to deny-all',
     );
     return DEFAULT_CONFIG;
   }
