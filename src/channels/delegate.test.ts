@@ -16,9 +16,7 @@ import type { ChannelOpts } from './registry.js';
 
 const EPOCH = new Date(0).toISOString(); // 1970-01-01T00:00:00.000Z
 
-function makeOpts(
-  overrides: Partial<ChannelOpts> = {},
-): ChannelOpts {
+function makeOpts(overrides: Partial<ChannelOpts> = {}): ChannelOpts {
   return {
     onMessage: vi.fn(),
     onChatMetadata: vi.fn(),
@@ -103,9 +101,7 @@ describe('DelegateChannel — lastSeen cursor initialization', () => {
     expect(fetchMock).toHaveBeenCalled();
     const calledUrl: string = fetchMock.mock.calls[0][0] as string;
     // The URL must contain since=<epoch ISO>, not a recent timestamp
-    expect(calledUrl).toContain(
-      `since=${encodeURIComponent(EPOCH)}`,
-    );
+    expect(calledUrl).toContain(`since=${encodeURIComponent(EPOCH)}`);
   });
 
   it('does not start duplicate pollers when startPoll is called twice for same JID', () => {

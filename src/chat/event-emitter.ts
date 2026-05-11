@@ -163,15 +163,23 @@ async function flushOne(chatJid: string, st: PerJidState): Promise<void> {
   const batch = st.queue.splice(0, MAX_BATCH);
   await postBatch(st.taskId, batch).catch((err) => {
     logger.warn(
-      { err: err instanceof Error ? err.message : String(err), chatJid, count: batch.length },
+      {
+        err: err instanceof Error ? err.message : String(err),
+        chatJid,
+        count: batch.length,
+      },
       'event-emitter post failed (after retry); dropping batch',
     );
   });
 }
 
-async function postBatch(taskId: string, events: OutboundEvent[]): Promise<void> {
+async function postBatch(
+  taskId: string,
+  events: OutboundEvent[],
+): Promise<void> {
   const baseUrl = process.env.DELEGATE_URL || 'https://delegate.ws';
-  const token = getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
+  const token =
+    getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
   if (!token) {
     // Surface once-per-attempt, never throw — the agent must keep working.
     logger.debug('event-emitter: no DELEGATE_AGENT_TOKEN, skipping POST');
@@ -200,7 +208,11 @@ async function postBatch(taskId: string, events: OutboundEvent[]): Promise<void>
   }
 }
 
-async function tryPost(baseUrl: string, token: string, body: string): Promise<boolean> {
+async function tryPost(
+  baseUrl: string,
+  token: string,
+  body: string,
+): Promise<boolean> {
   const res = await _deps.fetch(`${baseUrl}/api/agent/channel/event`, {
     method: 'POST',
     headers: {

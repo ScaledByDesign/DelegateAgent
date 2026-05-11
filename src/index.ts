@@ -411,7 +411,12 @@ async function runAgent(
   // Hephaestus Port 4 — wire the agent-runner's stdout EVENT markers into the
   // chat event-emitter. Fire-and-forget: `enqueueEvent` swallows non-task JIDs
   // and never throws.
-  const onEvent = (event: { eventType: string; payload: unknown; agentMessageId?: string; durationMs?: number }) => {
+  const onEvent = (event: {
+    eventType: string;
+    payload: unknown;
+    agentMessageId?: string;
+    durationMs?: number;
+  }) => {
     enqueueEvent(chatJid, event);
   };
 

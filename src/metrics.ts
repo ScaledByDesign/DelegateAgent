@@ -320,7 +320,14 @@ function seedCounters(): void {
       'gmail',
       'unknown',
     ];
-    const CHANNELS = ['delegate', 'whatsapp', 'telegram', 'slack', 'discord', 'gmail'];
+    const CHANNELS = [
+      'delegate',
+      'whatsapp',
+      'telegram',
+      'slack',
+      'discord',
+      'gmail',
+    ];
     const POLL_KINDS = ['http_4xx', 'http_5xx', 'network', 'timeout'];
     const FASTPATH_OUTCOMES = ['hit', 'miss', 'skip'];
     const JWT_OUTCOMES = ['success', 'failure'];

@@ -33,9 +33,7 @@ import {
  *  Resolved lazily so test setups that mutate `process.env` after import still
  *  take effect. */
 function workflowsDir(): string {
-  return (
-    process.env.WORKFLOWS_DIR || path.resolve(process.cwd(), 'workflows')
-  );
+  return process.env.WORKFLOWS_DIR || path.resolve(process.cwd(), 'workflows');
 }
 
 let _cache: Map<string, Workflow> | null = null;
@@ -61,10 +59,7 @@ export function reloadWorkflows(): {
   const fresh = doLoad(workflowsDir());
   _cache = fresh;
   const names = Array.from(fresh.keys()).sort();
-  logger.info(
-    { count: fresh.size, names },
-    'workflows reloaded',
-  );
+  logger.info({ count: fresh.size, names }, 'workflows reloaded');
   return { count: fresh.size, names };
 }
 

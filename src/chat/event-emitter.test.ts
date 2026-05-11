@@ -21,7 +21,9 @@ import {
 describe('chatJidToTaskId', () => {
   it('extracts task id from delegate:task:<id>', () => {
     expect(chatJidToTaskId('delegate:task:abc-123')).toBe('abc-123');
-    expect(chatJidToTaskId('delegate:task:cuid_with_underscores')).toBe('cuid_with_underscores');
+    expect(chatJidToTaskId('delegate:task:cuid_with_underscores')).toBe(
+      'cuid_with_underscores',
+    );
   });
 
   it('returns null for non-task JIDs', () => {
@@ -51,13 +53,19 @@ describe('event-emitter batching', () => {
   });
 
   it('skips emission for non-task JIDs', async () => {
-    enqueueEvent('delegate:main', { eventType: 'tool_use', payload: { tool: 'Bash' } });
+    enqueueEvent('delegate:main', {
+      eventType: 'tool_use',
+      payload: { tool: 'Bash' },
+    });
     await _flushAllForTests();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('debounces: a single event waits for the 250ms window', async () => {
-    enqueueEvent('delegate:task:t1', { eventType: 'tool_use', payload: { tool: 'Bash' } });
+    enqueueEvent('delegate:task:t1', {
+      eventType: 'tool_use',
+      payload: { tool: 'Bash' },
+    });
     // Don't flush yet — just confirm fetch wasn't called immediately.
     expect(fetchMock).not.toHaveBeenCalled();
     await _flushAllForTests();
@@ -87,7 +95,10 @@ describe('event-emitter batching', () => {
 
   it('assigns monotonic sequence numbers per delegation', async () => {
     for (let i = 0; i < 5; i++) {
-      enqueueEvent('delegate:task:t3', { eventType: 'tool_use', payload: { idx: i } });
+      enqueueEvent('delegate:task:t3', {
+        eventType: 'tool_use',
+        payload: { idx: i },
+      });
     }
     await _flushAllForTests();
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
@@ -104,7 +115,9 @@ describe('event-emitter batching', () => {
     const callsByTask: Record<string, number[]> = {};
     for (const call of fetchMock.mock.calls) {
       const body = JSON.parse(call[1].body);
-      callsByTask[body.taskId] = body.events.map((e: { sequence: number }) => e.sequence);
+      callsByTask[body.taskId] = body.events.map(
+        (e: { sequence: number }) => e.sequence,
+      );
     }
     expect(callsByTask.tA).toEqual([0, 1]);
     expect(callsByTask.tB).toEqual([0]);

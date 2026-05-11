@@ -227,7 +227,9 @@ describe('/workflows endpoints', () => {
     expect(json.names).toEqual(['demo', 'second']);
 
     // GET should now reflect the new workflow.
-    const list = await apiRequest('GET', '/api/workflows', { token: TEST_TOKEN });
+    const list = await apiRequest('GET', '/api/workflows', {
+      token: TEST_TOKEN,
+    });
     const parsed = JSON.parse(list.body);
     const names = parsed.workflows.map((w: { name: string }) => w.name).sort();
     expect(names).toEqual(['demo', 'second']);
