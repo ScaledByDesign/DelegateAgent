@@ -9,6 +9,9 @@
 // `openrouter-anthropic` provider, so this single call honors the same
 // failover chain as container-spawned agent runs.
 
+const BIFROST_VK =
+  process.env.BIFROST_VK || process.env.ANTHROPIC_API_KEY || '';
+
 const BIFROST_URL = (
   process.env.BIFROST_URL || 'http://localhost:4000'
 ).replace(/\/$/, '');
@@ -57,6 +60,7 @@ export async function chatComplete(
       headers: {
         'content-type': 'application/json',
         'anthropic-version': '2023-06-01',
+        ...(BIFROST_VK ? { 'x-bf-vk': BIFROST_VK } : {}),
       },
       body: JSON.stringify({
         model: DEFAULT_MODEL,
