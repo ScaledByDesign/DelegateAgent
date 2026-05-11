@@ -187,6 +187,22 @@ if [ -f deploy/Caddyfile ]; then
   live_hash=$(hash_file /etc/caddy/Caddyfile)
 
   if [ "$new_hash" != "$old_hash" ] || [ "$new_hash" != "$live_hash" ]; then
+    # `caddy validate` runs in this shell (not under systemd), so it doesn't
+    # see the EnvironmentFile vars. Caddyfile uses {$VAR} placeholders that
+    # would substitute to empty strings and fail strict-validation directives
+    # like basic_auth. Load /etc/caddy/secrets.env into this validate
+    # invocation's env so substitution mirrors what Caddy will see at runtime.
+    # NOTE: we DON'T use `set -a; . secrets.env; set +a` — bash sourcing
+    # expands $ tokens in dotenv values (mangles bcrypt hashes). Instead, we
+    # parse KEY=value lines with grep/cut, exactly like systemd does.
+    if [ -f /etc/caddy/secrets.env ]; then
+      while IFS= read -r line; do
+        case "$line" in ''|'#'*) continue ;; esac
+        k=${line%%=*}
+        v=${line#*=}
+        export "$k=$v"
+      done < /etc/caddy/secrets.env
+    fi
     if command -v caddy >/dev/null 2>&1 && \
        ! caddy validate --config deploy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
       warn "deploy/Caddyfile failed validation — NOT reloading"
