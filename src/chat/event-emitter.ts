@@ -132,7 +132,11 @@ export function enqueueEvent(
     _state.set(chatJid, st);
   }
 
-  st.queue.push({ ...event, instanceId: INSTANCE_ID, sequence: st.sequenceCounter++ });
+  st.queue.push({
+    ...event,
+    instanceId: INSTANCE_ID,
+    sequence: st.sequenceCounter++,
+  });
 
   if (st.queue.length >= BATCH_SIZE_CAP) {
     if (st.flushTimer) {
@@ -192,7 +196,11 @@ async function postBatch(
     lastInfo = await tryPost(baseUrl, token, body);
     if (lastInfo.ok) return;
   } catch (err) {
-    lastInfo = { ok: false, status: 0, bodyPreview: err instanceof Error ? err.message : String(err) };
+    lastInfo = {
+      ok: false,
+      status: 0,
+      bodyPreview: err instanceof Error ? err.message : String(err),
+    };
     logger.warn({ ...lastInfo }, 'event-emitter first attempt threw; retrying');
   }
 

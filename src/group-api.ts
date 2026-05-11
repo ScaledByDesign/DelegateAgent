@@ -1018,46 +1018,38 @@ export function startGroupAPI(
         return;
       }
 
-      // Auth passed — kick off the self-update in the background
+      // Auth passed — kick the canonical update path via systemd. The unit
+      // (`delegate-agent-update.service`) runs `scripts/auto-update.sh`,
+      // which logs everything to the journal. The old in-process spawn used
+      // `stdio: 'ignore'` and silently swallowed tsc errors → dist would
+      // freeze while git HEAD advanced. Using systemd here gives:
+      //   - visible build output in `journalctl -u delegate-agent-update.service`
+      //   - Type=oneshot serialization with the cron-driven runs
+      //   - auto-heal drift check + dist-freshness gate built into the script
+      //     so a failed build no longer takes down the running binary
+      // See: deploy/post-deploy.sh (infra) + scripts/auto-update.sh (build).
       logger.info(
-        'Deploy webhook triggered — running git pull + build + restart',
+        'Deploy webhook triggered — kicking delegate-agent-update.service',
       );
       res.writeHead(202);
-      res.end(JSON.stringify({ ok: true, message: 'Deploy started' }));
+      res.end(JSON.stringify({ ok: true, message: 'Deploy started via systemd unit' }));
 
-      // Non-blocking: pull → install → build → provision infra → restart agent.
-      //
-      // post-deploy.sh is the seam where infra changes (new systemd units,
-      // Caddyfile updates, docker-compose stacks under deploy/*/) get picked
-      // up. It's idempotent and tracks content hashes, so unchanged files
-      // don't trigger spurious restarts. See deploy/post-deploy.sh for what
-      // it does. If post-deploy.sh is absent (older checkout, e.g. mid-roll)
-      // we fall back to the bare flow so the agent still updates itself.
       const { spawn } = await import('node:child_process');
+      // --no-block returns immediately; the unit runs detached and logs to
+      // journal. If the unit is missing or masked, ChildProcess emits 'error'
+      // (caught below) and `journalctl -u delegate-agent-update.service`
+      // will be empty until the engineer re-enables it.
       const proc = spawn(
-        'bash',
-        [
-          '-c',
-          'cd /opt/delegate-agent && ' +
-            'git pull --ff-only origin main 2>&1 && ' +
-            // NODE_ENV=production is inherited from the agent's systemd unit;
-            // npm ci treats that as "skip devDeps", so tsc is missing and
-            // every build silently fails (`tsc: not found` → dist stays
-            // stale → new code never runs even though git pull succeeded).
-            // Force NODE_ENV=development for the install + build only.
-            // --ignore-scripts skips the `prepare: husky` hook that fails
-            // without a git-hooks worktree. Trade-off: it ALSO skips
-            // better-sqlite3's `install` script which builds the native
-            // binding, so we explicitly rebuild it next.
-            'NODE_ENV=development npm ci --ignore-scripts 2>&1 | tail -3 && ' +
-            'npm rebuild better-sqlite3 2>&1 | tail -3 && ' +
-            'NODE_ENV=development npm run build 2>&1 | tail -5 && ' +
-            '(test -x deploy/post-deploy.sh && bash deploy/post-deploy.sh 2>&1 | tail -30 || ' +
-            'echo "[deploy] post-deploy.sh missing — skipping infra step") && ' +
-            'systemctl restart delegate-agent',
-        ],
+        'systemctl',
+        ['start', '--no-block', 'delegate-agent-update.service'],
         { detached: true, stdio: 'ignore' },
       );
+      proc.on('error', (err) => {
+        logger.error(
+          { err: err instanceof Error ? err.message : String(err) },
+          'Deploy webhook: failed to start delegate-agent-update.service — run `systemctl is-enabled delegate-agent-update.service` on the droplet',
+        );
+      });
       proc.unref();
       return;
     }
