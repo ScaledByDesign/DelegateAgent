@@ -13,19 +13,43 @@ const DELEGATE_AGENT_TOKEN =
   getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
 
 /**
- * Resolve LLM API keys for a workspace (Anthropic, OpenAI, etc.)
- * Used to inject API keys into agent containers so Claude Code can authenticate.
- * Returns { anthropicKey?, openaiKey?, anthropicBaseUrl? }
+ * Resolve LLM API keys for a workspace (Anthropic, OpenAI, etc.).
+ *
+ * Used to inject API keys (or OAuth tokens) into agent containers so Claude
+ * Code can authenticate. Phase 5 (credential-mode-toggle plan) extends the
+ * response with a `mode` discriminator:
+ *
+ *   - `mode: 'api_key'`  → use `anthropicKey` + optional `anthropicBaseUrl`
+ *     (Bifrost VK or workspace-supplied custom URL).
+ *   - `mode: 'oauth'`    → use `oauthToken` as CLAUDE_CODE_OAUTH_TOKEN. The
+ *     caller MUST NOT inject ANTHROPIC_API_KEY or ANTHROPIC_BASE_URL in this
+ *     mode — OAuth speaks api.anthropic.com directly.
+ *
+ * Picker scope: Delegate's `pickAnthropicCredential` runs a 4-tier chain
+ * (personal-user override → workspace default → system Bifrost → none). The
+ * winning tier is surfaced via `pickedScope` for diagnostics / metrics labels.
+ *
+ * Back-compat: if the upstream Delegate response omits `mode` (older deploys
+ * pre-Phase-3), the field is filled in as `'api_key'` so existing callers
+ * keep working unchanged.
+ *
+ * @param workspaceId - Workspace whose credentials should be resolved.
+ * @param userId      - The requesting user (Phase 5 per-user override). When
+ *                      undefined the picker resolves only workspace-default
+ *                      and system tiers.
  */
 export async function resolveLLMKeysFromDelegate(
   workspaceId?: string | null,
   userId?: string | null,
 ): Promise<{
+  mode: 'api_key' | 'oauth';
+  oauthToken?: string;
   anthropicKey?: string;
   openaiKey?: string;
   anthropicBaseUrl?: string;
   systemAnthropicKey?: string;
   systemAnthropicBaseUrl?: string;
+  pickedScope?: 'personal' | 'workspace' | 'system';
 } | null> {
   if (!DELEGATE_AGENT_TOKEN) return null;
   try {
@@ -41,7 +65,20 @@ export async function resolveLLMKeysFromDelegate(
     );
     if (!res.ok) return null;
     const data: any = await res.json();
-    return data?.data || null;
+    const payload = data?.data;
+    if (!payload) return null;
+    // Default `mode` to 'api_key' for back-compat with old Delegate deploys
+    // that don't emit the field. New deploys always set it explicitly.
+    return {
+      mode: payload.mode === 'oauth' ? 'oauth' : 'api_key',
+      oauthToken: payload.oauthToken,
+      anthropicKey: payload.anthropicKey,
+      openaiKey: payload.openaiKey,
+      anthropicBaseUrl: payload.anthropicBaseUrl,
+      systemAnthropicKey: payload.systemAnthropicKey,
+      systemAnthropicBaseUrl: payload.systemAnthropicBaseUrl,
+      pickedScope: payload.pickedScope,
+    };
   } catch (e) {
     console.error(
       `[credential-client] LLM key resolution failed: ${(e as Error).message}`,

@@ -129,6 +129,16 @@ interface PollMessage {
   sender?: string; // display name / email
   timestamp: string; // ISO-8601
   isAI: boolean;
+  /**
+   * Phase 5 (credential-mode-toggle plan): Delegate user id whose credentials
+   * should be used when the agent dispatches this message. Maps to:
+   *   - delegate:task:<id>  → task.userId / AgentMessage.userId
+   *   - delegate:conv:<id>  → Conversation.userId
+   *   - delegate:agent:<id> → AgentProfile.userId / AgentMessage.userId
+   *   - delegate:main       → AgentMessage.userId
+   * Optional for back-compat with older Delegate deploys that don't emit it.
+   */
+  requestingUserId?: string;
 }
 
 interface PollResponse {
@@ -317,7 +327,10 @@ export class DelegateChannel implements Channel {
    *
    * Fire-and-forget — never throws into the caller.
    */
-  async notifyTerminal(jid: string, status: 'success' | 'error'): Promise<void> {
+  async notifyTerminal(
+    jid: string,
+    status: 'success' | 'error',
+  ): Promise<void> {
     if (!this.ownsJid(jid)) return;
     if (!DELEGATE_AGENT_TOKEN) return;
 
@@ -350,6 +363,58 @@ export class DelegateChannel implements Channel {
       }
     } catch (err: unknown) {
       console.warn('[delegate] notifyTerminal error:', (err as Error).message);
+    }
+  }
+
+  /**
+   * Phase 5 (credential-mode-toggle plan): surface a non-retryable container
+   * spawn failure back to Delegate so the task ticket displays the error.
+   * Currently triggered when OAuth mode is configured but the token is missing
+   * (`oauth_token_missing` — see container-runner's oauthHardFail short-circuit).
+   *
+   * Posts a system message tagged with the failure reason. The Delegate-side
+   * reply handler stores it as an AgentMessage with role="system" and the
+   * delegation state machine fails the task with `reason: "oauth_token_missing"`.
+   *
+   * Fire-and-forget; never throws into the caller.
+   */
+  async notifyFailure(
+    jid: string,
+    reason: string,
+    detail?: string,
+  ): Promise<void> {
+    if (!this.ownsJid(jid)) return;
+    if (!DELEGATE_AGENT_TOKEN) return;
+
+    const agentProfileId = this.agentProfileIds.get(jid);
+    try {
+      const res = await fetch(`${DELEGATE_URL}/api/agent/channel/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+        },
+        body: JSON.stringify({
+          jid,
+          ...(agentProfileId ? { agentProfileId } : {}),
+          metadata: {
+            source: 'delegate-agent',
+            terminal: true,
+            agentStatus: 'error',
+            failureReason: reason,
+            ...(detail ? { failureDetail: detail.slice(0, 500) } : {}),
+          },
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok && res.status !== 404) {
+        const errText = await res.text().catch(() => '');
+        console.warn(
+          `[delegate] notifyFailure failed for ${jid}: HTTP ${res.status} — ${errText.slice(0, 160)}`,
+        );
+      }
+    } catch (err: unknown) {
+      console.warn('[delegate] notifyFailure error:', (err as Error).message);
     }
   }
 
@@ -664,6 +729,9 @@ export class DelegateChannel implements Channel {
           timestamp: msg.timestamp,
           is_from_me: false,
           is_bot_message: false,
+          // Phase 5: surface the Delegate user id so the orchestrator can
+          // route per-user OAuth credential resolution in the container.
+          requesting_user_id: msg.requestingUserId,
         });
       });
       delivered++;

@@ -273,6 +273,20 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const prompt = formatMessages(missedMessages, TIMEZONE);
 
+  // Phase 5 (credential-mode-toggle plan): the requesting user is whoever
+  // sent the most-recent inbound message. For the Delegate channel this
+  // flows in via NewMessage.requesting_user_id (originating from the
+  // channel poll-response). For non-Delegate channels (WhatsApp/Telegram/
+  // Slack/etc.) the field is undefined and the credential resolver
+  // correctly falls back to workspace-default credentials.
+  let requestingUserId: string | undefined;
+  for (let i = missedMessages.length - 1; i >= 0; i--) {
+    if (missedMessages[i].requesting_user_id) {
+      requestingUserId = missedMessages[i].requesting_user_id;
+      break;
+    }
+  }
+
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
   const previousCursor = lastAgentTimestamp[chatJid] || '';
@@ -328,21 +342,33 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       // stopping point so the delegation state machine can roll forward out
       // of `running` even for research/audit/Q&A tasks where no deliverable
       // branch was pushed. Delegate-channel only; other channels ignore.
-      const notifyTerminal = (channel as { notifyTerminal?: (jid: string, status: 'success' | 'error') => Promise<void> }).notifyTerminal;
+      const notifyTerminal = (
+        channel as {
+          notifyTerminal?: (
+            jid: string,
+            status: 'success' | 'error',
+          ) => Promise<void>;
+        }
+      ).notifyTerminal;
       if (typeof notifyTerminal === 'function') {
-        await notifyTerminal.call(channel, chatJid, 'success').catch((err: unknown) => {
-          logger.warn(
-            { chatJid, err: err instanceof Error ? err.message : String(err) },
-            'notifyTerminal failed (non-fatal)',
-          );
-        });
+        await notifyTerminal
+          .call(channel, chatJid, 'success')
+          .catch((err: unknown) => {
+            logger.warn(
+              {
+                chatJid,
+                err: err instanceof Error ? err.message : String(err),
+              },
+              'notifyTerminal failed (non-fatal)',
+            );
+          });
       }
     }
 
     if (result.status === 'error') {
       hadError = true;
     }
-  });
+  }, requestingUserId);
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
@@ -375,6 +401,7 @@ async function runAgent(
   prompt: string,
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
+  requestingUserId?: string,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
@@ -443,6 +470,12 @@ async function runAgent(
         chatJid,
         isMain,
         assistantName: ASSISTANT_NAME,
+        // Phase 5 (credential-mode-toggle plan): plumb the requesting user
+        // through to buildContainerArgs so per-user OAuth credential rows
+        // (AC-PERSONAL) override the workspace default. For non-Delegate
+        // channels this is undefined and the picker correctly falls back
+        // to workspace-default credentials.
+        requestingUserId,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -474,6 +507,34 @@ async function runAgent(
         );
         delete sessions[group.folder];
         deleteSession(group.folder);
+      }
+
+      // Phase 5 (credential-mode-toggle plan): surface OAuth-hard-fail to
+      // Delegate so the task ticket displays `oauth_token_missing` and the
+      // delegation state machine fails (not silently retries). The container
+      // was never spawned in this state — see buildContainerArgs branch B
+      // (oauthHardFail) and runContainerAgent's pre-spawn short-circuit.
+      if (output.error?.startsWith('oauth_token_missing:')) {
+        const channel = findChannel(channels, chatJid);
+        const notifyFailure = (
+          channel as {
+            notifyFailure?: (
+              jid: string,
+              reason: string,
+              detail?: string,
+            ) => Promise<void>;
+          } | null
+        )?.notifyFailure;
+        if (typeof notifyFailure === 'function') {
+          await notifyFailure
+            .call(channel, chatJid, 'oauth_token_missing', output.error)
+            .catch((err: unknown) => {
+              logger.warn(
+                { chatJid, err: err instanceof Error ? err.message : String(err) },
+                'notifyFailure failed (non-fatal)',
+              );
+            });
+        }
       }
 
       logger.error(

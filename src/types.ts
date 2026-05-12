@@ -56,6 +56,16 @@ export interface NewMessage {
   reply_to_message_id?: string;
   reply_to_message_content?: string;
   reply_to_sender_name?: string;
+  /**
+   * Phase 5 (credential-mode-toggle plan): the Delegate user id whose
+   * credentials should be used when dispatching this message to the agent
+   * container. Plumbed from the channel's poll-response into ContainerInput
+   * so `buildContainerArgs` can call `resolveLLMKeysFromDelegate(workspaceId,
+   * requesting_user_id)` and pick a per-user OAuth row over the workspace
+   * default. Undefined for non-Delegate channels (WhatsApp/Telegram/Slack),
+   * which correctly falls back to workspace-default credentials.
+   */
+  requesting_user_id?: string;
 }
 
 export interface ScheduledTask {

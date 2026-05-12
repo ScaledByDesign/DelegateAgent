@@ -81,7 +81,13 @@ describe('recordContainerSpawn / recordContainerExit — mode label on active ga
   it('decrements gauge on exit with matching workspace_id and mode', async () => {
     // Spawn first so we have something to decrement.
     recordContainerSpawn('delegate_task', false, 'ws-exit-test', 'oauth');
-    recordContainerExit('delegate_task', 'success', 1.5, 'ws-exit-test', 'oauth');
+    recordContainerExit(
+      'delegate_task',
+      'success',
+      1.5,
+      'ws-exit-test',
+      'oauth',
+    );
     // After spawn+exit the gauge should still be present in output (prom-client
     // keeps the label combo even at 0).
     const output = await scrape();
@@ -91,11 +97,7 @@ describe('recordContainerSpawn / recordContainerExit — mode label on active ga
   });
 
   it('does not throw when called without optional params (backward compat)', () => {
-    expect(() =>
-      recordContainerSpawn('main', true),
-    ).not.toThrow();
-    expect(() =>
-      recordContainerExit('main', 'success', 0.1),
-    ).not.toThrow();
+    expect(() => recordContainerSpawn('main', true)).not.toThrow();
+    expect(() => recordContainerExit('main', 'success', 0.1)).not.toThrow();
   });
 });

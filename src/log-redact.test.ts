@@ -61,7 +61,9 @@ describe('redactSecretEnvArgs', () => {
 
   it('redacts one-token form: "-e=KEY=value"', () => {
     const input = ['-e=OPENAI_API_KEY=sk-openai-secret'];
-    expect(redactSecretEnvArgs(input)).toEqual(['-e=OPENAI_API_KEY=<redacted>']);
+    expect(redactSecretEnvArgs(input)).toEqual([
+      '-e=OPENAI_API_KEY=<redacted>',
+    ]);
   });
 
   it('passes through non-sensitive env vars unchanged', () => {
@@ -136,9 +138,7 @@ describe('redactInString', () => {
   it('redacts CLAUDE_CODE_OAUTH_TOKEN in inline string', () => {
     const str =
       'docker run -e CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-xyz --rm image';
-    expect(redactInString(str)).toContain(
-      'CLAUDE_CODE_OAUTH_TOKEN=<redacted>',
-    );
+    expect(redactInString(str)).toContain('CLAUDE_CODE_OAUTH_TOKEN=<redacted>');
     expect(redactInString(str)).not.toContain('sk-ant-oat01-xyz');
   });
 

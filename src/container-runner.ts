@@ -62,6 +62,18 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  /**
+   * Phase 5 (credential-mode-toggle plan): the Delegate user id that
+   * dispatched this message. Plumbed from the inbound message envelope
+   * (`NewMessage.requesting_user_id`, originating from the channel's
+   * poll-response). Passed through to `buildContainerArgs` →
+   * `resolveLLMKeysFromDelegate(workspaceId, requestingUserId)` so the
+   * picker can prefer a per-user OAuth row over the workspace default.
+   *
+   * Undefined for non-Delegate channels (WhatsApp/Telegram/Slack/etc.) —
+   * the picker correctly falls back to workspace-default credentials.
+   */
+  requestingUserId?: string;
 }
 
 export interface ContainerOutput {
@@ -262,12 +274,36 @@ function buildVolumeMounts(
   return mounts;
 }
 
+/**
+ * Build the `docker run …` argv for an agent container.
+ *
+ * Phase 5 (credential-mode-toggle plan): the return type is now a result
+ * object so callers can distinguish three outcomes:
+ *
+ *   - `credentialsResolved === true`  → spawn the container normally.
+ *   - `oauthHardFail === true`        → OAuth mode was configured but the
+ *     token is missing/invalid. Caller MUST short-circuit (no Bifrost
+ *     fallback) and surface `oauth_token_missing` upstream.
+ *   - `credentialsResolved === false` && !oauthHardFail → no creds resolved
+ *     at any tier. Caller spawns with degraded behaviour (existing error
+ *     path).
+ *
+ * The mode discriminator is propagated to `recordContainerSpawn` /
+ * `recordContainerExit` via `resolvedMode` so the active-containers gauge
+ * keeps a stable workspace_id+mode label across the spawn/exit pair.
+ */
 async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   agentIdentifier?: string,
   workspaceId?: string,
-): Promise<string[]> {
+  requestingUserId?: string,
+): Promise<{
+  args: string[];
+  oauthHardFail: boolean;
+  credentialsResolved: boolean;
+  resolvedMode: 'api_key' | 'oauth' | 'none';
+}> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
   // Pass host timezone so container's local time matches the user's
@@ -357,15 +393,63 @@ async function buildContainerArgs(
 
   let credentialsResolved = false;
   let resolvedTier: 'workspace' | 'onecli' | 'static' | 'none' = 'none';
+  let resolvedMode: 'api_key' | 'oauth' | 'none' = 'none';
+  // Phase 5 (credential-mode-toggle plan): when OAuth mode is configured but
+  // the token is missing, we MUST NOT silently fall through to Bifrost. This
+  // sentinel short-circuits Tier 2 (OneCLI) and Tier 3 (static Bifrost) so the
+  // caller surfaces `oauth_token_missing` upstream instead.
+  let oauthHardFail = false;
 
   // Tier 1: Per-workspace keys from Delegate API (preferred for multi-tenant SaaS)
   if (workspaceId) {
     try {
       const { resolveLLMKeysFromDelegate } =
         await import('./credential-client.js');
-      const keys = await resolveLLMKeysFromDelegate(workspaceId);
+      const keys = await resolveLLMKeysFromDelegate(
+        workspaceId,
+        requestingUserId,
+      );
 
-      if (keys?.anthropicKey) {
+      // Phase 5 branch A — OAuth picked AND token present.
+      // Inject ONLY CLAUDE_CODE_OAUTH_TOKEN. Deliberately skip
+      // ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL — OAuth speaks
+      // api.anthropic.com directly without going through Bifrost.
+      if (keys?.mode === 'oauth' && keys.oauthToken) {
+        args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${keys.oauthToken}`);
+        if (keys.openaiKey) {
+          args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
+        }
+        credentialsResolved = true;
+        resolvedTier = keys.pickedScope === 'personal' ? 'workspace' : 'workspace';
+        // Note: `resolvedTier` enum (workspace|onecli|static|none) doesn't have
+        // a 'user' value. The personal vs workspace distinction is captured by
+        // `pickedScope` upstream and surfaced through logs / Sentry breadcrumbs.
+        resolvedMode = 'oauth';
+        recordCredentialAttempt('workspace', 'success');
+        logger.info(
+          {
+            containerName,
+            workspaceId,
+            requestingUserId,
+            mode: 'oauth',
+            pickedScope: keys.pickedScope,
+          },
+          'OAuth credentials resolved',
+        );
+      }
+      // Phase 5 branch B — OAuth picked but token missing → HARD FAIL.
+      // Don't fall through to Bifrost. The caller short-circuits the spawn
+      // and emits delegation_status: failed with reason=oauth_token_missing.
+      else if (keys?.mode === 'oauth' && !keys.oauthToken) {
+        oauthHardFail = true;
+        recordCredentialAttempt('workspace', 'oauth_missing_token');
+        logger.warn(
+          { containerName, workspaceId, requestingUserId, mode: 'oauth' },
+          'OAuth mode active but token missing — refusing to fall through to Bifrost',
+        );
+      }
+      // Phase 5 branch C — api_key picked (existing Tier 1 happy path).
+      else if (keys?.anthropicKey) {
         args.push('-e', `ANTHROPIC_API_KEY=${keys.anthropicKey}`);
         // Route through Bifrost proxy if available (for rate limiting + observability)
         // but use the workspace-specific key, not the global one
@@ -379,15 +463,26 @@ async function buildContainerArgs(
         }
         credentialsResolved = true;
         resolvedTier = 'workspace';
+        resolvedMode = 'api_key';
         recordCredentialAttempt('workspace', 'success');
         logger.info(
-          { containerName, workspaceId },
+          {
+            containerName,
+            workspaceId,
+            requestingUserId,
+            mode: 'api_key',
+            pickedScope: keys.pickedScope,
+          },
           'LLM keys resolved from workspace integration',
         );
       } else {
+        // Phase 5 branch D — keys null / unexpected shape. Fall through to
+        // Tier 2/3 as before (back-compat with old Delegate deploys).
         recordCredentialAttempt('workspace', 'miss');
       }
-      if (keys?.openaiKey) {
+      if (keys?.openaiKey && !credentialsResolved) {
+        // OpenAI key alone is not enough to mark resolved, but inject it so
+        // the agent's auxiliary openai-calling skills work.
         args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
       }
     } catch (e) {
@@ -399,8 +494,9 @@ async function buildContainerArgs(
     }
   }
 
-  // Tier 2: OneCLI gateway (if installed)
-  if (!credentialsResolved) {
+  // Tier 2: OneCLI gateway (if installed). Skipped on oauthHardFail to
+  // honour the AC-OAUTH-HARD-FAIL-NO-BIFROST guarantee.
+  if (!credentialsResolved && !oauthHardFail) {
     const onecliApplied = await onecli.applyContainerConfig(args, {
       addHostMapping: false,
       agent: agentIdentifier,
@@ -408,6 +504,7 @@ async function buildContainerArgs(
     if (onecliApplied) {
       credentialsResolved = true;
       resolvedTier = 'onecli';
+      resolvedMode = 'api_key';
       recordCredentialAttempt('onecli', 'success');
       logger.info({ containerName }, 'OneCLI gateway config applied');
     } else {
@@ -417,14 +514,19 @@ async function buildContainerArgs(
     recordCredentialAttempt('onecli', 'skipped');
   }
 
-  // Tier 3: Static .env keys through Bifrost (admin/dev fallback only)
-  if (!credentialsResolved) {
+  // Tier 3: Static .env keys through Bifrost (admin/dev fallback only).
+  // Phase 5: skipped on oauthHardFail. This is the load-bearing guard that
+  // enforces AC-OAUTH-HARD-FAIL-NO-BIFROST — even if ANTHROPIC_API_KEY is set
+  // in the host env, we MUST NOT inject it when OAuth mode is configured but
+  // the token is missing/expired.
+  if (!credentialsResolved && !oauthHardFail) {
     const BIFROST_KEY = process.env.ANTHROPIC_API_KEY;
     if (BIFROST_KEY) {
       args.push('-e', `ANTHROPIC_API_KEY=${BIFROST_KEY}`);
       args.push('-e', `ANTHROPIC_BASE_URL=${containerBifrostUrl}/anthropic`);
       credentialsResolved = true;
       resolvedTier = 'static';
+      resolvedMode = 'api_key';
       recordCredentialAttempt('static', 'success');
       logger.warn(
         { containerName },
@@ -441,8 +543,27 @@ async function buildContainerArgs(
     recordCredentialAttempt('static', 'skipped');
   }
 
-  // Winner-takes-all: one increment per buildContainerArgs call.
-  recordCredentialResolution(resolvedTier);
+  // Phase 5 post-tier error log distinguishes the two failure modes.
+  if (!credentialsResolved) {
+    if (oauthHardFail) {
+      logger.error(
+        { containerName, workspaceId, reason: 'oauth_token_missing' },
+        'No Anthropic credentials resolved — OAuth hard-fail',
+      );
+    } else {
+      logger.error(
+        { containerName, workspaceId, reason: 'no_credentials' },
+        'No Anthropic credentials resolved — generic failure',
+      );
+    }
+  }
+
+  // Winner-takes-all: one increment per buildContainerArgs call. Mode is
+  // passed so dashboards can split resolution outcomes by api_key vs oauth.
+  recordCredentialResolution(
+    resolvedTier,
+    oauthHardFail ? 'oauth' : resolvedMode,
+  );
 
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
@@ -467,7 +588,7 @@ async function buildContainerArgs(
 
   args.push(CONTAINER_IMAGE);
 
-  return args;
+  return { args, oauthHardFail, credentialsResolved, resolvedMode };
 }
 
 /**
@@ -522,12 +643,40 @@ export async function runContainerAgent(
   const agentIdentifier = input.isMain
     ? undefined
     : group.folder.toLowerCase().replace(/_/g, '-');
-  const containerArgs = await buildContainerArgs(
+  const buildResult = await buildContainerArgs(
     mounts,
     containerName,
     agentIdentifier,
     group.workspaceId,
+    input.requestingUserId,
   );
+  const containerArgs = buildResult.args;
+  const containerMode = buildResult.resolvedMode;
+
+  // Phase 5 (credential-mode-toggle plan): short-circuit before spawn when
+  // OAuth mode was configured but the token is missing/expired. This
+  // enforces AC-OAUTH-HARD-FAIL-NO-BIFROST — the container is NEVER spawned
+  // with Bifrost-fallback credentials in this state. The orchestrator's
+  // caller maps the `oauth_token_missing:` error prefix to a
+  // `delegation_status: failed` event upstream so the task ticket displays
+  // the cause (see notifyFailure in src/channels/delegate.ts).
+  if (buildResult.oauthHardFail) {
+    logger.error(
+      {
+        group: group.name,
+        containerName,
+        workspaceId: group.workspaceId,
+        requestingUserId: input.requestingUserId,
+      },
+      'OAuth hard-fail — skipping container spawn',
+    );
+    return {
+      status: 'error',
+      result: null,
+      error:
+        'oauth_token_missing: OAuth mode active for this workspace but the configured token is missing or invalid. Have an admin rotate the token in workspace settings (or revert to api_key mode).',
+    };
+  }
 
   logger.debug(
     {
@@ -560,7 +709,14 @@ export async function runContainerAgent(
   recordContainerStart(containerName, group.folder);
   // jidKind() expects the JID format (colon-separated), not the folder
   // name (which sanitizes colons to hyphens). Use input.chatJid.
-  recordContainerSpawn(jidKind(input.chatJid), input.isMain);
+  // Phase 5: pass workspaceId + mode so the active-containers gauge has
+  // stable per-workspace + per-mode labels across spawn/exit.
+  recordContainerSpawn(
+    jidKind(input.chatJid),
+    input.isMain,
+    group.workspaceId ?? 'unknown',
+    containerMode === 'none' ? 'api_key' : containerMode,
+  );
 
   // Single point that flushes BOTH telemetry sources on every terminal branch.
   // Status enum aligned with web-ui/container-telemetry.ts:
@@ -577,7 +733,15 @@ export async function runContainerAgent(
       exitCode ?? undefined,
       errorMessage,
     );
-    recordContainerExit(jidKind(input.chatJid), status, durationSeconds);
+    // Phase 5: workspace + mode labels must match the spawn call exactly so
+    // prom-client's gauge decrement targets the same series.
+    recordContainerExit(
+      jidKind(input.chatJid),
+      status,
+      durationSeconds,
+      group.workspaceId ?? 'unknown',
+      containerMode === 'none' ? 'api_key' : containerMode,
+    );
   };
 
   return new Promise((resolve) => {
