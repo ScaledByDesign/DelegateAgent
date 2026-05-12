@@ -302,6 +302,57 @@ export class DelegateChannel implements Channel {
     }
   }
 
+  /**
+   * Notify Delegate that the agent emitted a terminal success/error signal in
+   * its OUTPUT marker. This is the "I'm done" handshake — it lets the reply
+   * route transition the delegation out of `running` even when the agent
+   * didn't push a deliverable branch or call `task.complete` explicitly
+   * (common for research / audit / Q&A tasks).
+   *
+   * Posts to the existing /api/agent/channel/reply endpoint with
+   * `metadata.terminal: true` + `metadata.agentStatus`. The reply route
+   * picks this up in its terminal-signal branch (text is optional in this
+   * mode — the user-visible text was already delivered by the prior
+   * sendMessage call).
+   *
+   * Fire-and-forget — never throws into the caller.
+   */
+  async notifyTerminal(jid: string, status: 'success' | 'error'): Promise<void> {
+    if (!this.ownsJid(jid)) return;
+    if (!DELEGATE_AGENT_TOKEN) return;
+
+    const agentProfileId = this.agentProfileIds.get(jid);
+    try {
+      const res = await fetch(`${DELEGATE_URL}/api/agent/channel/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+        },
+        body: JSON.stringify({
+          jid,
+          ...(agentProfileId ? { agentProfileId } : {}),
+          metadata: {
+            source: 'delegate-agent',
+            terminal: true,
+            agentStatus: status,
+          },
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok && res.status !== 404) {
+        // 404 = receiver hasn't deployed the terminal-signal branch yet —
+        // tolerate gracefully so an older Delegate can ignore the call.
+        const errText = await res.text().catch(() => '');
+        console.warn(
+          `[delegate] notifyTerminal failed for ${jid}: HTTP ${res.status} — ${errText.slice(0, 160)}`,
+        );
+      }
+    } catch (err: unknown) {
+      console.warn('[delegate] notifyTerminal error:', (err as Error).message);
+    }
+  }
+
   // ─── Progress Event Extraction ──────────────────────────────────────────
 
   private extractProgressEvents(

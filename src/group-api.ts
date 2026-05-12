@@ -1032,7 +1032,12 @@ export function startGroupAPI(
         'Deploy webhook triggered — kicking delegate-agent-update.service',
       );
       res.writeHead(202);
-      res.end(JSON.stringify({ ok: true, message: 'Deploy started via systemd unit' }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          message: 'Deploy started via systemd unit',
+        }),
+      );
 
       const { spawn } = await import('node:child_process');
       // --no-block returns immediately; the unit runs detached and logs to

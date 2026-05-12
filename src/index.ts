@@ -324,6 +324,19 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
     if (result.status === 'success') {
       queue.notifyIdle(chatJid);
+      // Terminal-success handshake — tell Delegate the agent reached a clean
+      // stopping point so the delegation state machine can roll forward out
+      // of `running` even for research/audit/Q&A tasks where no deliverable
+      // branch was pushed. Delegate-channel only; other channels ignore.
+      const notifyTerminal = (channel as { notifyTerminal?: (jid: string, status: 'success' | 'error') => Promise<void> }).notifyTerminal;
+      if (typeof notifyTerminal === 'function') {
+        await notifyTerminal.call(channel, chatJid, 'success').catch((err: unknown) => {
+          logger.warn(
+            { chatJid, err: err instanceof Error ? err.message : String(err) },
+            'notifyTerminal failed (non-fatal)',
+          );
+        });
+      }
     }
 
     if (result.status === 'error') {
