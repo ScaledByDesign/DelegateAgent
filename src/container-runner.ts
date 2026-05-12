@@ -40,6 +40,7 @@ import {
   recordCredentialAttempt,
   jidKind,
 } from './metrics.js';
+import { redactInString, redactSecretEnvArgs } from './log-redact.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL, apiKey: ONECLI_API_KEY });
 
@@ -536,7 +537,7 @@ export async function runContainerAgent(
         (m) =>
           `${m.hostPath} -> ${m.containerPath}${m.readonly ? ' (ro)' : ''}`,
       ),
-      containerArgs: containerArgs.join(' '),
+      containerArgs: redactSecretEnvArgs(containerArgs).join(' '),
     },
     'Container mount configuration',
   );
@@ -841,7 +842,7 @@ export async function runContainerAgent(
         }
         logLines.push(
           `=== Container Args ===`,
-          containerArgs.join(' '),
+          redactInString(containerArgs.join(' ')),
           ``,
           `=== Mounts ===`,
           mounts

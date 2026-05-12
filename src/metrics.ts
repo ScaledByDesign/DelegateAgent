@@ -111,6 +111,7 @@ const containerDurationSeconds = new Histogram({
 const containersActive = new Gauge({
   name: 'delegate_agent_containers_active',
   help: 'Number of currently active agent containers',
+  labelNames: ['workspace_id', 'mode'] as const,
   registers: [metricsRegistry],
 });
 
@@ -158,14 +159,14 @@ const idleTimeoutTotal = new Counter({
 
 const credentialsResolvedTotal = new Counter({
   name: 'delegate_agent_credentials_resolved_total',
-  help: 'Credential resolution outcomes by tier',
-  labelNames: ['tier'] as const,
+  help: 'Credential resolution outcomes by tier and credential mode',
+  labelNames: ['tier', 'mode'] as const,
   registers: [metricsRegistry],
 });
 
 const credentialsAttemptTotal = new Counter({
   name: 'delegate_agent_credentials_attempt_total',
-  help: 'Credential resolution attempts by tier and outcome',
+  help: 'Credential resolution attempts by tier and outcome. Valid outcomes include: success, missing, expired, oauth_missing_token.',
   labelNames: ['tier', 'outcome'] as const,
   registers: [metricsRegistry],
 });
@@ -193,22 +194,44 @@ const ipcMessagesProcessedTotal = new Counter({
 
 // ─── Public recording functions ──────────────────────────────────────────────
 
-/** Increments spawn counter AND active gauge. */
-export function recordContainerSpawn(jidKind_: JidKind, isMain: boolean): void {
+/**
+ * Increments spawn counter AND active gauge.
+ *
+ * @param jidKind_ - JID kind for the container.
+ * @param isMain - Whether this is the main container.
+ * @param workspaceId - Workspace ID (used as `workspace_id` label on the active gauge).
+ * @param mode - Credential mode used for this container: `"api_key"`, `"oauth"`, or `"none"`.
+ */
+export function recordContainerSpawn(
+  jidKind_: JidKind,
+  isMain: boolean,
+  workspaceId = 'unknown',
+  mode: 'api_key' | 'oauth' | 'none' = 'api_key',
+): void {
   safeMetric(() => {
     containerSpawnedTotal.inc({ jid_kind: jidKind_, isMain: String(isMain) });
-    containersActive.inc();
+    containersActive.inc({ workspace_id: workspaceId, mode });
   });
 }
 
-/** Decrements active gauge AND observes duration histogram. */
+/**
+ * Decrements active gauge AND observes duration histogram.
+ *
+ * @param jidKind_ - JID kind for the container.
+ * @param status - Exit status.
+ * @param durationSeconds - Container run duration in seconds.
+ * @param workspaceId - Workspace ID (must match the value passed to `recordContainerSpawn`).
+ * @param mode - Credential mode (must match the value passed to `recordContainerSpawn`).
+ */
 export function recordContainerExit(
   jidKind_: JidKind,
   status: 'success' | 'error' | 'timeout',
   durationSeconds: number,
+  workspaceId = 'unknown',
+  mode: 'api_key' | 'oauth' | 'none' = 'api_key',
 ): void {
   safeMetric(() => {
-    containersActive.dec();
+    containersActive.dec({ workspace_id: workspaceId, mode });
     containerDurationSeconds.observe(
       { jid_kind: jidKind_, status },
       durationSeconds,
@@ -250,11 +273,19 @@ export function recordIdleTimeout(jidKind_: JidKind): void {
   });
 }
 
+/**
+ * Records a credential resolution event.
+ *
+ * @param tier - Resolution tier: `"workspace"`, `"onecli"`, `"static"`, or `"none"`.
+ * @param mode - Credential mode resolved: `"api_key"`, `"oauth"`, or `"none"`.
+ *               Defaults to `"api_key"` to preserve existing-caller behavior.
+ */
 export function recordCredentialResolution(
   tier: 'workspace' | 'onecli' | 'static' | 'none',
+  mode: 'api_key' | 'oauth' | 'none' = 'api_key',
 ): void {
   safeMetric(() => {
-    credentialsResolvedTotal.inc({ tier });
+    credentialsResolvedTotal.inc({ tier, mode });
   });
 }
 
