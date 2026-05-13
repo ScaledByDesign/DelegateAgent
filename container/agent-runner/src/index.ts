@@ -698,15 +698,31 @@ async function runQuery(
         // SDK result subtypes: 'success' (happy path) OR one of
         //   'error_during_execution' | 'error_max_turns' |
         //   'error_max_budget_usd' | 'error_max_structured_output_retries'
-        // Upstream API errors (Bifrost VK denied, Anthropic 429,
-        // auth failures) all surface as 'error_during_execution'.
-        // Map every non-success subtype to status:'error' so the
-        // Delegate state machine does NOT transition to completed.
         const isErrorSubtype =
           typeof message.subtype === 'string' &&
           message.subtype !== 'success';
+        // The SDK ALSO returns subtype='success' when an upstream API
+        // call failed but the SDK gracefully recovered by emitting the
+        // error text as the assistant's response (e.g. Bifrost VK
+        // denied, Anthropic returned 4XX/5XX, missing token). The
+        // assistant text body literally contains the API error
+        // message. Treat these as terminal errors so the Delegate
+        // state machine doesn't transition to `completed` for a
+        // non-functional run.
+        const looksLikeApiError =
+          typeof textResult === 'string' &&
+          (/^Failed to authenticate\.?\s/i.test(textResult) ||
+            /API Error:\s*(401|403|404|429|5\d\d)/i.test(textResult) ||
+            /usage[_ ]limit[_ ]exceeded/i.test(textResult) ||
+            /Provider '[^']+' is not allowed/i.test(textResult));
+        const isError = isErrorSubtype || looksLikeApiError;
+        if (looksLikeApiError) {
+          log(
+            `Result text matches API-error pattern — emitting status='error' (subtype=${message.subtype})`,
+          );
+        }
         writeOutput({
-          status: isErrorSubtype ? 'error' : 'success',
+          status: isError ? 'error' : 'success',
           result: textResult || null,
           newSessionId,
         });
