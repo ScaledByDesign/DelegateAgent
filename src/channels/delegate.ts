@@ -20,6 +20,7 @@ import { registerChannel, type ChannelOpts } from './registry.js';
 import type { Channel } from '../types.js';
 import { dispatchChatFastPath } from '../chat/index.js';
 import { getEnvWithFallback } from '../config.js';
+import { fetchWithRetry5xx } from '../retry-fetch.js';
 import {
   recordChannelPollError,
   recordChannelMessageDelivered,
@@ -335,8 +336,13 @@ export class DelegateChannel implements Channel {
     if (!DELEGATE_AGENT_TOKEN) return;
 
     const agentProfileId = this.agentProfileIds.get(jid);
-    try {
-      const res = await fetch(`${DELEGATE_URL}/api/agent/channel/reply`, {
+    // 3-attempt retry on 5XX/network errors (Vercel cold start, transient DB
+    // hiccup). Defense in depth alongside the Delegate-side Inngest fan-out
+    // — the route itself can still 5XX during cold-isolate startup, and a
+    // single lost signal stalls the delegation until the 5min reaper.
+    const res = await fetchWithRetry5xx(
+      `${DELEGATE_URL}/api/agent/channel/reply`,
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -352,17 +358,16 @@ export class DelegateChannel implements Channel {
           },
         }),
         signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok && res.status !== 404) {
-        // 404 = receiver hasn't deployed the terminal-signal branch yet —
-        // tolerate gracefully so an older Delegate can ignore the call.
-        const errText = await res.text().catch(() => '');
-        console.warn(
-          `[delegate] notifyTerminal failed for ${jid}: HTTP ${res.status} — ${errText.slice(0, 160)}`,
-        );
-      }
-    } catch (err: unknown) {
-      console.warn('[delegate] notifyTerminal error:', (err as Error).message);
+      },
+      { label: 'delegate.notifyTerminal' },
+    );
+    if (res && !res.ok && res.status !== 404) {
+      // 404 = receiver hasn't deployed the terminal-signal branch yet —
+      // tolerate gracefully so an older Delegate can ignore the call.
+      const errText = await res.text().catch(() => '');
+      console.warn(
+        `[delegate] notifyTerminal failed for ${jid}: HTTP ${res.status} — ${errText.slice(0, 160)}`,
+      );
     }
   }
 

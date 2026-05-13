@@ -6,6 +6,7 @@
 // resolveLLMKeysFromDelegate).
 
 import { getEnvWithFallback } from './config.js';
+import { fetchWithRetry5xx } from './retry-fetch.js';
 
 const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
 const DELEGATE_AGENT_TOKEN =
@@ -43,28 +44,27 @@ export async function reportLLMCooldown(opts: {
     );
     return false;
   }
-  try {
-    const res = await fetch(
-      `${DELEGATE_URL}/api/agent/integrations/llm-keys/cooldown`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
-        },
-        body: JSON.stringify(opts),
-        signal: AbortSignal.timeout(5000),
+  // 3-attempt retry on 5XX/network errors (Vercel cold start, transient
+  // DB hiccup). Cooldown cascades (one bad token → N containers POST 429
+  // within seconds) are exactly the burst class that benefits most.
+  const res = await fetchWithRetry5xx(
+    `${DELEGATE_URL}/api/agent/integrations/llm-keys/cooldown`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
       },
+      body: JSON.stringify(opts),
+      signal: AbortSignal.timeout(5000),
+    },
+    { label: 'cooldown-client' },
+  );
+  if (!res || !res.ok) {
+    console.error(
+      `[cooldown-client] cooldown report failed for ${opts.providerId} (status=${res?.status ?? 'network'})`,
     );
-    if (!res.ok) {
-      console.error(
-        `[cooldown-client] non-ok ${res.status} for ${opts.providerId}`,
-      );
-      return false;
-    }
-    return true;
-  } catch (e) {
-    console.error(`[cooldown-client] fetch failed: ${(e as Error).message}`);
     return false;
   }
+  return true;
 }
