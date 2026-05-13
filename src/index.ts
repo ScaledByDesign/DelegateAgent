@@ -78,6 +78,18 @@ import {
   recordMessageProcessed,
   jidKind,
 } from './metrics.js';
+// Phase 2.5a — DAG workflow concurrency scanner. Picks up `pending` runs that
+// were created while the concurrency cap was saturated (`POST /api/workflows/:name/runs`
+// with cap reached) and dispatches them when slots free.
+import { _getDb } from './db.js';
+import { SqliteWorkflowStore } from './workflows/store/sqlite-workflow-store.js';
+import { ConcurrencyScanner } from './workflows/executor/concurrency-scanner.js';
+import { createWorkflowEventEmitter } from './workflows/executor/event-emitter.js';
+import { loadDagWorkflow } from './workflows/dag-loader.js';
+// Phase 2.5b — production provider invoker that bridges DAG prompt/command/
+// loop nodes to runContainerAgent. Replaces the Phase 2 'NOT YET WIRED' default.
+import { setProviderInvoker } from './workflows/executor/provider-bridge.js';
+import { createNanoClawProviderInvoker } from './workflows/bridge/nanoclaw-provider-invoker.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -87,6 +99,24 @@ let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
+
+/** Phase 2.5a — DAG workflow concurrency scanner. Started once at boot via
+ *  `startDagWorkflowScanner()`; stopped during graceful shutdown. */
+let dagWorkflowScanner: ConcurrencyScanner | null = null;
+
+/** Phase 2.5b — handle returned by setProviderInvoker so we can restore the
+ *  default invoker when the scanner is stopped (test cleanup). */
+let dagWorkflowInvokerRestore: (() => void) | null = null;
+
+/** Returns the concurrency cap for DAG workflow runs (per chat_jid). Default
+ *  4 per plan R6; override via env var. PlatformSetting-backed dynamic cap
+ *  lands in Phase 6 alongside the Delegate mirror. */
+function getDagWorkflowConcurrencyCap(): number {
+  const raw = process.env.ARCHON_CONCURRENCY_CAP_PER_JID;
+  if (!raw) return 4;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 ? n : 4;
+}
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
@@ -340,12 +370,17 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         resetIdleTimer();
       }
 
-      if (result.status === 'success') {
-        queue.notifyIdle(chatJid);
-        // Terminal-success handshake — tell Delegate the agent reached a clean
-        // stopping point so the delegation state machine can roll forward out
-        // of `running` even for research/audit/Q&A tasks where no deliverable
-        // branch was pushed. Delegate-channel only; other channels ignore.
+      // Terminal handshake — tell Delegate the agent reached a terminal
+      // state (success OR error) so the delegation state machine can
+      // roll forward out of `running`. Delegate-channel only; other
+      // channels ignore. Without firing on `error`, failed runs sit in
+      // `running` until the 5-minute stage-advance reaper times them out.
+      if (result.status === 'success' || result.status === 'error') {
+        if (result.status === 'success') {
+          queue.notifyIdle(chatJid);
+        } else {
+          hadError = true;
+        }
         const notifyTerminal = (
           channel as {
             notifyTerminal?: (
@@ -356,21 +391,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         ).notifyTerminal;
         if (typeof notifyTerminal === 'function') {
           await notifyTerminal
-            .call(channel, chatJid, 'success')
+            .call(channel, chatJid, result.status)
             .catch((err: unknown) => {
               logger.warn(
                 {
                   chatJid,
+                  status: result.status,
                   err: err instanceof Error ? err.message : String(err),
                 },
                 'notifyTerminal failed (non-fatal)',
               );
             });
         }
-      }
-
-      if (result.status === 'error') {
-        hadError = true;
       }
     },
     requestingUserId,
@@ -690,11 +722,57 @@ function ensureContainerSystemRunning(): void {
   cleanupOrphans();
 }
 
+/** Phase 2.5a — boot the DAG workflow concurrency scanner. Idempotent —
+ *  re-invocation no-ops since `ConcurrencyScanner.start()` is itself
+ *  idempotent. Exported for tests that want to override the resolver. */
+export function startDagWorkflowScanner(opts?: {
+  intervalMs?: number;
+  cap?: number;
+}): void {
+  if (dagWorkflowScanner) return;
+  const store = new SqliteWorkflowStore(_getDb());
+  const emitter = createWorkflowEventEmitter(store);
+  dagWorkflowScanner = new ConcurrencyScanner({
+    store,
+    resolveWorkflow: (name: string) => loadDagWorkflow(name)?.workflow ?? null,
+    executorDeps: { emitter },
+    getCap: () => opts?.cap ?? getDagWorkflowConcurrencyCap(),
+    intervalMs: opts?.intervalMs,
+  });
+  dagWorkflowScanner.start();
+  // Phase 2.5b — wire the production NanoClaw provider invoker so that
+  // prompt/command/loop nodes in DAG workflows execute end-to-end via
+  // runContainerAgent. Bash/script nodes already work standalone in Phase 2.
+  // Tests that need the default rejection path can call
+  // `_resetProviderInvoker()` from `provider-bridge` or pass a stub.
+  dagWorkflowInvokerRestore = setProviderInvoker(
+    createNanoClawProviderInvoker({ store }),
+  );
+  logger.info('DAG workflow concurrency scanner started');
+}
+
+/** Test-only — stop + clear the singleton. Also restores the previous
+ *  provider invoker installed before Phase 2.5b wiring so subsequent test
+ *  suites see the default (throw `NOT YET WIRED`) behavior. */
+export function _stopDagWorkflowScanner(): void {
+  if (dagWorkflowInvokerRestore) {
+    dagWorkflowInvokerRestore();
+    dagWorkflowInvokerRestore = null;
+  }
+  if (!dagWorkflowScanner) return;
+  dagWorkflowScanner.stop();
+  dagWorkflowScanner = null;
+}
+
 async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
   logger.info('Database initialized');
   loadState();
+  // Phase 2.5a — Start the DAG workflow concurrency scanner after the DB is
+  // initialized. Picks up `pending` workflow_runs that were left behind when
+  // a /api/workflows/:name/runs POST hit the concurrency cap.
+  startDagWorkflowScanner();
 
   // Ensure OneCLI agents exist for all registered groups.
   // Recovers from missed creates (e.g. OneCLI was down at registration time).
@@ -707,6 +785,7 @@ async function main(): Promise<void> {
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    _stopDagWorkflowScanner();
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
     process.exit(0);
