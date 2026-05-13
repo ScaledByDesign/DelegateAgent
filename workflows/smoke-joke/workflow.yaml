@@ -1,0 +1,17 @@
+name: smoke-joke
+description: |
+  Phase 2.5b smoke test — single prompt node that asks the LLM for a joke.
+  Verifies the full DAG executor → nanoclaw-provider-invoker →
+  runContainerAgent → LLM → captured output round-trip.
+
+  Pass: `WorkflowRunNode.output` for the `joke` node contains plain text
+  consistent with "a programmer joke" and `session_id` is non-empty.
+
+provider: nanoclaw
+
+nodes:
+  - id: joke
+    prompt: |
+      Tell me one short, clean programmer joke. Reply with only the joke
+      text — no preamble, no markdown fences, no quotes, no labels.
+    depends_on: []

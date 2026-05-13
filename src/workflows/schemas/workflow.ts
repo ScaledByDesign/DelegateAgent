@@ -161,7 +161,10 @@ export type WorkflowExecutionResult =
  *
  * Precedence: `bundled` < `project` (project overrides bundled by name).
  */
-export type WorkflowSource = 'bundled' | 'project' | 'hephaestus';
+// Phase 2: 'remote' added for workspace-scoped overrides fetched from the
+// Delegate API (`GET /api/agent/workflows/dag/:name`). These take precedence
+// over all local sources when `ARCHON_DAG_REMOTE_FETCH_ENABLED=1`.
+export type WorkflowSource = 'bundled' | 'project' | 'hephaestus' | 'remote';
 
 /** A workflow definition paired with its discovery source. */
 export interface WorkflowWithSource {

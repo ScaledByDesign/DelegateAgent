@@ -74,6 +74,15 @@ export interface ContainerInput {
    * the picker correctly falls back to workspace-default credentials.
    */
   requestingUserId?: string;
+  /**
+   * Phase 2.5b' — workflow run artifacts root (host path). When set,
+   * `buildVolumeMounts` adds a writable mount at `/workspace/artifacts`
+   * and `buildContainerArgs` injects `WORKFLOW_ARTIFACTS_DIR=/workspace/artifacts`
+   * so the agent can write files (PDFs, generated text, etc.) into the
+   * workflow's per-run artifacts directory. Channel-driven invocations
+   * leave this undefined and the mount is omitted (existing behavior).
+   */
+  artifactsDir?: string;
 }
 
 export interface ContainerOutput {
@@ -92,6 +101,14 @@ interface VolumeMount {
 function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
+  /**
+   * Workflow run artifacts root (host path). When provided, mounted writable
+   * at `/workspace/artifacts` so the agent can produce files that survive
+   * container teardown. Workflow YAMLs reference the path via the
+   * `WORKFLOW_ARTIFACTS_DIR` env injected by `buildContainerArgs`.
+   * Undefined for all channel-driven invocations.
+   */
+  artifactsDir?: string,
 ): VolumeMount[] {
   const mounts: VolumeMount[] = [];
   const projectRoot = process.cwd();
@@ -271,6 +288,21 @@ function buildVolumeMounts(
     mounts.push(...validatedMounts);
   }
 
+  // Phase 2.5b' — workflow artifacts mount. Writable, only when the caller
+  // (workflow executor via nanoclaw-provider-invoker) provides an
+  // artifactsDir. Files written to /workspace/artifacts persist to the
+  // host's workflow run dir so they outlive the container.
+  if (artifactsDir) {
+    // Create the host dir defensively — workflow-runs-service is meant to
+    // already have done this, but a missing dir is a confusing failure mode.
+    fs.mkdirSync(artifactsDir, { recursive: true });
+    mounts.push({
+      hostPath: artifactsDir,
+      containerPath: '/workspace/artifacts',
+      readonly: false,
+    });
+  }
+
   return mounts;
 }
 
@@ -298,6 +330,12 @@ async function buildContainerArgs(
   agentIdentifier?: string,
   workspaceId?: string,
   requestingUserId?: string,
+  /**
+   * When set, exposes `WORKFLOW_ARTIFACTS_DIR=<containerPath>` to the
+   * container so workflow-aware prompts/skills know where to write files.
+   * The companion writable mount is added by `buildVolumeMounts(artifactsDir)`.
+   */
+  workflowArtifactsContainerPath?: string,
 ): Promise<{
   args: string[];
   oauthHardFail: boolean;
@@ -312,6 +350,13 @@ async function buildContainerArgs(
   // Inject workspace context for per-workspace credential resolution
   if (workspaceId) {
     args.push('-e', `DELEGATE_WORKSPACE_ID=${workspaceId}`);
+  }
+
+  // Phase 2.5b' — workflow artifacts root inside the container. Set only
+  // when the run was started by the DAG executor (channel-driven invocations
+  // leave this undefined and the env var is absent).
+  if (workflowArtifactsContainerPath) {
+    args.push('-e', `WORKFLOW_ARTIFACTS_DIR=${workflowArtifactsContainerPath}`);
   }
 
   // ── Credential injection (multi-tenant) ────────────────────────────────
@@ -644,7 +689,7 @@ export async function runContainerAgent(
     };
   }
 
-  const mounts = buildVolumeMounts(group, input.isMain);
+  const mounts = buildVolumeMounts(group, input.isMain, input.artifactsDir);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `delegate-agent-${safeName}-${Date.now()}`;
   // Main group uses the default OneCLI agent; others use their own agent.
@@ -657,6 +702,10 @@ export async function runContainerAgent(
     agentIdentifier,
     group.workspaceId,
     input.requestingUserId,
+    // When the workflow executor passes an artifactsDir, the container sees
+    // it at /workspace/artifacts via buildVolumeMounts above; this exposes
+    // the container-side path as WORKFLOW_ARTIFACTS_DIR for prompts/skills.
+    input.artifactsDir ? '/workspace/artifacts' : undefined,
   );
   const containerArgs = buildResult.args;
   const containerMode = buildResult.resolvedMode;

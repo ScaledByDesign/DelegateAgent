@@ -1,0 +1,39 @@
+name: smoke-pdf
+description: |
+  ⚠️  DORMANT — `pdf` skill not deployed to container/skills/. DO NOT INVOKE
+  until the skill ships. Registered for code-path coverage only.
+
+  Phase 2.5b' smoke test — prompt node asks the agent to write a short
+  story PDF into the workflow artifacts mount, then a bash node asserts
+  the file exists on the host. Verifies the artifacts_dir → container
+  writable mount → host file persistence chain.
+
+  Prompt node references `$WORKFLOW_ARTIFACTS_DIR` (env injected by
+  buildContainerArgs when the run was DAG-spawned). The agent's `pdf`
+  skill writes the file; bash node verifies on the host via `$ARTIFACTS_DIR`.
+
+provider: nanoclaw
+
+nodes:
+  - id: write-pdf
+    prompt: |
+      Write a 3-paragraph short story about a debugger that gains sentience.
+      Use the `pdf` skill to render the story as a single-page PDF and save
+      it to `$WORKFLOW_ARTIFACTS_DIR/story.pdf`.
+
+      After the file is written, reply with only the absolute container path
+      `$WORKFLOW_ARTIFACTS_DIR/story.pdf` and nothing else.
+    depends_on: []
+
+  - id: verify
+    depends_on: [write-pdf]
+    bash: |
+      set -euo pipefail
+      test -f "$ARTIFACTS_DIR/story.pdf" || {
+        echo "MISSING: $ARTIFACTS_DIR/story.pdf" >&2
+        ls -la "$ARTIFACTS_DIR" >&2 || true
+        exit 1
+      }
+      size=$(wc -c < "$ARTIFACTS_DIR/story.pdf")
+      head -c 4 "$ARTIFACTS_DIR/story.pdf" | xxd | head -1
+      echo "OK story.pdf ${size} bytes at $ARTIFACTS_DIR/story.pdf"

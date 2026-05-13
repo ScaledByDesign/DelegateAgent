@@ -12,7 +12,9 @@ afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
 });
 
-function mockFetch(responses: Array<Response | Error>): ReturnType<typeof vi.fn> {
+function mockFetch(
+  responses: Array<Response | Error>,
+): ReturnType<typeof vi.fn> {
   const fn = vi.fn();
   for (const r of responses) {
     if (r instanceof Error) fn.mockRejectedValueOnce(r);
@@ -23,12 +25,20 @@ function mockFetch(responses: Array<Response | Error>): ReturnType<typeof vi.fn>
 }
 
 const resp = (status: number) =>
-  ({ ok: status >= 200 && status < 300, status, text: async () => '' }) as Response;
+  ({
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => '',
+  }) as Response;
 
 describe('fetchWithRetry5xx', () => {
   it('returns 200 immediately on success — no retry', async () => {
     const fetchMock = mockFetch([resp(200)]);
-    const promise = fetchWithRetry5xx('https://x/', { method: 'GET' }, { label: 'test' });
+    const promise = fetchWithRetry5xx(
+      'https://x/',
+      { method: 'GET' },
+      { label: 'test' },
+    );
     const res = await promise;
     expect(res?.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -36,7 +46,11 @@ describe('fetchWithRetry5xx', () => {
 
   it('does NOT retry on 4XX', async () => {
     const fetchMock = mockFetch([resp(400)]);
-    const promise = fetchWithRetry5xx('https://x/', { method: 'POST' }, { label: 'test' });
+    const promise = fetchWithRetry5xx(
+      'https://x/',
+      { method: 'POST' },
+      { label: 'test' },
+    );
     const res = await promise;
     expect(res?.status).toBe(400);
     expect(fetchMock).toHaveBeenCalledTimes(1);

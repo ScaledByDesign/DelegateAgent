@@ -25,8 +25,18 @@ import { executeWorkflow, type ExecutorDeps } from './dag-executor.js';
 
 export interface ConcurrencyScannerOptions {
   store: IWorkflowStore;
-  /** Look up workflow definition by name (DA's dag-loader provides this). */
-  resolveWorkflow: (name: string) => WorkflowDefinition | null;
+  /**
+   * Look up workflow definition by name. May be async (Phase 2: remote fetch
+   * path in `loadDagWorkflowForGroup` returns a Promise). Sync return values
+   * are also accepted — they resolve immediately in `dispatchAsync`.
+   *
+   * The optional `ctx` bag lets the scanner forward the `chat_jid` of the run
+   * so the remote-fetch path can resolve `workspaceId` from the group store.
+   */
+  resolveWorkflow: (
+    name: string,
+    ctx?: { chatJid?: string | null },
+  ) => WorkflowDefinition | null | Promise<WorkflowDefinition | null>;
   /** Executor wiring (event emitter etc.). */
   executorDeps: Omit<ExecutorDeps, 'store'>;
   /** Concurrency cap per chat_jid. Read from PlatformSetting on each tick. */
@@ -106,7 +116,11 @@ export class ConcurrencyScanner {
   private async dispatchAsync(run: WorkflowRunRow): Promise<void> {
     this.inFlight.add(run.id);
     try {
-      const workflow = this.opts.resolveWorkflow(run.workflow_name);
+      // Phase 2: resolveWorkflow may be async (remote fetch). Pass chat_jid
+      // so the remote-fetch path can resolve workspaceId from the group store.
+      const workflow = await this.opts.resolveWorkflow(run.workflow_name, {
+        chatJid: run.chat_jid,
+      });
       if (!workflow) {
         // No such workflow — mark failed so the row doesn't loop in pending forever.
         this.opts.store.updateRunStatus(run.id, {

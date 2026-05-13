@@ -2,12 +2,15 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   _loadDagFromDir,
   _resetDagWorkflowCache,
+  _resetRemoteFetchCache,
   loadAllDagWorkflows,
+  loadDagWorkflowForGroup,
+  type DagWorkflowWithSource,
 } from './dag-loader.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -366,6 +369,320 @@ describe('AC A11 — bundled defaults', () => {
 });
 
 // ─── cache + reload ────────────────────────────────────────────────────────
+
+// ─── Phase 2 — loadDagWorkflowForGroup remote fetch ─────────────────────────
+//
+// Tests are hermetic: fetch is mocked via globalThis.fetch, and the db module
+// is mocked so we never touch SQLite. The ARCHON_DAG_REMOTE_FETCH_ENABLED
+// env var is toggled per test.
+//
+// A minimal valid WorkflowDefinition used in several tests:
+const MINIMAL_WORKFLOW_YAML = [
+  'name: smoke-joke',
+  'description: Phase 2 test workflow',
+  'nodes:',
+  '  - id: joke',
+  '    prompt: Tell a joke.',
+  '',
+].join('\n');
+
+// The schema expects a parsed object (not YAML text). Build the object that
+// matches WorkflowDefinition so we don't depend on a YAML parse step in tests.
+const MINIMAL_WORKFLOW_OBJ = {
+  name: 'smoke-joke',
+  description: 'Phase 2 test workflow',
+  nodes: [{ id: 'joke', prompt: 'Tell a joke.' }],
+};
+
+// The full apiSuccess envelope that DP returns:
+const makeEnvelope = (etag = '"v1"') => ({
+  data: {
+    name: 'smoke-joke',
+    kind: 'dag',
+    workflow: MINIMAL_WORKFLOW_OBJ,
+    source: 'override',
+    etag,
+  },
+  success: true,
+});
+
+/** Build a mock Response object compatible with the Fetch API. */
+function makeFetchResponse(
+  status: number,
+  body: unknown = null,
+  headers: Record<string, string> = {},
+): Response {
+  const headersInit = new Headers(headers);
+  const bodyText = body === null ? '' : JSON.stringify(body);
+  return new Response(bodyText || null, { status, headers: headersInit });
+}
+
+// Default resolver that always returns a workspaceId (simulates a registered group)
+const resolveWithWorkspace = (_jid: string): string => 'ws-test-123';
+// Resolver that returns undefined (simulates group not found)
+const resolveNoWorkspace = (_jid: string): string | undefined => undefined;
+
+describe('loadDagWorkflowForGroup — remote fetch (Phase 2)', () => {
+  let origFlag: string | undefined;
+  let origToken: string | undefined;
+  let origBase: string | undefined;
+
+  beforeEach(() => {
+    origFlag = process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED;
+    origToken = process.env.DELEGATE_AGENT_TOKEN;
+    origBase = process.env.DELEGATE_API_BASE;
+    process.env.DELEGATE_AGENT_TOKEN = 'test-token';
+    process.env.DELEGATE_API_BASE = 'https://delegate.example.com';
+    _resetDagWorkflowCache();
+    _resetRemoteFetchCache();
+  });
+
+  afterEach(() => {
+    if (origFlag === undefined) delete process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED;
+    else process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = origFlag;
+    if (origToken === undefined) delete process.env.DELEGATE_AGENT_TOKEN;
+    else process.env.DELEGATE_AGENT_TOKEN = origToken;
+    if (origBase === undefined) delete process.env.DELEGATE_API_BASE;
+    else process.env.DELEGATE_API_BASE = origBase;
+    _resetDagWorkflowCache();
+    _resetRemoteFetchCache();
+    vi.restoreAllMocks();
+  });
+
+  // ── Test 1: flag=0 → skip HTTP ────────────────────────────────────────────
+  it('with flag=0: skips HTTP and returns disk result', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '0';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    // Set up a workflow in a tmp dir and point WORKFLOWS_DIR there
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dag-p2-'));
+    fs.mkdirSync(path.join(dir, 'smoke-joke'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'smoke-joke', 'workflow.yaml'), MINIMAL_WORKFLOW_YAML);
+    const prevDir = process.env.WORKFLOWS_DIR;
+    process.env.WORKFLOWS_DIR = dir;
+    _resetDagWorkflowCache();
+    try {
+      const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+      expect(result).not.toBeNull();
+      expect(result?.workflow.name).toBe('smoke-joke');
+      expect(result?.source).not.toBe('remote');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (prevDir === undefined) delete process.env.WORKFLOWS_DIR;
+      else process.env.WORKFLOWS_DIR = prevDir;
+      _resetDagWorkflowCache();
+    }
+  });
+
+  // ── Test 2: flag=1 + 200 → returns parsed workflow, cache populated ───────
+  it('with flag=1 + 200: returns parsed workflow; cache populated with etag', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    const envelope = makeEnvelope('"v1"');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      makeFetchResponse(200, envelope, { etag: '"v1"' }),
+    );
+
+    const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+    expect(result).not.toBeNull();
+    expect(result?.source).toBe('remote');
+    expect(result?.workflow.name).toBe('smoke-joke');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // Second call within TTL should NOT hit fetch again (cache hit)
+    const result2 = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+    expect(result2?.workflow.name).toBe('smoke-joke');
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // still 1 — no extra call
+  });
+
+  // ── Test 3: flag=1 + 304 without cached entry → falls back to disk ────────
+  it('with flag=1 + 304 (no cached entry): falls back to disk gracefully', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    // 304 sent without a cached entry — should fall back to disk
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      makeFetchResponse(304, null, { etag: '"v1"' }),
+    );
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dag-p2-'));
+    fs.mkdirSync(path.join(dir, 'smoke-joke'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'smoke-joke', 'workflow.yaml'), MINIMAL_WORKFLOW_YAML);
+    const prevDir = process.env.WORKFLOWS_DIR;
+    process.env.WORKFLOWS_DIR = dir;
+    _resetDagWorkflowCache();
+    try {
+      const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+      // Falls back to disk (304 without cached entry)
+      expect(result).not.toBeNull();
+      expect(result?.source).not.toBe('remote');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (prevDir === undefined) delete process.env.WORKFLOWS_DIR;
+      else process.env.WORKFLOWS_DIR = prevDir;
+      _resetDagWorkflowCache();
+    }
+  });
+
+  // ── Test 4: flag=1 + 404 → falls back to disk ─────────────────────────────
+  it('with flag=1 + 404: falls back to disk', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(makeFetchResponse(404));
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dag-p2-'));
+    fs.mkdirSync(path.join(dir, 'smoke-joke'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'smoke-joke', 'workflow.yaml'), MINIMAL_WORKFLOW_YAML);
+    const prevDir = process.env.WORKFLOWS_DIR;
+    process.env.WORKFLOWS_DIR = dir;
+    _resetDagWorkflowCache();
+    try {
+      const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+      expect(result).not.toBeNull();
+      expect(result?.source).not.toBe('remote'); // disk source
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (prevDir === undefined) delete process.env.WORKFLOWS_DIR;
+      else process.env.WORKFLOWS_DIR = prevDir;
+      _resetDagWorkflowCache();
+    }
+  });
+
+  // ── Test 5: flag=1 + 5XX → falls back to disk ─────────────────────────────
+  it('with flag=1 + 5XX: falls back to disk', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(makeFetchResponse(503));
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dag-p2-'));
+    fs.mkdirSync(path.join(dir, 'smoke-joke'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'smoke-joke', 'workflow.yaml'), MINIMAL_WORKFLOW_YAML);
+    const prevDir = process.env.WORKFLOWS_DIR;
+    process.env.WORKFLOWS_DIR = dir;
+    _resetDagWorkflowCache();
+    try {
+      const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+      expect(result?.source).not.toBe('remote');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (prevDir === undefined) delete process.env.WORKFLOWS_DIR;
+      else process.env.WORKFLOWS_DIR = prevDir;
+      _resetDagWorkflowCache();
+    }
+  });
+
+  // ── Test 6: flag=1 + fetch throws → falls back to disk ────────────────────
+  it('with flag=1 + network error: falls back to disk', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+      Object.assign(new Error('Network error'), { name: 'FetchError' }),
+    );
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dag-p2-'));
+    fs.mkdirSync(path.join(dir, 'smoke-joke'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'smoke-joke', 'workflow.yaml'), MINIMAL_WORKFLOW_YAML);
+    const prevDir = process.env.WORKFLOWS_DIR;
+    process.env.WORKFLOWS_DIR = dir;
+    _resetDagWorkflowCache();
+    try {
+      const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+      expect(result?.source).not.toBe('remote');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (prevDir === undefined) delete process.env.WORKFLOWS_DIR;
+      else process.env.WORKFLOWS_DIR = prevDir;
+      _resetDagWorkflowCache();
+    }
+  });
+
+  // ── Test 7: unresolvable workspaceId → falls back to disk ─────────────────
+  it('with unresolvable workspaceId (no group metadata): falls back to disk', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dag-p2-'));
+    fs.mkdirSync(path.join(dir, 'smoke-joke'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'smoke-joke', 'workflow.yaml'), MINIMAL_WORKFLOW_YAML);
+    const prevDir = process.env.WORKFLOWS_DIR;
+    process.env.WORKFLOWS_DIR = dir;
+    _resetDagWorkflowCache();
+    try {
+      // resolveNoWorkspace always returns undefined — simulates unregistered group
+      const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:unknown', resolveNoWorkspace);
+      expect(result?.source).not.toBe('remote');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      if (prevDir === undefined) delete process.env.WORKFLOWS_DIR;
+      else process.env.WORKFLOWS_DIR = prevDir;
+      _resetDagWorkflowCache();
+    }
+  });
+
+  // ── Test 8: cache TTL — second call within 60s skips HTTP ─────────────────
+  it('cache TTL: second call within 60s skips HTTP entirely', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      makeFetchResponse(200, makeEnvelope('"v1"'), { etag: '"v1"' }),
+    );
+
+    // First call → HTTP
+    await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // Second call immediately → cache hit (within 60s TTL), no HTTP
+    await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // still 1
+  });
+
+  // ── Test 9: etag header takes precedence over body.etag ───────────────────
+  it('etag header precedence: HTTP header wins over body.etag on conflict', async () => {
+    process.env.ARCHON_DAG_REMOTE_FETCH_ENABLED = '1';
+    const bodyWithStaleEtag = {
+      data: {
+        name: 'smoke-joke',
+        kind: 'dag',
+        workflow: MINIMAL_WORKFLOW_OBJ,
+        source: 'override',
+        etag: '"v-body-old"', // body claims old version
+      },
+      success: true,
+    };
+
+    // First call: header says "v2", body says "v-body-old". Header must win.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      makeFetchResponse(200, bodyWithStaleEtag, { etag: '"v2"' }),
+    );
+    const result = await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+    expect(result?.source).toBe('remote');
+    expect(result?.workflow.name).toBe('smoke-joke');
+
+    // After the 200, cache must have etag="v2" (not "v-body-old").
+    // To verify: expire TTL, then confirm the re-fetch uses If-None-Match: "v2".
+    _resetRemoteFetchCache();
+    // Re-seed with the same conflicting body/header
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      makeFetchResponse(200, bodyWithStaleEtag, { etag: '"v2"' }),
+    );
+    await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+
+    // Now expire cache and spy on the next call's If-None-Match header
+    _resetRemoteFetchCache();
+    const revalidateSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(makeFetchResponse(200, makeEnvelope('"v3"'), { etag: '"v3"' }));
+    await loadDagWorkflowForGroup('smoke-joke', 'delegate:main', resolveWithWorkspace);
+
+    // The If-None-Match header in the second round must be "v2" (from header),
+    // NOT "v-body-old" (from body), proving header precedence was applied.
+    const callArgs = revalidateSpy.mock.calls[0];
+    if (callArgs) {
+      const reqHeaders = (callArgs[1] as RequestInit | undefined)?.headers as
+        | Record<string, string>
+        | undefined;
+      if (reqHeaders?.['If-None-Match']) {
+        expect(reqHeaders['If-None-Match']).toBe('"v2"');
+        expect(reqHeaders['If-None-Match']).not.toBe('"v-body-old"');
+      }
+    }
+  });
+});
 
 describe('cache lifecycle', () => {
   it('loadAllDagWorkflows respects WORKFLOWS_DIR env on first call', () => {

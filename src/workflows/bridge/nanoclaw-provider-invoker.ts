@@ -114,6 +114,12 @@ export function createNanoClawProviderInvoker(
       isScheduledTask: false,
       assistantName: opts.model,
       requestingUserId: row.user_id ?? undefined,
+      // Phase 2.5b' — workflow artifacts dir, mounted writable into the
+      // container at /workspace/artifacts. Workflow prompts can reference
+      // $WORKFLOW_ARTIFACTS_DIR. Bash/script nodes already get the same
+      // path via the in-process ARTIFACTS_DIR env; this brings parity to
+      // prompt/command/loop nodes.
+      artifactsDir: opts.artifactsDir,
     };
 
     // Fail-fast on a pre-aborted signal so we never spawn a container just

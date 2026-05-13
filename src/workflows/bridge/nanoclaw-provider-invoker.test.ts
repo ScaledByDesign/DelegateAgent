@@ -189,6 +189,30 @@ describe('nanoclaw-provider-invoker — happy path', () => {
     const [, input] = runContainer.mock.calls[0]!;
     expect(input.sessionId).toBe('sess-prev');
   });
+
+  it('forwards artifactsDir from opts into ContainerInput', async () => {
+    store.createRun({
+      id: 'run-1',
+      workflow_name: 'wf',
+      user_message: 'go',
+      chat_jid: 'delegate:main',
+    });
+    const runContainer = vi.fn(
+      async (): Promise<ContainerOutput> => ({
+        status: 'success',
+        result: 'x',
+      }),
+    );
+    const invoker = createNanoClawProviderInvoker({
+      store,
+      runContainer:
+        runContainer as unknown as typeof import('../../container-runner.js').runContainerAgent,
+      resolveGroup: () => SAMPLE_GROUP,
+    });
+    await invoker(makeOpts({ artifactsDir: '/tmp/wf-runs/run-1' }));
+    const [, input] = runContainer.mock.calls[0]!;
+    expect(input.artifactsDir).toBe('/tmp/wf-runs/run-1');
+  });
 });
 
 describe('nanoclaw-provider-invoker — error paths', () => {

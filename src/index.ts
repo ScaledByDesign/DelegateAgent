@@ -85,7 +85,10 @@ import { _getDb } from './db.js';
 import { SqliteWorkflowStore } from './workflows/store/sqlite-workflow-store.js';
 import { ConcurrencyScanner } from './workflows/executor/concurrency-scanner.js';
 import { createWorkflowEventEmitter } from './workflows/executor/event-emitter.js';
-import { loadDagWorkflow } from './workflows/dag-loader.js';
+import {
+  loadDagWorkflow,
+  loadDagWorkflowForGroup,
+} from './workflows/dag-loader.js';
 // Phase 2.5b — production provider invoker that bridges DAG prompt/command/
 // loop nodes to runContainerAgent. Replaces the Phase 2 'NOT YET WIRED' default.
 import { setProviderInvoker } from './workflows/executor/provider-bridge.js';
@@ -734,7 +737,13 @@ export function startDagWorkflowScanner(opts?: {
   const emitter = createWorkflowEventEmitter(store);
   dagWorkflowScanner = new ConcurrencyScanner({
     store,
-    resolveWorkflow: (name: string) => loadDagWorkflow(name)?.workflow ?? null,
+    // Phase 2: async resolveWorkflow — tries workspace-scoped remote fetch
+    // (via DELEGATE_API_BASE) when ARCHON_DAG_REMOTE_FETCH_ENABLED=1;
+    // falls back to disk-only when the flag is absent or the group has no
+    // workspaceId. The scanner's dispatchAsync awaits the result.
+    resolveWorkflow: async (name: string, ctx?: { chatJid?: string | null }) =>
+      (await loadDagWorkflowForGroup(name, ctx?.chatJid ?? undefined))
+        ?.workflow ?? null,
     executorDeps: { emitter },
     getCap: () => opts?.cap ?? getDagWorkflowConcurrencyCap(),
     intervalMs: opts?.intervalMs,
