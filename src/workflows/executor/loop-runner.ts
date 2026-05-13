@@ -30,6 +30,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 
 import type { LoopNode, NodeOutput } from '../schemas/index.js';
+import type { IWorkflowStore } from '../store/IWorkflowStore.js';
+import { openInteractiveLoopGate } from './approval-gate.js';
 import { buildSanitizedEnv } from './env-sanitizer.js';
 import type { WorkflowEventEmitter } from './event-emitter.js';
 import {
@@ -58,6 +60,82 @@ export interface LoopRunnerCtx {
   signal?: AbortSignal;
   /** Override for tests (default setImmediate). */
   yieldBetweenIterations?: () => Promise<void>;
+  /**
+   * Phase 4 — required for interactive loops with `loop.interactive: true`.
+   * Loop state is persisted in `workflow_runs.metadata.loop_state[nodeId]`
+   * before each pause so resume can pick up at iteration N+1 with prior
+   * `prevOutput` + `sessionId` intact, AND read the user's approval
+   * response as `$LOOP_USER_INPUT` on the next iteration. Non-interactive
+   * loops do not touch this. Tests stub the store; production wires the
+   * shared `IWorkflowStore`.
+   */
+  store?: IWorkflowStore;
+}
+
+/** Persisted loop state stored under `workflow_runs.metadata.loop_state[nodeId]`. */
+interface PersistedLoopState {
+  iter: number;
+  prevOutput: string;
+  sessionId?: string;
+  lastIterationOutput: string;
+  /** The user response from the most recent approval; populated as
+   *  `$LOOP_USER_INPUT` on the next iteration's prompt. */
+  loopUserInput?: string;
+}
+
+function readLoopState(
+  store: IWorkflowStore | undefined,
+  runId: string,
+  nodeId: string,
+): PersistedLoopState | null {
+  if (!store) return null;
+  const run = store.getRun(runId);
+  if (!run) return null;
+  const all = (run.metadata.loop_state ?? {}) as Record<
+    string,
+    PersistedLoopState
+  >;
+  const s = all[nodeId];
+  return s && typeof s.iter === 'number' ? s : null;
+}
+
+function writeLoopState(
+  store: IWorkflowStore | undefined,
+  runId: string,
+  nodeId: string,
+  state: PersistedLoopState,
+): void {
+  if (!store) return;
+  const run = store.getRun(runId);
+  if (!run) return;
+  const all = (run.metadata.loop_state ?? {}) as Record<
+    string,
+    PersistedLoopState
+  >;
+  all[nodeId] = state;
+  store.updateRunStatus(runId, {
+    status: run.status,
+    metadata: { loop_state: all },
+  });
+}
+
+function clearLoopState(
+  store: IWorkflowStore | undefined,
+  runId: string,
+  nodeId: string,
+): void {
+  if (!store) return;
+  const run = store.getRun(runId);
+  if (!run) return;
+  const all = (run.metadata.loop_state ?? {}) as Record<
+    string,
+    PersistedLoopState
+  >;
+  delete all[nodeId];
+  store.updateRunStatus(runId, {
+    status: run.status,
+    metadata: { loop_state: all },
+  });
 }
 
 /**
@@ -71,26 +149,39 @@ export async function runLoopNode(
   node: LoopNode,
   ctx: LoopRunnerCtx,
 ): Promise<NodeOutput> {
-  // Phase 4: interactive loops. Until then, fail-fast with a clear pointer.
-  if (node.loop.interactive === true) {
-    return {
-      state: 'failed',
-      output: '',
-      error:
-        'interactive loops execute in Phase 4 (approval pause/resume) — not yet implemented in v1 executor',
-    };
-  }
-
-  const { until, until_bash, max_iterations, fresh_context, prompt } =
-    node.loop;
+  const {
+    until,
+    until_bash,
+    max_iterations,
+    fresh_context,
+    prompt,
+    interactive,
+    gate_message,
+  } = node.loop;
   const provider = resolveProvider(node, ctx.workflowProvider);
 
   // Variables we mutate per iteration. `LOOP_PREV_OUTPUT` rolls forward.
+  // Phase 4: interactive loops persist this state to SQLite before pausing so
+  // resume can pick up at iter N+1 with the prior prevOutput / sessionId.
   let prevOutput = '';
   let sessionId: string | undefined;
   let lastIterationOutput = '';
+  let startIter = 1;
+  let loopUserInput = '';
 
-  for (let iter = 1; iter <= max_iterations; iter++) {
+  if (interactive === true) {
+    const persisted = readLoopState(ctx.store, ctx.workflowRunId, node.id);
+    if (persisted) {
+      // Resume: start at iter N+1 (the iteration AFTER the one that paused).
+      startIter = persisted.iter + 1;
+      prevOutput = persisted.prevOutput;
+      sessionId = persisted.sessionId;
+      lastIterationOutput = persisted.lastIterationOutput;
+      loopUserInput = persisted.loopUserInput ?? '';
+    }
+  }
+
+  for (let iter = startIter; iter <= max_iterations; iter++) {
     if (ctx.signal?.aborted) {
       return {
         state: 'failed',
@@ -113,12 +204,18 @@ export async function runLoopNode(
     const iterVars: WorkflowVariables = {
       ...ctx.variables,
       LOOP_PREV_OUTPUT: prevOutput,
+      // Populated only on the iteration immediately after an interactive
+      // pause was approved. Cleared after this iteration consumes it so iter
+      // N+2 doesn't accidentally see iter N's user input.
+      LOOP_USER_INPUT: loopUserInput,
     };
     const iterPrompt = buildPromptWithContext(
       prompt,
       iterVars,
       ctx.nodeOutputs as never,
     );
+    // One-shot: consumed by THIS iteration only.
+    loopUserInput = '';
 
     let iterResult;
     try {
@@ -172,13 +269,46 @@ export async function runLoopNode(
     });
 
     if (completed) {
+      // Loop terminated; clear any persisted state from prior interactive
+      // pauses so a workflow that re-enters this run id doesn't get stale
+      // resume data.
+      if (interactive === true) {
+        clearLoopState(ctx.store, ctx.workflowRunId, node.id);
+      }
       return { state: 'completed', output: lastIterationOutput, sessionId };
+    }
+
+    // Interactive pause: between iterations, persist state + open the gate.
+    // The gate throws WorkflowPaused with an iter-suffixed approvalId; the
+    // outer dag-executor catches it, transitions run.status='paused', and
+    // returns. resumeWorkflow rehydrates approval + loopUserInput on next
+    // entry.
+    if (interactive === true) {
+      writeLoopState(ctx.store, ctx.workflowRunId, node.id, {
+        iter,
+        prevOutput,
+        sessionId,
+        lastIterationOutput,
+      });
+      // gate_message is required by schema when interactive: true (loop.ts
+      // superRefine), so the non-null assertion is safe.
+      openInteractiveLoopGate(
+        ctx.workflowRunId,
+        node.id,
+        gate_message as string,
+        iter,
+        sessionId,
+        true, // captureResponse — the user's reply becomes $LOOP_USER_INPUT next iter
+      );
     }
 
     // Yield between iterations so channel pollers + IPC keep ticking (R11).
     await (ctx.yieldBetweenIterations ?? defaultYield)();
   }
 
+  if (interactive === true) {
+    clearLoopState(ctx.store, ctx.workflowRunId, node.id);
+  }
   return {
     state: 'failed',
     output: lastIterationOutput,

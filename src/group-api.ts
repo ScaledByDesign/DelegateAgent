@@ -43,11 +43,103 @@ import {
   reloadWorkflows,
 } from './workflows/loader.js';
 import { WorkflowSchemaError } from './workflows/types.js';
+import { _getDb } from './db.js';
+import { SqliteWorkflowStore } from './workflows/store/sqlite-workflow-store.js';
+import {
+  WorkflowRunsService,
+  WorkflowRunsServiceError,
+} from './workflows/workflow-runs-service.js';
 import type { RegisteredGroup, ScheduledTask } from './types.js';
 
 const LOG_BUFFER_CAPACITY = 500;
 
 const GROUPS_DIR = process.env.GROUPS_DIR || '/opt/delegate-agent/groups';
+
+/** Lazy singleton: built on first /api/workflows/runs/* hit, after the
+ *  database has been initialized. Phase 5 (Archon DAG executor). */
+let _workflowRunsService: WorkflowRunsService | null = null;
+function getWorkflowRunsService(): WorkflowRunsService {
+  if (!_workflowRunsService) {
+    _workflowRunsService = new WorkflowRunsService(
+      new SqliteWorkflowStore(_getDb()),
+    );
+  }
+  return _workflowRunsService;
+}
+/** @internal — for tests that want to override the service (e.g. in-memory store). */
+export function _setWorkflowRunsServiceForTests(
+  svc: WorkflowRunsService | null,
+): void {
+  _workflowRunsService = svc;
+}
+
+// ─── small request helpers (Phase 5 routes) ───
+function readJsonBody(
+  req: http.IncomingMessage,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      try {
+        const text = Buffer.concat(chunks).toString('utf-8');
+        if (!text) {
+          resolve({});
+          return;
+        }
+        const parsed = JSON.parse(text);
+        if (
+          typeof parsed !== 'object' ||
+          parsed === null ||
+          Array.isArray(parsed)
+        ) {
+          reject(new Error('request body must be a JSON object'));
+          return;
+        }
+        resolve(parsed as Record<string, unknown>);
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function readString(
+  body: Record<string, unknown>,
+  key: string,
+  fallback: string,
+): string {
+  const v = body[key];
+  return typeof v === 'string' ? v : fallback;
+}
+
+function readOptionalString(
+  body: Record<string, unknown>,
+  key: string,
+): string | null {
+  const v = body[key];
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+function handleServiceError(
+  res: http.ServerResponse,
+  err: unknown,
+  context: string,
+): void {
+  if (err instanceof WorkflowRunsServiceError) {
+    res.writeHead(err.status);
+    res.end(JSON.stringify({ error: err.message }));
+    return;
+  }
+  logger.error({ err }, `${context} failed`);
+  res.writeHead(500);
+  res.end(
+    JSON.stringify({
+      error: err instanceof Error ? err.message : String(err),
+    }),
+  );
+}
 
 /** Optional in-memory registerGroup callback — when provided, POST /api/groups
  * updates both SQLite and the live in-memory registeredGroups map so the
@@ -617,6 +709,154 @@ export function startGroupAPI(
         res.end(JSON.stringify({ error: err.message }));
       }
       return;
+    }
+
+    // ─── Workflows: POST /api/workflows/:name/runs (Phase 5 — DAG executor) ───
+    // Start a new workflow run. Body: { userMessage, chatJid?, workspaceId?,
+    // taskId?, taskDelegationId?, userId?, artifactsDir? }. Returns
+    // { workflowRunId, status: pending|running, queued: bool }.
+    //
+    // The handler is matched BEFORE the `/api/workflows/:name` GET handler
+    // (which is the legacy Hephaestus loader response) because the path
+    // matcher requires `/runs` as a path segment after the name.
+    {
+      const runsMatch = req.url?.match(/^\/api\/workflows\/([^/]+)\/runs$/);
+      if (req.method === 'POST' && runsMatch) {
+        const name = decodeURIComponent(runsMatch[1]);
+        try {
+          const body = await readJsonBody(req);
+          const userMessage = readString(body, 'userMessage', '');
+          if (!userMessage) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'userMessage is required' }));
+            return;
+          }
+          const result = getWorkflowRunsService().startRun({
+            workflowName: name,
+            userMessage,
+            chatJid: readOptionalString(body, 'chatJid'),
+            workspaceId: readOptionalString(body, 'workspaceId'),
+            taskId: readOptionalString(body, 'taskId'),
+            taskDelegationId: readOptionalString(body, 'taskDelegationId'),
+            userId: readOptionalString(body, 'userId'),
+            artifactsDir: readOptionalString(body, 'artifactsDir') ?? undefined,
+          });
+          res.writeHead(202);
+          res.end(JSON.stringify(result));
+        } catch (err: any) {
+          handleServiceError(res, err, 'POST /api/workflows/:name/runs');
+        }
+        return;
+      }
+    }
+
+    // ─── Workflows: GET /api/workflows/runs/:id (Phase 5) ───
+    // Returns the current run snapshot: { run, nodes, events }. Internal
+    // `metadata.loop_state` is filtered out.
+    {
+      const getMatch = req.url?.match(/^\/api\/workflows\/runs\/([^/]+)$/);
+      if (req.method === 'GET' && getMatch) {
+        const runId = decodeURIComponent(getMatch[1]);
+        try {
+          const snap = getWorkflowRunsService().getRunSnapshot(runId);
+          if (!snap) {
+            res.writeHead(404);
+            res.end(JSON.stringify({ error: `run ${runId} not found` }));
+            return;
+          }
+          res.writeHead(200);
+          res.end(JSON.stringify(snap));
+        } catch (err: any) {
+          handleServiceError(res, err, 'GET /api/workflows/runs/:id');
+        }
+        return;
+      }
+    }
+
+    // ─── Workflows: POST /api/workflows/runs/:id/resume (Phase 5) ───
+    // Body: { decision: 'approve'|'reject', response?: string, reason?: string }.
+    {
+      const resumeMatch = req.url?.match(
+        /^\/api\/workflows\/runs\/([^/]+)\/resume$/,
+      );
+      if (req.method === 'POST' && resumeMatch) {
+        const runId = decodeURIComponent(resumeMatch[1]);
+        try {
+          const body = await readJsonBody(req);
+          const decision = readString(body, 'decision', '');
+          if (decision === 'approve') {
+            const result = getWorkflowRunsService().resumeRun(runId, {
+              decision: 'approve',
+              response: readOptionalString(body, 'response') ?? undefined,
+            });
+            res.writeHead(202);
+            res.end(JSON.stringify(result));
+          } else if (decision === 'reject') {
+            const reason = readString(body, 'reason', '');
+            if (!reason) {
+              res.writeHead(400);
+              res.end(
+                JSON.stringify({
+                  error: 'reject decision requires non-empty reason',
+                }),
+              );
+              return;
+            }
+            const result = getWorkflowRunsService().resumeRun(runId, {
+              decision: 'reject',
+              reason,
+            });
+            res.writeHead(202);
+            res.end(JSON.stringify(result));
+          } else {
+            res.writeHead(400);
+            res.end(
+              JSON.stringify({
+                error: "decision must be 'approve' or 'reject'",
+              }),
+            );
+          }
+        } catch (err: any) {
+          handleServiceError(res, err, 'POST /api/workflows/runs/:id/resume');
+        }
+        return;
+      }
+    }
+
+    // ─── Workflows: POST /api/workflows/runs/:id/cancel (Phase 5) ───
+    {
+      const cancelMatch = req.url?.match(
+        /^\/api\/workflows\/runs\/([^/]+)\/cancel$/,
+      );
+      if (req.method === 'POST' && cancelMatch) {
+        const runId = decodeURIComponent(cancelMatch[1]);
+        try {
+          const result = getWorkflowRunsService().cancelRun(runId);
+          res.writeHead(202);
+          res.end(JSON.stringify(result));
+        } catch (err: any) {
+          handleServiceError(res, err, 'POST /api/workflows/runs/:id/cancel');
+        }
+        return;
+      }
+    }
+
+    // ─── Workflows: POST /api/workflows/runs/:id/abandon (Phase 5) ───
+    {
+      const abandonMatch = req.url?.match(
+        /^\/api\/workflows\/runs\/([^/]+)\/abandon$/,
+      );
+      if (req.method === 'POST' && abandonMatch) {
+        const runId = decodeURIComponent(abandonMatch[1]);
+        try {
+          const result = getWorkflowRunsService().abandonRun(runId);
+          res.writeHead(202);
+          res.end(JSON.stringify(result));
+        } catch (err: any) {
+          handleServiceError(res, err, 'POST /api/workflows/runs/:id/abandon');
+        }
+        return;
+      }
     }
 
     // ─── Health: GET /api/health ───

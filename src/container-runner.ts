@@ -416,8 +416,8 @@ async function buildContainerArgs(
       // api.anthropic.com directly without going through Bifrost.
       if (keys?.mode === 'oauth' && keys.oauthToken) {
         args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${keys.oauthToken}`);
-        args.push('-e', `DELEGATE_LLM_PROVIDER_ID=${keys.providerId}`);  // in-container hook reads this for cooldown reporting
-        args.push('-e', `DELEGATE_LLM_WORKSPACE_ID=${workspaceId}`);     // for cooldown payload
+        args.push('-e', `DELEGATE_LLM_PROVIDER_ID=${keys.providerId}`); // in-container hook reads this for cooldown reporting
+        args.push('-e', `DELEGATE_LLM_WORKSPACE_ID=${workspaceId}`); // for cooldown payload
         if (keys.openaiKey) {
           args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
         }
@@ -483,7 +483,12 @@ async function buildContainerArgs(
         // Tier 2/3 as before (back-compat with old Delegate deploys).
         recordCredentialAttempt('workspace', 'miss');
       }
-      if (keys && keys.pickedScope !== 'exhausted' && keys.openaiKey && !credentialsResolved) {
+      if (
+        keys &&
+        keys.pickedScope !== 'exhausted' &&
+        keys.openaiKey &&
+        !credentialsResolved
+      ) {
         // OpenAI key alone is not enough to mark resolved, but inject it so
         // the agent's auxiliary openai-calling skills work.
         args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);

@@ -119,7 +119,10 @@ export interface IWorkflowStore {
 
   getRun(id: string): WorkflowRunRow | null;
 
-  updateRunStatus(id: string, patch: UpdateRunStatusInput): WorkflowRunRow | null;
+  updateRunStatus(
+    id: string,
+    patch: UpdateRunStatusInput,
+  ): WorkflowRunRow | null;
 
   listRunsByStatus(status: WorkflowRunStatus, limit?: number): WorkflowRunRow[];
 

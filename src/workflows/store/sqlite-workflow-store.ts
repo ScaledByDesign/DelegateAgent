@@ -19,10 +19,7 @@
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 
-import type {
-  ApprovalContext,
-  WorkflowRunStatus,
-} from '../schemas/index.js';
+import type { ApprovalContext, WorkflowRunStatus } from '../schemas/index.js';
 import type {
   AppendEventInput,
   CreateRunInput,
@@ -106,7 +103,10 @@ export class SqliteWorkflowStore implements IWorkflowStore {
         now,
       });
     const row = this.getRun(input.id);
-    if (!row) throw new Error('unreachable: createRun inserted but getRun returned null');
+    if (!row)
+      throw new Error(
+        'unreachable: createRun inserted but getRun returned null',
+      );
     return row;
   }
 
@@ -117,7 +117,10 @@ export class SqliteWorkflowStore implements IWorkflowStore {
     return raw ? rehydrateRun(raw) : null;
   }
 
-  updateRunStatus(id: string, patch: UpdateRunStatusInput): WorkflowRunRow | null {
+  updateRunStatus(
+    id: string,
+    patch: UpdateRunStatusInput,
+  ): WorkflowRunRow | null {
     const existing = this.getRun(id);
     if (!existing) return null;
 
@@ -128,7 +131,8 @@ export class SqliteWorkflowStore implements IWorkflowStore {
       ...(patch.metadata ?? {}),
     };
     if (patch.approval === null) delete nextMetadata.approval;
-    else if (patch.approval !== undefined) nextMetadata.approval = patch.approval;
+    else if (patch.approval !== undefined)
+      nextMetadata.approval = patch.approval;
 
     const now = Date.now();
     const isTerminal =
@@ -212,7 +216,9 @@ export class SqliteWorkflowStore implements IWorkflowStore {
   setNodeState(input: SetNodeStateInput): WorkflowRunNodeRow {
     const now = Date.now();
     const isTerminal =
-      input.state === 'completed' || input.state === 'failed' || input.state === 'skipped';
+      input.state === 'completed' ||
+      input.state === 'failed' ||
+      input.state === 'skipped';
     this.db
       .prepare(
         `INSERT INTO workflow_run_nodes (

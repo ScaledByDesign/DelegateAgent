@@ -30,22 +30,36 @@ const DELEGATE_AGENT_TOKEN =
 export async function reportLLMCooldown(opts: {
   providerId: string;
   workspaceId: string;
-  reason: 'rate_limit_5h' | 'rate_limit_unknown' | 'usage_limit_exceeded' | 'auth_error';
+  reason:
+    | 'rate_limit_5h'
+    | 'rate_limit_unknown'
+    | 'usage_limit_exceeded'
+    | 'auth_error';
   anthropicErrorCode?: string;
 }): Promise<boolean> {
   if (!DELEGATE_AGENT_TOKEN) {
-    console.warn('[cooldown-client] DELEGATE_AGENT_TOKEN unset — skipping cooldown report');
+    console.warn(
+      '[cooldown-client] DELEGATE_AGENT_TOKEN unset — skipping cooldown report',
+    );
     return false;
   }
   try {
-    const res = await fetch(`${DELEGATE_URL}/api/agent/integrations/llm-keys/cooldown`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
-      body: JSON.stringify(opts),
-      signal: AbortSignal.timeout(5000),
-    });
+    const res = await fetch(
+      `${DELEGATE_URL}/api/agent/integrations/llm-keys/cooldown`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+        },
+        body: JSON.stringify(opts),
+        signal: AbortSignal.timeout(5000),
+      },
+    );
     if (!res.ok) {
-      console.error(`[cooldown-client] non-ok ${res.status} for ${opts.providerId}`);
+      console.error(
+        `[cooldown-client] non-ok ${res.status} for ${opts.providerId}`,
+      );
       return false;
     }
     return true;

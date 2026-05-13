@@ -108,7 +108,11 @@ export async function resolveLLMKeysFromDelegate(
     const isOauthMode = payload.mode === 'oauth';
 
     // Exhausted pool: workspace is in OAuth mode but all tokens cooling down.
-    if (isOauthMode && payload.oauthToken === null && payload.pickedScope === 'exhausted') {
+    if (
+      isOauthMode &&
+      payload.oauthToken === null &&
+      payload.pickedScope === 'exhausted'
+    ) {
       return { mode: 'oauth', oauthToken: null, pickedScope: 'exhausted' };
     }
 
@@ -119,7 +123,8 @@ export async function resolveLLMKeysFromDelegate(
         oauthToken: payload.oauthToken as string,
         providerId: payload.providerId as string,
         openaiKey: payload.openaiKey,
-        pickedScope: payload.pickedScope === 'personal' ? 'personal' : 'workspace',
+        pickedScope:
+          payload.pickedScope === 'personal' ? 'personal' : 'workspace',
       };
     }
 

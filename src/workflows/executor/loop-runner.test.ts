@@ -302,8 +302,8 @@ describe('AC A6 — fresh_context isolation', () => {
   });
 });
 
-describe('AC A6 — interactive: true returns Phase 4 stub', () => {
-  it('interactive loop fails with explicit "Phase 4" pointer', async () => {
+describe('Phase 4 — interactive loop pauses after iteration 1 (A7 covered in interactive-loop.test.ts)', () => {
+  it('interactive loop runs iter 1 then pauses (no failure, run.status=paused)', async () => {
     const workflow = parseWorkflow({
       name: 'loop-int',
       description: 'interactive',
@@ -322,14 +322,14 @@ describe('AC A6 — interactive: true returns Phase 4 stub', () => {
     });
     const { id: runId } = makeRun('loop-int');
 
-    const stub = vi.fn();
-    setProviderInvoker(stub as never);
-    await executeWorkflow(runId, workflow, { store, emitter });
-    const node = store.listNodesForRun(runId)[0];
-    expect(node.state).toBe('failed');
-    expect(node.error).toMatch(/Phase 4/);
-    // No iterations were invoked — failed before any provider call.
-    expect(stub).not.toHaveBeenCalled();
+    const stub = vi.fn(async () => ({ output: 'iter 1 output' }));
+    setProviderInvoker(stub);
+    const result = await executeWorkflow(runId, workflow, { store, emitter });
+    // Iter 1 ran, signal not detected, interactive gate fired → pause.
+    expect(stub).toHaveBeenCalledTimes(1);
+    expect(result.finalStatus).toBe('paused');
+    expect(result.pausedApprovalId).toBe(`wf:${runId}:l:iter1`);
+    expect(store.getRun(runId)?.status).toBe('paused');
   });
 });
 

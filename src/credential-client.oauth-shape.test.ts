@@ -103,7 +103,9 @@ describe('resolveLLMKeysFromDelegate — Phase 5/6 discriminated union', () => {
     // Narrow to api_key branch
     if (out!.mode === 'api_key') {
       expect(out.anthropicKey).toBe('sk-bifrost-vk');
-      expect(out.anthropicBaseUrl).toBe('https://bifrost.example.com/anthropic');
+      expect(out.anthropicBaseUrl).toBe(
+        'https://bifrost.example.com/anthropic',
+      );
       expect(out.pickedScope).toBe('workspace');
     } else {
       throw new Error('Expected api_key branch');

@@ -17,6 +17,17 @@ import { dirname, join } from 'path';
 
 import { logger } from '../../logger.js';
 import type { IWorkflowStore } from '../store/IWorkflowStore.js';
+import {
+  isLifecycleEventType,
+  isMirrorEnabled,
+  mirrorWorkflowRunState,
+  type MirrorPayloadExtra,
+} from '../mirror/workflow-mirror.js';
+import {
+  isStageHandoffEnabled,
+  notifyDelegationTerminal,
+  stageHandoffStatusForEvent,
+} from '../stage-handoff/notify-terminal.js';
 
 export type WorkflowEventType =
   | 'workflow.run_started'
@@ -123,6 +134,65 @@ export function createWorkflowEventEmitter(
       },
       input.type,
     );
+
+    // Sink 4 — Phase 6c mirror POST to Delegate platform. Fire-and-forget.
+    // Only fires on lifecycle events (run_*); per-node events are noisy and
+    // the Prisma mirror only tracks the run row, not events.
+    if (isMirrorEnabled() && isLifecycleEventType(input.type)) {
+      const extra: MirrorPayloadExtra = {};
+      // Surface the channel-renderer fields from event data so the
+      // server's LiveEvent emit doesn't need a separate GET.
+      if (typeof data.message === 'string') extra.message = data.message;
+      if (
+        data.approval_type === 'approval' ||
+        data.approval_type === 'interactive_loop'
+      ) {
+        extra.approvalType = data.approval_type;
+      }
+      if (input.nodeId) extra.nodeId = input.nodeId;
+      if (typeof data.iteration === 'number' || data.iteration === null) {
+        extra.iteration = data.iteration as number | null;
+      }
+      if (Array.isArray(data.failed_nodes)) {
+        extra.failedNodes =
+          (data.failed_nodes as readonly string[]) ?? undefined;
+      }
+      // Never block, never throw.
+      void mirrorWorkflowRunState(input.workflowRunId, { store }, extra).catch(
+        (err) => {
+          logger.warn(
+            {
+              err: err instanceof Error ? err.message : String(err),
+              runId: input.workflowRunId,
+            },
+            'workflow.mirror.unexpected_throw',
+          );
+        },
+      );
+    }
+
+    // Sink 5 — Phase 6d stage-handoff handshake. POSTs `metadata.terminal:true`
+    // to /api/agent/channel/reply when a workflow run reaches completed/failed
+    // AND has a task_delegation_id + delegate:task:<id> chat_jid. The platform's
+    // reply route transitions the TaskDelegation through the state machine,
+    // which fires `task/stage.advance` Inngest event — preserving the
+    // single-writer rule for TaskDelegation.status and TaskStageTransition.
+    if (isStageHandoffEnabled()) {
+      const terminal = stageHandoffStatusForEvent(input.type);
+      if (terminal !== null) {
+        void notifyDelegationTerminal(input.workflowRunId, terminal, {
+          store,
+        }).catch((err) => {
+          logger.warn(
+            {
+              err: err instanceof Error ? err.message : String(err),
+              runId: input.workflowRunId,
+            },
+            'workflow.stage_handoff.unexpected_throw',
+          );
+        });
+      }
+    }
   }
 
   function setArtifactsDir(runId: string, dir: string): void {

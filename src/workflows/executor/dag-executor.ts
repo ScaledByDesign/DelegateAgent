@@ -50,6 +50,12 @@ import {
   substituteWorkflowVariables,
   type WorkflowVariables,
 } from './executor-shared.js';
+import {
+  buildApprovalIdForNode,
+  isWorkflowPaused,
+  openApprovalGate,
+  type ResumeDecision,
+} from './approval-gate.js';
 import { runLoopNode } from './loop-runner.js';
 import { invokeProvider, resolveProvider } from './provider-bridge.js';
 
@@ -68,8 +74,13 @@ export interface ExecutorDeps {
 
 export interface ExecuteWorkflowResult {
   runId: string;
-  finalStatus: 'completed' | 'failed' | 'cancelled';
+  /** Terminal status of the run after this call. `paused` is not terminal —
+   *  resumeWorkflow can pick it up later from the persisted ApprovalContext. */
+  finalStatus: 'completed' | 'failed' | 'cancelled' | 'paused';
   failedNodes: readonly string[];
+  /** When `finalStatus === 'paused'`, the approvalId the user must respond
+   *  to via /api/workflows/runs/:id/resume (or the channel approval gate). */
+  pausedApprovalId?: string;
 }
 
 // ─── public entry ──────────────────────────────────────────────────────────
@@ -109,13 +120,384 @@ export async function executeWorkflow(
     data: { workflow_name: workflow.name, node_count: workflow.nodes.length },
   });
 
-  const layers = buildTopologicalLayers(workflow.nodes);
-  const nodeOutputs = new Map<string, NodeOutput>();
-  const nodeStates = new Map<string, NodeState>();
-  const failedNodes: string[] = [];
-  let runWasCancelled = false;
+  return runLayers({
+    workflowRunId,
+    workflow,
+    deps,
+    variables,
+    // Fresh maps — no pre-existing state on initial execute.
+    nodeOutputs: new Map(),
+    nodeStates: new Map(),
+    failedNodesSeed: [],
+  });
+}
 
-  for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
+/**
+ * Resume a paused run. Loads the persisted ApprovalContext, applies the
+ * caller's decision (approve / reject), rehydrates per-node state from the
+ * store so already-completed nodes don't re-execute, and re-enters the
+ * layer loop.
+ *
+ * **Constraint** (per `delegateagent_interaction_rules.md` Rule 1 +
+ * Architect Q6/Q8): resumeWorkflow NEVER writes to TaskDelegation.status.
+ * All run-level transitions go through `IWorkflowStore.updateRunStatus`.
+ *
+ * **Phase 4 limitation**: `on_reject` retry loop (re-run the approval node's
+ * upstream with `$REJECTION_REASON`) is deferred to a Phase 4.5 follow-up.
+ * For now, `decision: reject` with `on_reject` set still cancels the run;
+ * the `onRejectPrompt` field on the ApprovalContext is persisted but not
+ * acted upon. Approve / reject-without-on_reject paths ARE complete.
+ */
+export async function resumeWorkflow(
+  workflowRunId: string,
+  workflow: WorkflowDefinition,
+  deps: ExecutorDeps,
+  decision: ResumeDecision,
+): Promise<ExecuteWorkflowResult> {
+  const { store, emitter } = deps;
+
+  const run = store.getRun(workflowRunId);
+  if (!run) {
+    throw new Error(`resumeWorkflow: run ${workflowRunId} not found`);
+  }
+  if (run.status !== 'paused') {
+    throw new Error(
+      `resumeWorkflow: run ${workflowRunId} status is '${run.status}', expected 'paused'`,
+    );
+  }
+  const approval = run.metadata.approval as
+    | {
+        nodeId: string;
+        type?: 'approval' | 'interactive_loop';
+        captureResponse?: boolean;
+        onRejectPrompt?: string;
+        onRejectMaxAttempts?: number;
+      }
+    | undefined;
+  if (!approval || typeof approval.nodeId !== 'string') {
+    throw new Error(
+      `resumeWorkflow: run ${workflowRunId} has no ApprovalContext in metadata.approval`,
+    );
+  }
+
+  const variables = buildVariables(run, workflow);
+  if (run.artifacts_dir) emitter.setArtifactsDir(run.id, run.artifacts_dir);
+
+  // Rehydrate per-node state from SQLite. The runOneNode short-circuit at the
+  // top of the function will see these completed/skipped/failed nodes and
+  // skip them; downstream trigger-rule checks read the pre-pause states.
+  const nodeStates = new Map<string, NodeState>();
+  const nodeOutputs = new Map<string, NodeOutput>();
+  const failedNodesSeed: string[] = [];
+  for (const row of store.listNodesForRun(workflowRunId)) {
+    // Skip the paused approval node itself — we'll re-decide its state below.
+    if (row.node_id === approval.nodeId) continue;
+    nodeStates.set(row.node_id, row.state);
+    if (row.state === 'completed' || row.state === 'failed') {
+      const base = { state: row.state, output: row.output ?? '' };
+      const out =
+        row.state === 'failed'
+          ? ({ ...base, error: row.error ?? '' } as NodeOutput)
+          : (base as NodeOutput);
+      nodeOutputs.set(row.node_id, out);
+      if (row.state === 'failed') failedNodesSeed.push(row.node_id);
+    } else if (row.state === 'skipped') {
+      nodeOutputs.set(row.node_id, { state: 'skipped', output: '' });
+    }
+  }
+
+  // Decision dispatch.
+  if (decision.decision === 'reject') {
+    const rejectionReason = decision.reason;
+    const onRejectPrompt = approval.onRejectPrompt;
+    const onRejectMaxAttempts = approval.onRejectMaxAttempts ?? 3;
+    const attemptsMap = (run.metadata.approval_attempts ?? {}) as Record<
+      string,
+      number
+    >;
+    const priorAttempts = attemptsMap[approval.nodeId] ?? 0;
+
+    // Phase 4.5 — on_reject retry loop. When `on_reject.prompt` is configured
+    // and the rejection budget isn't exhausted, the approval node's immediate
+    // upstream prompt-producing predecessor re-runs with `$REJECTION_REASON`
+    // populated, then the gate re-opens. Workflow authors get to ask the LLM
+    // to revise its output before re-submitting for approval.
+    //
+    // Limitations of v1 (defer to v2):
+    //   - Approval node MUST have exactly one upstream (depends_on[0]). If
+    //     there are zero or multiple upstreams, the path falls back to the
+    //     terminal-cancelled behavior (no node to re-run).
+    //   - The upstream re-runs in full — there is no surgical "regenerate
+    //     this field only" mode. Workflow authors design upstream prompts
+    //     that read `$REJECTION_REASON` to revise their output.
+    //   - The `onRejectPrompt` template (Archon convention) is NOT directly
+    //     substituted as the next approval message — `$REJECTION_REASON`
+    //     reaches the upstream via WorkflowVariables, which is the meaningful
+    //     surface. The approval gate re-opens with the SAME message as the
+    //     original approval node.
+    const upstreamId = (() => {
+      const node = workflow.nodes.find((n) => n.id === approval.nodeId);
+      if (!node || !node.depends_on || node.depends_on.length !== 1) {
+        return null;
+      }
+      const dep = node.depends_on[0];
+      const depNode = workflow.nodes.find((n) => n.id === dep);
+      // Only re-run nodes whose output the upstream could meaningfully
+      // regenerate — prompt / command / loop. Bash / script nodes have no
+      // notion of "revise based on rejection reason".
+      if (!depNode) return null;
+      if ('prompt' in depNode || 'command' in depNode || 'loop' in depNode) {
+        return dep;
+      }
+      return null;
+    })();
+
+    if (
+      onRejectPrompt &&
+      upstreamId !== null &&
+      priorAttempts < onRejectMaxAttempts
+    ) {
+      const nextAttempts = priorAttempts + 1;
+      const nextAttemptsMap = {
+        ...attemptsMap,
+        [approval.nodeId]: nextAttempts,
+      };
+
+      // Re-runable: REMOVE approval + upstream from rehydrated maps so the
+      // executor's runOneNode short-circuit doesn't skip them. The SQLite
+      // store rows will be overwritten by ON CONFLICT DO UPDATE on next
+      // setNodeState invocation.
+      nodeStates.delete(approval.nodeId);
+      nodeOutputs.delete(approval.nodeId);
+      nodeStates.delete(upstreamId);
+      nodeOutputs.delete(upstreamId);
+
+      store.updateRunStatus(workflowRunId, {
+        status: 'running',
+        approval: null,
+        metadata: {
+          rejection_reason: rejectionReason,
+          approval_attempts: nextAttemptsMap,
+        },
+      });
+      emitter.emit({
+        workflowRunId,
+        nodeId: approval.nodeId,
+        type: 'dag.approval_rejected',
+        data: {
+          reason: rejectionReason,
+          attempt: nextAttempts,
+          max_attempts: onRejectMaxAttempts,
+          rerun_upstream: upstreamId,
+        },
+      });
+      emitter.emit({
+        workflowRunId,
+        type: 'workflow.run_resumed',
+        data: {
+          approval_node_id: approval.nodeId,
+          approval_type: 'approval',
+          on_reject_attempt: nextAttempts,
+        },
+      });
+
+      // Rebuild variables so REJECTION_REASON picks up the new metadata.
+      const variablesWithReason = buildVariables(
+        store.getRun(workflowRunId)!,
+        workflow,
+      );
+      return runLayers({
+        workflowRunId,
+        workflow,
+        deps,
+        variables: variablesWithReason,
+        nodeOutputs,
+        nodeStates,
+        failedNodesSeed,
+      });
+    }
+
+    // Exhausted retry budget OR no on_reject configured → terminal cancel.
+    store.setNodeState({
+      run_id: workflowRunId,
+      node_id: approval.nodeId,
+      state: 'failed',
+      error: `approval rejected: ${rejectionReason}`,
+    });
+    nodeStates.set(approval.nodeId, 'failed');
+    nodeOutputs.set(approval.nodeId, {
+      state: 'failed',
+      output: '',
+      error: `approval rejected: ${rejectionReason}`,
+    });
+    store.updateRunStatus(workflowRunId, {
+      status: 'cancelled',
+      approval: null,
+      metadata: {
+        rejection_reason: rejectionReason,
+        ...(onRejectPrompt && priorAttempts >= onRejectMaxAttempts
+          ? { on_reject_exhausted: true, on_reject_attempts: priorAttempts }
+          : {}),
+      },
+    });
+    emitter.emit({
+      workflowRunId,
+      nodeId: approval.nodeId,
+      type: 'dag.approval_rejected',
+      data: {
+        reason: rejectionReason,
+        attempt: priorAttempts,
+        max_attempts: onRejectMaxAttempts,
+        exhausted: onRejectPrompt
+          ? priorAttempts >= onRejectMaxAttempts
+          : false,
+      },
+    });
+    emitter.emit({
+      workflowRunId,
+      type: 'workflow.run_cancelled',
+      data: { reason: `approval rejected: ${rejectionReason}` },
+    });
+    emitter.closeRun(workflowRunId);
+    return {
+      runId: workflowRunId,
+      finalStatus: 'cancelled',
+      failedNodes: [...failedNodesSeed, approval.nodeId],
+    };
+  }
+
+  // Approve path. Two flavors based on ApprovalContext.type:
+  //
+  //   - 'approval' (single-shot approval node): mark THE APPROVAL NODE
+  //     completed, optionally capturing the response as its output, clear
+  //     the approval context, transition run to running, re-enter layer loop.
+  //
+  //   - 'interactive_loop' (loop iteration pause): DO NOT mark a node
+  //     completed — the loop node itself hasn't terminated yet. Instead,
+  //     update the persisted loop_state with the user's response so the next
+  //     iteration sees it as `$LOOP_USER_INPUT`. The loop runner reads
+  //     loop_state on re-entry and resumes from iter N+1.
+  if (approval.type === 'interactive_loop') {
+    // Merge response into the existing loop_state for this nodeId.
+    const allState = (run.metadata.loop_state ?? {}) as Record<
+      string,
+      { loopUserInput?: string } & Record<string, unknown>
+    >;
+    const existing = allState[approval.nodeId] ?? {};
+    allState[approval.nodeId] = {
+      ...existing,
+      loopUserInput: decision.response ?? '',
+    };
+    // Loop node MUST NOT be in nodeStates as 'completed' — let runOneNode
+    // re-enter it. Remove any stale entry that might have been rehydrated.
+    nodeStates.delete(approval.nodeId);
+    nodeOutputs.delete(approval.nodeId);
+    store.updateRunStatus(workflowRunId, {
+      status: 'running',
+      approval: null,
+      metadata: { loop_state: allState },
+    });
+    emitter.emit({
+      workflowRunId,
+      nodeId: approval.nodeId,
+      type: 'dag.approval_approved',
+      data: {
+        captured_response_bytes: (decision.response ?? '').length,
+        loop_iteration_approval: true,
+      },
+    });
+    emitter.emit({
+      workflowRunId,
+      type: 'workflow.run_resumed',
+      data: {
+        approval_node_id: approval.nodeId,
+        approval_type: 'interactive_loop',
+      },
+    });
+    return runLayers({
+      workflowRunId,
+      workflow,
+      deps,
+      variables,
+      nodeOutputs,
+      nodeStates,
+      failedNodesSeed,
+    });
+  }
+
+  // Single-shot approval path.
+  const approvedOutput =
+    approval.captureResponse === true ? (decision.response ?? '') : '';
+  store.setNodeState({
+    run_id: workflowRunId,
+    node_id: approval.nodeId,
+    state: 'completed',
+    output: approvedOutput,
+  });
+  nodeStates.set(approval.nodeId, 'completed');
+  nodeOutputs.set(approval.nodeId, {
+    state: 'completed',
+    output: approvedOutput,
+  });
+  store.updateRunStatus(workflowRunId, {
+    status: 'running',
+    approval: null,
+  });
+  emitter.emit({
+    workflowRunId,
+    nodeId: approval.nodeId,
+    type: 'dag.approval_approved',
+    data: { captured_response_bytes: approvedOutput.length },
+  });
+  emitter.emit({
+    workflowRunId,
+    type: 'workflow.run_resumed',
+    data: {
+      approval_node_id: approval.nodeId,
+      approval_type: approval.type ?? 'approval',
+    },
+  });
+
+  return runLayers({
+    workflowRunId,
+    workflow,
+    deps,
+    variables,
+    nodeOutputs,
+    nodeStates,
+    failedNodesSeed,
+  });
+}
+
+interface RunLayersInput {
+  workflowRunId: string;
+  workflow: WorkflowDefinition;
+  deps: ExecutorDeps;
+  variables: WorkflowVariables;
+  nodeOutputs: Map<string, NodeOutput>;
+  nodeStates: Map<string, NodeState>;
+  failedNodesSeed: readonly string[];
+}
+
+async function runLayers(
+  input: RunLayersInput,
+): Promise<ExecuteWorkflowResult> {
+  const { workflowRunId, workflow, deps, variables, nodeOutputs, nodeStates } =
+    input;
+  const { store, emitter } = deps;
+
+  const layers = buildTopologicalLayers(workflow.nodes);
+  const failedNodes: string[] = [...input.failedNodesSeed];
+  let runWasCancelled = false;
+  let pausedSignal: {
+    approvalId: string;
+    message: string;
+    approvalType: 'approval' | 'interactive_loop';
+    nodeId: string;
+    iteration?: number;
+  } | null = null;
+
+  outer: for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
     if (deps.signal?.aborted) {
       runWasCancelled = true;
       break;
@@ -148,7 +530,31 @@ export async function executeWorkflow(
       const node = layer[i];
       const result = settled[i];
       if (result.status === 'rejected') {
-        // Promise itself rejected — internal bug; treat as a node-level FATAL.
+        // Special case: WorkflowPaused is a control-flow signal, not a real
+        // failure. Capture it + break out of the layer loop so we transition
+        // the run to `paused` cleanly. Pause precedence is HIGHEST — if any
+        // node in the layer paused, we honor the pause even when sibling
+        // nodes also failed (those failures will re-surface on resume).
+        if (isWorkflowPaused(result.reason)) {
+          pausedSignal = {
+            approvalId: result.reason.approvalId,
+            // Surface the gate message + context type on the event payload
+            // so channel renderers don't need a separate GET to render the
+            // approval prompt (architect note, Phase 5).
+            message: result.reason.approvalContext.message,
+            approvalType: result.reason.approvalContext.type ?? 'approval',
+            nodeId: result.reason.approvalContext.nodeId,
+            iteration: result.reason.approvalContext.iteration,
+          };
+          // Persist the approval context now so a process crash before the
+          // outer transition still surfaces a recoverable paused state.
+          store.updateRunStatus(workflowRunId, {
+            status: 'paused',
+            approval: result.reason.approvalContext,
+          });
+          break outer;
+        }
+        // Real Promise rejection — internal bug; treat as a node-level FATAL.
         const msg =
           result.reason instanceof Error
             ? result.reason.message
@@ -187,7 +593,33 @@ export async function executeWorkflow(
     await (deps.yieldBetweenLayers ?? defaultYield)();
   }
 
-  // Run terminal transition.
+  // Run terminal (or paused) transition.
+  if (pausedSignal) {
+    // The store.updateRunStatus({status: 'paused', approval}) call already
+    // ran inside the layer loop (so a crash mid-emit leaves the row
+    // recoverable). Here we just emit the pause event + close the run for
+    // the JSONL sink. The run is NOT terminal — resumeWorkflow can pick it
+    // up later.
+    emitter.emit({
+      workflowRunId,
+      type: 'workflow.run_paused',
+      data: {
+        approval_id: pausedSignal.approvalId,
+        message: pausedSignal.message,
+        approval_type: pausedSignal.approvalType,
+        node_id: pausedSignal.nodeId,
+        iteration: pausedSignal.iteration ?? null,
+      },
+    });
+    emitter.closeRun(workflowRunId);
+    return {
+      runId: workflowRunId,
+      finalStatus: 'paused',
+      failedNodes,
+      pausedApprovalId: pausedSignal.approvalId,
+    };
+  }
+
   let finalStatus: 'completed' | 'failed' | 'cancelled';
   if (runWasCancelled) {
     finalStatus = 'cancelled';
@@ -324,6 +756,20 @@ async function runOneNode(
   node: DagNode,
   ctx: RunOneNodeContext,
 ): Promise<void> {
+  // Resume short-circuit: if this node already has a terminal state in the
+  // rehydrated `nodeStates` map, do not re-execute. Phase 4 resume rehydrates
+  // completed/skipped/failed nodes from SQLite before re-entering the layer
+  // loop; we honor those states so downstream trigger-rule checks see the
+  // pre-pause result instead of running the node again.
+  const existing = ctx.nodeStates.get(node.id);
+  if (
+    existing === 'completed' ||
+    existing === 'skipped' ||
+    existing === 'failed'
+  ) {
+    return;
+  }
+
   // Trigger rule check first — earlier upstream skips short-circuit cascade.
   const decision = checkTriggerRule(node, ctx.nodeStates);
   if (decision === 'skip') {
@@ -367,6 +813,9 @@ async function runOneNode(
   try {
     output = await executeNodeKind(node, ctx);
   } catch (err) {
+    // WorkflowPaused is a control-flow signal — propagate so the outer
+    // settled.rejected branch in executeWorkflow can recognize + handle.
+    if (isWorkflowPaused(err)) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     output = { state: 'failed', output: '', error: msg };
   }
@@ -460,7 +909,7 @@ async function executeNodeKind(
     return { state: 'failed', output: '', error: `cancel: ${node.cancel}` };
   }
 
-  // Loop nodes — Phase 3.
+  // Loop nodes — Phase 3 (signal/until_bash) + Phase 4 (interactive).
   if (isLoopNode(node)) {
     return runLoopNode(node, {
       workflowRunId: ctx.workflowRunId,
@@ -469,15 +918,16 @@ async function executeNodeKind(
       nodeOutputs: ctx.nodeOutputs,
       emitter: ctx.emitter,
       signal: ctx.signal,
+      // Phase 4: needed for interactive loops to persist/restore iteration
+      // state across pause/resume. Non-interactive loops ignore this.
+      store: ctx.store,
     });
   }
   if (isApprovalNode(node)) {
-    return {
-      state: 'failed',
-      output: '',
-      error:
-        'approval nodes execute in Phase 4 — not yet implemented in v1 executor',
-    };
+    // Open the gate. Always throws WorkflowPaused, which propagates up
+    // through runOneNode → settled.rejected branch in executeWorkflow,
+    // where it's recognized and the run transitions to `paused`.
+    openApprovalGate(ctx.workflowRunId, node);
   }
 
   // Prompt / command — Phase 2.5 wires the NanoClaw provider invoker.
@@ -672,6 +1122,14 @@ function buildVariables(
   run: WorkflowRunRow,
   _workflow: WorkflowDefinition,
 ): WorkflowVariables {
+  // Phase 4.5: REJECTION_REASON is sourced from metadata.rejection_reason so a
+  // reject+on_reject re-entry (resumeWorkflow) can populate it before the
+  // upstream prompt node re-runs. Cleared back to '' on next run terminal
+  // transition or on approve resume.
+  const rejectionReason =
+    typeof run.metadata.rejection_reason === 'string'
+      ? (run.metadata.rejection_reason as string)
+      : '';
   return {
     WORKFLOW_ID: run.id,
     USER_MESSAGE: run.user_message,
@@ -680,7 +1138,7 @@ function buildVariables(
     BASE_BRANCH: '',
     DOCS_DIR: 'docs',
     LOOP_USER_INPUT: '',
-    REJECTION_REASON: '',
+    REJECTION_REASON: rejectionReason,
     LOOP_PREV_OUTPUT: '',
   };
 }
