@@ -13,6 +13,46 @@ const DELEGATE_AGENT_TOKEN =
   getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
 
 /**
+ * Discriminated union representing the resolved LLM credential outcome.
+ *
+ *   - `{ mode: 'oauth', oauthToken: string, providerId: string, pickedScope: 'personal'|'workspace' }`
+ *     → inject CLAUDE_CODE_OAUTH_TOKEN. Do NOT inject ANTHROPIC_API_KEY or
+ *     ANTHROPIC_BASE_URL — OAuth speaks api.anthropic.com directly.
+ *     `providerId` is the LLMProvider row id for cooldown reporting back to
+ *     Delegate when the container observes a 429.
+ *
+ *   - `{ mode: 'api_key', anthropicKey: string, pickedScope: 'personal'|'workspace'|'system' }`
+ *     → inject ANTHROPIC_API_KEY + optionally ANTHROPIC_BASE_URL / system keys.
+ *     `providerId` may be present (pool-enabled rows) but is optional.
+ *
+ *   - `{ mode: 'oauth', oauthToken: null, pickedScope: 'exhausted' }`
+ *     → workspace is in OAuth mode but ALL tokens are cooling down. The caller
+ *     MUST hard-fail (oauthHardFail path) — do not fall through to Bifrost.
+ *
+ * Back-compat: if upstream Delegate omits `mode` (pre-Phase-3 deploys), the
+ * field is normalised to `'api_key'` so existing callers keep working unchanged.
+ */
+export type ResolvedLLMKeys =
+  | {
+      mode: 'oauth';
+      oauthToken: string;
+      providerId: string;
+      openaiKey?: string;
+      pickedScope: 'personal' | 'workspace';
+    }
+  | {
+      mode: 'api_key';
+      anthropicKey: string;
+      anthropicBaseUrl?: string | null;
+      providerId?: string;
+      openaiKey?: string;
+      systemAnthropicKey?: string;
+      systemAnthropicBaseUrl?: string | null;
+      pickedScope: 'personal' | 'workspace' | 'system';
+    }
+  | { mode: 'oauth'; oauthToken: null; pickedScope: 'exhausted' };
+
+/**
  * Resolve LLM API keys for a workspace (Anthropic, OpenAI, etc.).
  *
  * Used to inject API keys (or OAuth tokens) into agent containers so Claude
@@ -24,6 +64,12 @@ const DELEGATE_AGENT_TOKEN =
  *   - `mode: 'oauth'`    → use `oauthToken` as CLAUDE_CODE_OAUTH_TOKEN. The
  *     caller MUST NOT inject ANTHROPIC_API_KEY or ANTHROPIC_BASE_URL in this
  *     mode — OAuth speaks api.anthropic.com directly.
+ *
+ * Phase 6 (oauth-key-pool plan): `providerId` is included in successful oauth
+ * resolutions so the in-container 429 hook can call
+ * `reportLLMCooldown({ providerId, workspaceId, reason })` back to Delegate.
+ * When ALL workspace OAuth tokens are cooling, `pickedScope='exhausted'` and
+ * `oauthToken=null` is returned — the caller MUST hard-fail.
  *
  * Picker scope: Delegate's `pickAnthropicCredential` runs a 4-tier chain
  * (personal-user override → workspace default → system Bifrost → none). The
@@ -41,16 +87,7 @@ const DELEGATE_AGENT_TOKEN =
 export async function resolveLLMKeysFromDelegate(
   workspaceId?: string | null,
   userId?: string | null,
-): Promise<{
-  mode: 'api_key' | 'oauth';
-  oauthToken?: string;
-  anthropicKey?: string;
-  openaiKey?: string;
-  anthropicBaseUrl?: string;
-  systemAnthropicKey?: string;
-  systemAnthropicBaseUrl?: string;
-  pickedScope?: 'personal' | 'workspace' | 'system';
-} | null> {
+): Promise<ResolvedLLMKeys | null> {
   if (!DELEGATE_AGENT_TOKEN) return null;
   try {
     const params = new URLSearchParams();
@@ -67,17 +104,35 @@ export async function resolveLLMKeysFromDelegate(
     const data: any = await res.json();
     const payload = data?.data;
     if (!payload) return null;
-    // Default `mode` to 'api_key' for back-compat with old Delegate deploys
-    // that don't emit the field. New deploys always set it explicitly.
+
+    const isOauthMode = payload.mode === 'oauth';
+
+    // Exhausted pool: workspace is in OAuth mode but all tokens cooling down.
+    if (isOauthMode && payload.oauthToken === null && payload.pickedScope === 'exhausted') {
+      return { mode: 'oauth', oauthToken: null, pickedScope: 'exhausted' };
+    }
+
+    // OAuth success: token present.
+    if (isOauthMode && payload.oauthToken) {
+      return {
+        mode: 'oauth',
+        oauthToken: payload.oauthToken as string,
+        providerId: payload.providerId as string,
+        openaiKey: payload.openaiKey,
+        pickedScope: payload.pickedScope === 'personal' ? 'personal' : 'workspace',
+      };
+    }
+
+    // api_key branch (or back-compat with old Delegate that omits `mode`).
     return {
-      mode: payload.mode === 'oauth' ? 'oauth' : 'api_key',
-      oauthToken: payload.oauthToken,
+      mode: 'api_key',
       anthropicKey: payload.anthropicKey,
-      openaiKey: payload.openaiKey,
       anthropicBaseUrl: payload.anthropicBaseUrl,
+      providerId: payload.providerId,
+      openaiKey: payload.openaiKey,
       systemAnthropicKey: payload.systemAnthropicKey,
       systemAnthropicBaseUrl: payload.systemAnthropicBaseUrl,
-      pickedScope: payload.pickedScope,
+      pickedScope: payload.pickedScope ?? 'system',
     };
   } catch (e) {
     console.error(

@@ -1,9 +1,10 @@
 /**
  * Tests for credential-client return shape after Phase 5
- * (credential-mode-toggle plan §4 Step 5).
+ * (credential-mode-toggle plan §4 Step 5) and Phase 6 (oauth-key-pool plan §6b).
  *
  * Covers:
- *  - mode='oauth' + oauthToken propagated through
+ *  - mode='oauth' + oauthToken + providerId propagated through (Phase 5/6)
+ *  - mode='oauth' + oauthToken=null + pickedScope='exhausted' (Phase 6 pool exhaustion)
  *  - mode='api_key' + anthropicKey propagated through
  *  - Missing `mode` field (old Delegate deploys) defaults to 'api_key'
  *  - Non-ok HTTP response returns null
@@ -46,12 +47,13 @@ async function importFresh() {
   return await import('./credential-client.js');
 }
 
-describe('resolveLLMKeysFromDelegate — Phase 5 mode field', () => {
-  it("returns mode='oauth' + oauthToken when Delegate emits oauth payload", async () => {
+describe('resolveLLMKeysFromDelegate — Phase 5/6 discriminated union', () => {
+  it("returns mode='oauth' + oauthToken + providerId when Delegate emits oauth payload", async () => {
     mockFetch({
       data: {
         mode: 'oauth',
         oauthToken: 'sk-ant-oat01-EXAMPLE',
+        providerId: 'llm_provider_abc123',
         pickedScope: 'personal',
       },
     });
@@ -59,9 +61,30 @@ describe('resolveLLMKeysFromDelegate — Phase 5 mode field', () => {
     const out = await resolveLLMKeysFromDelegate('ws_1', 'u_1');
     expect(out).not.toBeNull();
     expect(out!.mode).toBe('oauth');
-    expect(out!.oauthToken).toBe('sk-ant-oat01-EXAMPLE');
-    expect(out!.pickedScope).toBe('personal');
-    expect(out!.anthropicKey).toBeUndefined();
+    // Narrow to oauth+token branch
+    if (out!.mode === 'oauth' && out!.oauthToken) {
+      expect(out.oauthToken).toBe('sk-ant-oat01-EXAMPLE');
+      expect(out.providerId).toBe('llm_provider_abc123');
+      expect(out.pickedScope).toBe('personal');
+    } else {
+      throw new Error('Expected oauth+token branch');
+    }
+  });
+
+  it("returns exhausted branch when oauthToken=null and pickedScope='exhausted'", async () => {
+    mockFetch({
+      data: {
+        mode: 'oauth',
+        oauthToken: null,
+        pickedScope: 'exhausted',
+      },
+    });
+    const { resolveLLMKeysFromDelegate } = await importFresh();
+    const out = await resolveLLMKeysFromDelegate('ws_1', 'u_1');
+    expect(out).not.toBeNull();
+    expect(out!.mode).toBe('oauth');
+    expect(out!.oauthToken).toBeNull();
+    expect(out!.pickedScope).toBe('exhausted');
   });
 
   it("returns mode='api_key' + anthropicKey when Delegate emits api_key payload", async () => {
@@ -77,9 +100,14 @@ describe('resolveLLMKeysFromDelegate — Phase 5 mode field', () => {
     const out = await resolveLLMKeysFromDelegate('ws_1', 'u_1');
     expect(out).not.toBeNull();
     expect(out!.mode).toBe('api_key');
-    expect(out!.anthropicKey).toBe('sk-bifrost-vk');
-    expect(out!.anthropicBaseUrl).toBe('https://bifrost.example.com/anthropic');
-    expect(out!.oauthToken).toBeUndefined();
+    // Narrow to api_key branch
+    if (out!.mode === 'api_key') {
+      expect(out.anthropicKey).toBe('sk-bifrost-vk');
+      expect(out.anthropicBaseUrl).toBe('https://bifrost.example.com/anthropic');
+      expect(out.pickedScope).toBe('workspace');
+    } else {
+      throw new Error('Expected api_key branch');
+    }
   });
 
   it("defaults missing mode to 'api_key' (back-compat with old Delegate)", async () => {
@@ -90,13 +118,15 @@ describe('resolveLLMKeysFromDelegate — Phase 5 mode field', () => {
     const out = await resolveLLMKeysFromDelegate('ws_1');
     expect(out).not.toBeNull();
     expect(out!.mode).toBe('api_key');
-    expect(out!.anthropicKey).toBe('sk-legacy');
+    if (out!.mode === 'api_key') {
+      expect(out.anthropicKey).toBe('sk-legacy');
+    }
   });
 
   it('passes both workspaceId and userId as query params', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: { mode: 'api_key' } }),
+      json: async () => ({ data: { mode: 'api_key', anthropicKey: 'sk-x' } }),
     } as Response);
     globalThis.fetch = fetchSpy;
     const { resolveLLMKeysFromDelegate } = await importFresh();
