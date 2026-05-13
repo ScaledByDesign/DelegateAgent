@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
+import { createWorkflowSchema, sweepOrphanedRunningRuns } from './db-workflows.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import {
@@ -170,9 +171,7 @@ function createSchema(database: Database.Database): void {
   // container runner can resolve per-user OAuth credentials. Optional —
   // non-Delegate channels never set it.
   try {
-    database.exec(
-      `ALTER TABLE messages ADD COLUMN requesting_user_id TEXT`,
-    );
+    database.exec(`ALTER TABLE messages ADD COLUMN requesting_user_id TEXT`);
   } catch {
     /* column already exists */
   }
@@ -198,6 +197,16 @@ export function initDatabase(): void {
 
   db = new Database(dbPath);
   createSchema(db);
+  // Phase 1.5 — DAG workflow engine tables. Idempotent CREATE TABLE IF NOT EXISTS
+  // alongside the legacy schema so existing deployments migrate transparently.
+  createWorkflowSchema(db);
+  // Restart sweep — any `running` workflow runs lost their in-memory
+  // AbortController across the process boundary; mark them failed so the UI
+  // doesn't show stuck rows. `paused` rows are intentionally left alone.
+  const orphaned = sweepOrphanedRunningRuns(db);
+  if (orphaned > 0) {
+    logger.warn({ count: orphaned }, 'workflow_runs orphaned_by_restart sweep');
+  }
 
   // Migrate from JSON files if they exist
   migrateJsonState();
@@ -207,6 +216,13 @@ export function initDatabase(): void {
 export function _initTestDatabase(): void {
   db = new Database(':memory:');
   createSchema(db);
+  createWorkflowSchema(db);
+}
+
+/** @internal — accessor for the module-level db handle. Used by stores that
+ *  need to bind to the existing connection (e.g. SqliteWorkflowStore). */
+export function _getDb(): Database.Database {
+  return db;
 }
 
 /** @internal - for tests only. */

@@ -420,7 +420,8 @@ async function buildContainerArgs(
           args.push('-e', `OPENAI_API_KEY=${keys.openaiKey}`);
         }
         credentialsResolved = true;
-        resolvedTier = keys.pickedScope === 'personal' ? 'workspace' : 'workspace';
+        resolvedTier =
+          keys.pickedScope === 'personal' ? 'workspace' : 'workspace';
         // Note: `resolvedTier` enum (workspace|onecli|static|none) doesn't have
         // a 'user' value. The personal vs workspace distinction is captured by
         // `pickedScope` upstream and surfaced through logs / Sentry breadcrumbs.

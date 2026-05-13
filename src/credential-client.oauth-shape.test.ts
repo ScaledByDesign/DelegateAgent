@@ -78,9 +78,7 @@ describe('resolveLLMKeysFromDelegate — Phase 5 mode field', () => {
     expect(out).not.toBeNull();
     expect(out!.mode).toBe('api_key');
     expect(out!.anthropicKey).toBe('sk-bifrost-vk');
-    expect(out!.anthropicBaseUrl).toBe(
-      'https://bifrost.example.com/anthropic',
-    );
+    expect(out!.anthropicBaseUrl).toBe('https://bifrost.example.com/anthropic');
     expect(out!.oauthToken).toBeUndefined();
   });
 

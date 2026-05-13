@@ -143,9 +143,8 @@ import { recordCredentialAttempt } from './metrics.js';
 import type { RegisteredGroup } from './types.js';
 
 vi.mock('./metrics.js', async () => {
-  const actual = await vi.importActual<typeof import('./metrics.js')>(
-    './metrics.js',
-  );
+  const actual =
+    await vi.importActual<typeof import('./metrics.js')>('./metrics.js');
   return {
     ...actual,
     recordCredentialAttempt: vi.fn(),

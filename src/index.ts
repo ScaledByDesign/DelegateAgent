@@ -318,57 +318,63 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
-    // Streaming output callback — called for each agent result
-    if (result.result) {
-      const raw =
-        typeof result.result === 'string'
-          ? result.result
-          : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
-      if (text) {
-        await channel.sendMessage(chatJid, text);
-        outputSentToUser = true;
-      }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
-      resetIdleTimer();
-    }
-
-    if (result.status === 'success') {
-      queue.notifyIdle(chatJid);
-      // Terminal-success handshake — tell Delegate the agent reached a clean
-      // stopping point so the delegation state machine can roll forward out
-      // of `running` even for research/audit/Q&A tasks where no deliverable
-      // branch was pushed. Delegate-channel only; other channels ignore.
-      const notifyTerminal = (
-        channel as {
-          notifyTerminal?: (
-            jid: string,
-            status: 'success' | 'error',
-          ) => Promise<void>;
+  const output = await runAgent(
+    group,
+    prompt,
+    chatJid,
+    async (result) => {
+      // Streaming output callback — called for each agent result
+      if (result.result) {
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
+        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
+        if (text) {
+          await channel.sendMessage(chatJid, text);
+          outputSentToUser = true;
         }
-      ).notifyTerminal;
-      if (typeof notifyTerminal === 'function') {
-        await notifyTerminal
-          .call(channel, chatJid, 'success')
-          .catch((err: unknown) => {
-            logger.warn(
-              {
-                chatJid,
-                err: err instanceof Error ? err.message : String(err),
-              },
-              'notifyTerminal failed (non-fatal)',
-            );
-          });
+        // Only reset idle timer on actual results, not session-update markers (result: null)
+        resetIdleTimer();
       }
-    }
 
-    if (result.status === 'error') {
-      hadError = true;
-    }
-  }, requestingUserId);
+      if (result.status === 'success') {
+        queue.notifyIdle(chatJid);
+        // Terminal-success handshake — tell Delegate the agent reached a clean
+        // stopping point so the delegation state machine can roll forward out
+        // of `running` even for research/audit/Q&A tasks where no deliverable
+        // branch was pushed. Delegate-channel only; other channels ignore.
+        const notifyTerminal = (
+          channel as {
+            notifyTerminal?: (
+              jid: string,
+              status: 'success' | 'error',
+            ) => Promise<void>;
+          }
+        ).notifyTerminal;
+        if (typeof notifyTerminal === 'function') {
+          await notifyTerminal
+            .call(channel, chatJid, 'success')
+            .catch((err: unknown) => {
+              logger.warn(
+                {
+                  chatJid,
+                  err: err instanceof Error ? err.message : String(err),
+                },
+                'notifyTerminal failed (non-fatal)',
+              );
+            });
+        }
+      }
+
+      if (result.status === 'error') {
+        hadError = true;
+      }
+    },
+    requestingUserId,
+  );
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
@@ -530,7 +536,10 @@ async function runAgent(
             .call(channel, chatJid, 'oauth_token_missing', output.error)
             .catch((err: unknown) => {
               logger.warn(
-                { chatJid, err: err instanceof Error ? err.message : String(err) },
+                {
+                  chatJid,
+                  err: err instanceof Error ? err.message : String(err),
+                },
                 'notifyFailure failed (non-fatal)',
               );
             });
