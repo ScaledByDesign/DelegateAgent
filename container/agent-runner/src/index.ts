@@ -695,8 +695,18 @@ async function runQuery(
         log(
           `Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`,
         );
+        // SDK result subtypes: 'success' (happy path) OR one of
+        //   'error_during_execution' | 'error_max_turns' |
+        //   'error_max_budget_usd' | 'error_max_structured_output_retries'
+        // Upstream API errors (Bifrost VK denied, Anthropic 429,
+        // auth failures) all surface as 'error_during_execution'.
+        // Map every non-success subtype to status:'error' so the
+        // Delegate state machine does NOT transition to completed.
+        const isErrorSubtype =
+          typeof message.subtype === 'string' &&
+          message.subtype !== 'success';
         writeOutput({
-          status: 'success',
+          status: isErrorSubtype ? 'error' : 'success',
           result: textResult || null,
           newSessionId,
         });
