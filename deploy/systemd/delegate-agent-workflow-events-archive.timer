@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily archive of old workflow_events rows
+Requires=delegate-agent-workflow-events-archive.service
+
+[Timer]
+# Fire daily at 03:00 UTC.
+OnCalendar=*-*-* 03:00:00 UTC
+AccuracySec=10min
+Persistent=true
+Unit=delegate-agent-workflow-events-archive.service
+
+[Install]
+WantedBy=timers.target

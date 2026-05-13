@@ -16,3 +16,7 @@
 - [ ] SKILL.md contains instructions, not inline code (code goes in separate files)
 - [ ] SKILL.md is under 500 lines
 - [ ] I tested this skill on a fresh clone
+
+## For Workflow YAML Changes
+
+- [ ] If you changed any YAML under `workflows/archon-*/`, confirm `npm run prebuild` parses without throwing (regenerates the gitignored `src/workflows/bundled-defaults.generated.ts`).

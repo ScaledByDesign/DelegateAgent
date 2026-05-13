@@ -96,10 +96,37 @@ function doLoad(rootDir: string): Map<string, Workflow> {
     if (!ent.isDirectory()) continue;
     const name = ent.name;
     const dir = path.join(rootDir, name);
+    // Skip directories that are unambiguously DAG-only workflows (Phase 1.7):
+    // their workflow.yaml has top-level `nodes:` and NO `phase_order:`. The
+    // legacy loader only handles Hephaestus split layouts; the new DAG
+    // dispatcher (./dag-loader.ts) handles both shapes. Hephaestus workflows
+    // with `phase_order:` but a missing `phases/` directory still fall
+    // through to loadOneWorkflow so the schema-drift throw is preserved.
+    if (isDagOnlyWorkflowDir(dir)) {
+      continue;
+    }
     const workflow = loadOneWorkflow(name, dir);
     result.set(name, workflow);
   }
   return result;
+}
+
+/** Cheap pre-flight: peek at workflow.yaml's top-level shape via js-yaml.
+ *  Returns true ONLY when we're sure it's a DAG-only workflow (top-level
+ *  `nodes:` and no `phase_order:`). False (no skip) when unsure or when it
+ *  looks like a Hephaestus workflow — let the legacy loader throw on real
+ *  schema drift. */
+function isDagOnlyWorkflowDir(dir: string): boolean {
+  const cfgFile = path.join(dir, 'workflow.yaml');
+  if (!fs.existsSync(cfgFile)) return false;
+  try {
+    const text = fs.readFileSync(cfgFile, 'utf-8');
+    const parsed = jsYaml.load(text) as Record<string, unknown> | null;
+    if (!parsed || typeof parsed !== 'object') return false;
+    return Array.isArray(parsed.nodes) && !Array.isArray(parsed.phase_order);
+  } catch {
+    return false;
+  }
 }
 
 function loadOneWorkflow(name: string, dir: string): Workflow {

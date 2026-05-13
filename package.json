@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "prebuild": "tsx scripts/build-bundled-workflows.ts",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
@@ -17,6 +18,7 @@
     "auth": "tsx src/whatsapp-auth.ts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
+    "pretest": "tsx scripts/build-bundled-workflows.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

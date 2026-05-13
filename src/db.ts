@@ -3,7 +3,10 @@ import fs from 'fs';
 import path from 'path';
 
 import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
-import { createWorkflowSchema, sweepOrphanedRunningRuns } from './db-workflows.js';
+import {
+  createWorkflowSchema,
+  sweepOrphanedRunningRuns,
+} from './db-workflows.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import {

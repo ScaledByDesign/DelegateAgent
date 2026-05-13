@@ -18,6 +18,16 @@ jobs:
       - name: Format check
         run: npm run format:check
 
+      # Phase 1.7 (Archon port): regenerate the gitignored bundled-defaults
+      # codegen output from `workflows/archon-*/workflow.yaml` so the static
+      # import in `dag-loader.ts` resolves under the bare `npx tsc` /
+      # `npx vitest` commands below. Schema validation runs INSIDE the
+      # codegen (`build-bundled-workflows.ts` calls
+      # `workflowDefinitionSchema.safeParse` and throws on failure), so a
+      # broken YAML fails this step before it reaches typecheck.
+      - name: Generate bundled workflows
+        run: npm run prebuild
+
       - name: Typecheck
         run: npx tsc --noEmit
 

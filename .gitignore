@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Codegen output (Phase 1.7 — Archon bundled workflows; regenerate with `npm run prebuild`)
+src/workflows/bundled-defaults.generated.ts
+
 # Local data & auth
 store/
 data/

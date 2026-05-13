@@ -1,0 +1,19 @@
+[Unit]
+Description=Archive old workflow_events rows from messages.db
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=REPO_DIR=/opt/delegate-agent
+Environment=STATE_DIR=/var/lib/delegate-agent
+Environment=HOME=/root
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=ARCHIVE_OLDER_THAN_DAYS=30
+WorkingDirectory=/opt/delegate-agent
+ExecStart=/usr/bin/env npx tsx /opt/delegate-agent/scripts/archive-old-workflow-events.ts
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

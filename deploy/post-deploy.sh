@@ -36,6 +36,36 @@ hash_file() {
   [ -f "$1" ] && sha256sum "$1" | awk '{print $1}' || echo ""
 }
 
+# ─── 0. messages.db backup (Phase 1.5 — Archon workflow port) ────────────────
+# Snapshot the SQLite DB before the imminent `systemctl restart delegate-agent`
+# triggers any schema migration (workflow_runs/workflow_run_nodes/workflow_events
+# added by Phase 1.5; future bumps via PRAGMA user_version). Keep the last 3
+# backups for rollback via `scripts/restore-messages-db.sh`. Idempotent — runs
+# every deploy whether or not the schema actually changed; the duplicate
+# pruning keeps disk usage bounded.
+#
+# Reference: droplet_better_sqlite3_sigbus.md (2026-05-04 incident playbook).
+MESSAGES_DB="${MESSAGES_DB:-$REPO_DIR/messages.db}"
+BACKUP_DIR="${BACKUP_DIR:-$STATE_DIR/db-backups}"
+mkdir -p "$BACKUP_DIR"
+if [ -f "$MESSAGES_DB" ]; then
+  ts=$(date +%s)
+  backup_path="$BACKUP_DIR/messages.db.bak-$ts"
+  if cp -p "$MESSAGES_DB" "$backup_path" 2>/dev/null; then
+    log "backed up messages.db → $backup_path ($(stat -c %s "$backup_path" 2>/dev/null || echo "?") bytes)"
+  else
+    warn "messages.db backup FAILED — proceeding with deploy (no rollback safety net)"
+  fi
+
+  # Prune older backups, keep last 3 by mtime descending.
+  ls -1t "$BACKUP_DIR"/messages.db.bak-* 2>/dev/null | tail -n +4 | while read -r old; do
+    rm -f "$old"
+    log "pruned older backup $old"
+  done
+else
+  log "no messages.db at $MESSAGES_DB — skipping backup (first-time deploy?)"
+fi
+
 # ─── 1. systemd units ────────────────────────────────────────────────────────
 units_changed=()
 shopt -s nullglob
