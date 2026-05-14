@@ -360,7 +360,28 @@ function seedCounters(): void {
       'gmail',
     ];
     const POLL_KINDS = ['http_4xx', 'http_5xx', 'network', 'timeout'];
-    const FASTPATH_OUTCOMES = ['hit', 'miss', 'skip'];
+    // Phase 6 of .omc/plans/agent-path-credential-failover.md adds per-mode
+    // hit-* outcomes + the two new skip reasons (credentials-failure +
+    // oauth-mode-container-only). Legacy bare 'hit'/'miss'/'skip' remain
+    // seeded so pre-Phase-6 Grafana dashboards continue to render.
+    const FASTPATH_OUTCOMES = [
+      'hit',
+      'hit-api_key',
+      'hit-bifrost-env',
+      // Pre-Phase-6 dual-tier outcomes (preserved for back-compat with the
+      // OAuth-first dispatch that shipped in 1913e44d / b0cc8fcf).
+      'hit-oauth',
+      'hit-bifrost',
+      'miss',
+      'skip',
+      'skip-bifrost-error',
+      'skip-credentials-failure',
+      'skip-oauth-mode-container-only',
+      'skip-command-detected',
+      'skip-task-intent-detected',
+      'skip-too-long',
+      'skip-fast-path-disabled',
+    ];
     const JWT_OUTCOMES = ['success', 'failure'];
     const IPC_TYPES = ['message', 'task'];
 

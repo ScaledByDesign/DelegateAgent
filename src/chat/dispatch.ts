@@ -1,14 +1,24 @@
 // ─── Chat fast-path dispatch ───
 //
-// Mirrors openclaw's `src/auto-reply/dispatch.ts` entry point: returns a
-// handled-or-not result so the channel can decide whether to escalate to
-// the heavy container path. The actual openclaw dispatcher is much larger
-// (hooks, plugins, command-targets, silent-reply policy, typing
-// indicators, message-sending hooks); we keep just the decision + the
-// reply call because Delegate's Channel API only needs to know
-// "did I handle this myself, or do I need to escalate?".
+// Phase 5 of `.omc/plans/agent-path-credential-failover.md`. Consumes
+// `inbound.workspaceId` (Phase 0 emit from the platform's poll-handler) as
+// the primary workspace identifier; falls back to a one-call
+// `resolveWorkspaceForJid` helper for `delegate:task:*` JIDs only (back-compat
+// for the brief window before platform Phase 0 is fully deployed; dead code
+// thereafter).
+//
+// chatComplete throws typed errors for OAuth-mode + exhausted-pool
+// workspaces; dispatch translates each into a distinct ChatSkipReason so the
+// channel knows whether to fall through to the container path (oauth-mode
+// or generic bifrost-error) or to surface a user-visible "credits exhausted"
+// message (credentials-failure → NO container fall-through, per Architect Q2).
 
 import { chatComplete } from './bifrost-client.js';
+import {
+  CredentialsExhaustedError,
+  SkipToContainerError,
+} from './credential-resolver.js';
+import { classifyChatErrorFromError } from './error-classifier.js';
 import { classifyForFastPath } from './heuristic.js';
 import type { ChatDispatchResult, ChatInbound } from './types.js';
 import { recordFastpath } from '../metrics.js';
@@ -18,6 +28,10 @@ import { recordFastpath } from '../metrics.js';
 // present we extract just the post-marker portion as the actual user
 // message and treat the preamble as additional system context.
 const USER_MESSAGE_DELIMITER = '\n━━━━━━━━━━━━━━━━━━━━━━━━\nUSER MESSAGE:\n';
+
+const DELEGATE_URL = (
+  process.env.DELEGATE_URL || 'https://delegate.ws'
+).replace(/\/$/, '');
 
 interface SplitContext {
   userText: string;
@@ -35,14 +49,42 @@ function splitWrappedContext(text: string): SplitContext {
   };
 }
 
+// ─── Sentry breadcrumb helper (optional — Sentry SDK may not be installed) ───
+
+let Sentry: { addBreadcrumb?: (b: unknown) => void } | null = null;
+try {
+  Sentry =
+    (globalThis as { __SENTRY__?: typeof Sentry }).__SENTRY__ ||
+    require('@sentry/node');
+} catch {
+  /* @sentry/node not installed — breadcrumbs go to /dev/null */
+}
+
+function breadcrumb(message: string, data: Record<string, unknown>): void {
+  if (!Sentry?.addBreadcrumb) return;
+  try {
+    Sentry.addBreadcrumb({
+      category: 'chat-fastpath',
+      message,
+      data,
+      level: 'info',
+    });
+  } catch {
+    /* never let Sentry throw */
+  }
+}
+
 /**
  * Optional callback for richer chat context — task title/description for the
- * system prompt PLUS a per-JID Anthropic OAuth token for the fastpath's Tier 1
- * failover. The host-side implementation resolves the token via Delegate's
- * `/api/agent/integrations/llm-keys` (which runs the 4-tier picker: personal
- * user → workspace default → system → none) using the workspace + user IDs
- * derived from the JID. Returning `oauthToken: null` makes the fastpath skip
- * Tier 1 and go straight to Bifrost.
+ * system prompt. The host-side implementation may fetch task title /
+ * description / recent message history for a given JID. Returning null falls
+ * back to the generic system prompt.
+ *
+ * Phase 4 of agent-path-credential-failover plan: the oauthToken field on
+ * the resolver result is now ignored — credential resolution moved into the
+ * per-call TransportSpec resolver in `bifrost-client.ts`. The field stays on
+ * the return type for back-compat with the existing registration in
+ * `delegate.ts:resolveChatFastpathCreds`; it's read but discarded.
  */
 export type ChatContextResolver = (
   jid: string,
@@ -69,14 +111,97 @@ const FALLBACK_SYSTEM_PROMPT = [
   'phrase it as a task and the heavier agent will pick it up.',
 ].join(' ');
 
+// ─── Task-JID → workspaceId fallback (back-compat for pre-Phase-0 platforms) ──
+//
+// When `inbound.workspaceId` is absent (legacy emit), this helper round-trips
+// to `GET /api/agent/context/[taskId]` to derive the workspace. Only used for
+// `delegate:task:*` JIDs — conv/agent/main JIDs return null and the dispatcher
+// falls back to `kind='bifrost-env'` in the resolver. Once platform Phase 0
+// is fully deployed everywhere, this helper is dead code.
+
+const WORKSPACE_RESOLVE_CACHE_TTL_MS = 60_000;
+const workspaceCache = new Map<
+  string,
+  { workspaceId: string | null; expiresAt: number }
+>();
+
+function envAgentToken(): string {
+  return (
+    process.env.DELEGATE_AGENT_TOKEN ||
+    process.env.DELEGATE_API_KEY ||
+    process.env.NANOCLAW_TOKEN ||
+    ''
+  );
+}
+
+export async function resolveWorkspaceForJid(
+  jid: string,
+): Promise<string | null> {
+  if (!jid.startsWith('delegate:task:')) return null;
+  const token = envAgentToken();
+  if (!token) return null;
+  const taskId = jid.slice('delegate:task:'.length);
+  if (!taskId) return null;
+
+  const now = Date.now();
+  const cached = workspaceCache.get(taskId);
+  if (cached && cached.expiresAt > now) return cached.workspaceId;
+
+  try {
+    const res = await fetch(
+      `${DELEGATE_URL}/api/agent/context/${encodeURIComponent(taskId)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!res.ok) {
+      workspaceCache.set(taskId, {
+        workspaceId: null,
+        expiresAt: now + WORKSPACE_RESOLVE_CACHE_TTL_MS,
+      });
+      return null;
+    }
+    const data = (await res.json()) as {
+      data?: {
+        task?: {
+          workspaceId?: string | null;
+          project?: { workspaceId?: string | null };
+        };
+      };
+    };
+    const t = data?.data?.task ?? {};
+    const ws = t.workspaceId ?? t.project?.workspaceId ?? null;
+    workspaceCache.set(taskId, {
+      workspaceId: ws,
+      expiresAt: now + WORKSPACE_RESOLVE_CACHE_TTL_MS,
+    });
+    return ws;
+  } catch (err) {
+    console.warn(
+      `[chat-fastpath/dispatch] resolveWorkspaceForJid failed for ${jid}: ${(err as Error).message}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Test-only — drops the in-memory task→workspace cache.
+ */
+export function _clearWorkspaceCacheForTests(): void {
+  workspaceCache.clear();
+}
+
 /**
  * Try to handle an inbound message via the chat fast-path.
  *
- * - Returns `{ handled: true, replyText }` if Bifrost answered. The caller
- *   should send `replyText` back through the channel and skip the container.
- * - Returns `{ handled: false, reason }` if either the heuristic skipped
- *   the message or Bifrost errored. Caller falls through to the existing
- *   onMessage → container path.
+ * - `{ handled: true, replyText }` → caller sends replyText, skips container.
+ * - `{ handled: false, reason: 'oauth-mode-container-only' | 'bifrost-error' }`
+ *   → caller falls through to the container path.
+ * - `{ handled: false, reason: 'credentials-failure', userMessage }`
+ *   → caller MUST NOT fall through to container (container would resolve the
+ *   same exhausted credential). Channel should surface `userMessage` to the
+ *   user. Per Architect Q2 verdict.
  */
 export async function dispatchChatFastPath(
   inbound: ChatInbound,
@@ -97,41 +222,113 @@ export async function dispatchChatFastPath(
   let system = split.systemPrefix
     ? `${FALLBACK_SYSTEM_PROMPT}\n\n--- TASK CONTEXT ---\n${split.systemPrefix}`
     : FALLBACK_SYSTEM_PROMPT;
-  // Per-JID OAuth token resolved by the host-side context resolver
-  // (workspace user → workspace default → system tier). Undefined when no
-  // resolver is registered; null when the picker found nothing usable —
-  // both cases fall back to the env-token / Bifrost path in chatComplete.
-  let oauthToken: string | null | undefined;
   if (contextResolver) {
     try {
       const ctx = await contextResolver(inbound.jid);
       if (ctx?.system) system = ctx.system;
-      if (ctx && "oauthToken" in ctx) oauthToken = ctx.oauthToken;
+      // ctx.oauthToken intentionally ignored — Phase 4 (Architect Q1)
+      // routes OAuth-mode workspaces to the container path; fast-path
+      // never carries a per-call OAuth token anymore.
     } catch {
-      // Context resolver failed — log via console only, fall back to
-      // generic system prompt rather than escalating.
-      // (Channel-level Sentry capture will be added by the channel itself.)
+      // Context resolver is best-effort — log via console only, fall back
+      // to generic system prompt rather than escalating.
     }
   }
+
+  // Resolve workspace + user for the credential resolver. Prefer the
+  // platform-emitted `inbound.workspaceId` (Phase 0); fall back to the
+  // context-endpoint round-trip ONLY for task JIDs when missing (back-compat).
+  const workspaceId =
+    inbound.workspaceId ?? (await resolveWorkspaceForJid(inbound.jid));
+  const userId = inbound.requestingUserId ?? null;
 
   try {
     const reply = await chatComplete({
       system,
       userMessage: userText,
-      oauthToken,
+      workspaceId,
+      userId,
     });
-    // Tier-aware metric — `hit-oauth` when direct Anthropic served the call,
-    // `hit-bifrost` when the gateway tier handled it (incl. failovers from
-    // tier 1). Lets ops watch the OAuth tier's success rate vs gateway.
-    recordFastpath(reply.via === 'oauth' ? 'hit-oauth' : 'hit-bifrost');
+    const latencyMs = Date.now() - startedAt;
+    const outcome =
+      reply.transportMode === 'api_key' ? 'hit-api_key' : 'hit-bifrost-env';
+    recordFastpath(outcome);
+    breadcrumb('chat-fastpath.dispatch', {
+      jid: inbound.jid,
+      workspaceId,
+      mode: reply.transportMode,
+      outcome: 'handled',
+      latencyMs,
+    });
     return {
       handled: true,
       replyText: reply.text,
-      latencyMs: Date.now() - startedAt,
+      latencyMs,
       model: reply.model,
     };
-  } catch {
+  } catch (err) {
+    const latencyMs = Date.now() - startedAt;
+
+    if (err instanceof SkipToContainerError) {
+      recordFastpath('skip-oauth-mode-container-only');
+      breadcrumb('chat-fastpath.dispatch', {
+        jid: inbound.jid,
+        workspaceId,
+        mode: 'skip-to-container',
+        outcome: 'skipped:oauth-mode-container-only',
+        latencyMs,
+      });
+      return { handled: false, reason: 'oauth-mode-container-only' };
+    }
+
+    if (err instanceof CredentialsExhaustedError) {
+      recordFastpath('skip-credentials-failure');
+      breadcrumb('chat-fastpath.dispatch', {
+        jid: inbound.jid,
+        workspaceId,
+        mode: 'exhausted',
+        outcome: 'skipped:credentials-failure',
+        latencyMs,
+      });
+      return {
+        handled: false,
+        reason: 'credentials-failure',
+        userMessage: 'Workspace LLM credits exhausted — contact admin',
+      };
+    }
+
+    // Classify the thrown upstream error. credit_exhausted / auth_invalid
+    // short-circuit to credentials-failure (no container fall-through —
+    // container would resolve the same exhausted credential, Architect Q2).
+    // Other kinds (rate_limited, server_error, timeout, unknown) keep the
+    // legacy bifrost-error path — channel falls through to container.
+    const kind = classifyChatErrorFromError(err);
+    if (kind === 'credit_exhausted' || kind === 'auth_invalid') {
+      recordFastpath('skip-credentials-failure');
+      breadcrumb('chat-fastpath.dispatch', {
+        jid: inbound.jid,
+        workspaceId,
+        mode: 'api_key',
+        outcome: 'skipped:credentials-failure',
+        classification: kind,
+        latencyMs,
+      });
+      return {
+        handled: false,
+        reason: 'credentials-failure',
+        userMessage: 'Workspace LLM credits exhausted — contact admin',
+      };
+    }
+
     recordFastpath('skip-bifrost-error');
+    breadcrumb('chat-fastpath.dispatch', {
+      jid: inbound.jid,
+      workspaceId,
+      mode: 'unknown',
+      outcome: 'skipped:bifrost-error',
+      classification: kind,
+      latencyMs,
+    });
     return { handled: false, reason: 'bifrost-error' };
   }
 }
