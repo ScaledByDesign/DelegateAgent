@@ -102,7 +102,10 @@ export async function dispatchChatFastPath(
       system,
       userMessage: userText,
     });
-    recordFastpath('hit');
+    // Tier-aware metric — `hit-oauth` when direct Anthropic served the call,
+    // `hit-bifrost` when the gateway tier handled it (incl. failovers from
+    // tier 1). Lets ops watch the OAuth tier's success rate vs gateway.
+    recordFastpath(reply.via === 'oauth' ? 'hit-oauth' : 'hit-bifrost');
     return {
       handled: true,
       replyText: reply.text,
