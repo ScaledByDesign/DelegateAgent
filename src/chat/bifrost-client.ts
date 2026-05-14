@@ -1,43 +1,39 @@
-// ─── Bifrost client for chat fast-path (with OAuth-first failover) ───
+// ─── Bifrost client for chat fast-path (per-workspace credential resolver) ───
 //
-// Two-tier failover for short conversational messages where the agent
-// doesn't need tools:
+// Phase 4 of `.omc/plans/agent-path-credential-failover.md`. chatComplete now
+// resolves a TransportSpec per call via `resolveChatTransport({workspaceId,
+// userId})`. The dispatch surface is an exhaustive switch on `transport.kind`
+// with a TypeScript `never` exhaustiveness check, so future TransportSpec
+// drift is caught at compile time.
 //
-//   Tier 1 — Personal/workspace Anthropic OAuth token  (api.anthropic.com)
-//   Tier 2 — Bifrost gateway                            (openrouter-anthropic
-//                                                        + Anthropic direct
-//                                                        load-balanced upstream)
+// Variants:
+//   - 'api_key'           → workspace's Anthropic key against a workspace-
+//                           supplied URL (x-api-key) OR system Bifrost
+//                           (x-bf-vk). The two sub-cases differ only in URL +
+//                           which header carries the credential.
+//   - 'bifrost-env'       → legacy env fallback (dev / self-hosted / no
+//                           workspaceId). x-bf-vk from process.env BIFROST_VK.
+//   - 'skip-to-container' → workspace resolves to OAuth mode. Fast-path
+//                           defers to the container path (Architect Q1).
+//                           chatComplete throws SkipToContainerError; NO
+//                           api.anthropic.com fetch from fast-path.
+//   - 'exhausted'         → workspace OAuth pool exhausted (Architect Q2 +
+//                           AC-OAUTH-HARD-FAIL-NO-BIFROST). chatComplete
+//                           throws CredentialsExhaustedError; NO fetch, NO
+//                           Bifrost fallback.
 //
-// Tier 1 is tried first when `CHAT_FASTPATH_OAUTH_TOKEN` is set on the
-// droplet — this preserves zero added latency on the success path while
-// letting personal Claude Code OAuth tokens absorb the chat load. On
-// network failure / non-2xx / 429 / 5xx / empty content, falls through to
-// Tier 2 (Bifrost). Tier 2 itself load-balances across providers via the
-// openrouter-anthropic Bifrost config (see bifrost_two_layer_model_acl
-// memory + bifrost_no_vk_lockdown_2026_05_11 memory).
+// All env reads (BIFROST_URL, BIFROST_VK) live in credential-resolver.ts.
+// This file has zero direct process.env credential reads — only the request
+// timeout / model selector env knobs.
 
-const BIFROST_VK =
-  process.env.BIFROST_VK || process.env.ANTHROPIC_API_KEY || '';
-
-const BIFROST_URL = (
-  process.env.BIFROST_URL || 'http://localhost:4000'
-).replace(/\/$/, '');
-
-/**
- * Personal/workspace Anthropic OAuth token for the chat fastpath's Tier 1.
- * Format `sk-ant-oat01-...`. When set, every chat fastpath call tries direct
- * Anthropic first; on any failure it falls over to Bifrost. When unset, the
- * fastpath goes straight to Bifrost as before.
- *
- * Set on the droplet via `secrets.env` (per droplet_ops.md). DO NOT commit
- * the token — only the env-var name.
- */
-const FASTPATH_OAUTH_TOKEN =
-  process.env.CHAT_FASTPATH_OAUTH_TOKEN ||
-  process.env.CLAUDE_CODE_OAUTH_TOKEN ||
-  '';
-
-const ANTHROPIC_DIRECT_URL = 'https://api.anthropic.com/v1/messages';
+import {
+  resolveChatTransport,
+  CredentialsExhaustedError,
+  SkipToContainerError,
+  type TransportSpec,
+} from './credential-resolver.js';
+import { reportLLMCooldown } from '../cooldown-client.js';
+import { classifyChatError } from './error-classifier.js';
 
 const DEFAULT_MODEL = process.env.CHAT_FAST_PATH_MODEL || 'claude-sonnet-4-6';
 const REQUEST_TIMEOUT_MS = parseInt(
@@ -53,12 +49,25 @@ export interface ChatBifrostRequest {
   /** Optional prior turns for conversational context. */
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   /**
-   * Per-call OAuth token for Tier 1. Resolved by the chat dispatch from the
-   * inbound JID's workspace + user via Delegate's `/api/agent/integrations/llm-keys`
-   * picker. When set, takes precedence over the droplet-wide env token.
-   * Null/undefined → fall back to CHAT_FASTPATH_OAUTH_TOKEN env, then
-   * Bifrost-only. Lets each chat call ride on the requesting user's
-   * personal/workspace Anthropic OAuth token instead of a shared droplet token.
+   * Phase 0 of agent-path-credential-failover plan: workspace whose
+   * credentials should be resolved for this call. When omitted, the resolver
+   * returns kind='bifrost-env' (env-only legacy path). When present + a
+   * Delegate bearer token is configured, runs the 4-tier credential picker.
+   */
+  workspaceId?: string | null;
+  /**
+   * Phase 0 of agent-path-credential-failover plan: requesting Delegate
+   * user id, threaded into the resolver so personal-override scopes can
+   * pick a per-user LLMProvider row.
+   */
+  userId?: string | null;
+  /**
+   * @deprecated Pre-Phase-4 OAuth-direct tier. Ignored by the new TransportSpec
+   * dispatch — OAuth-mode workspaces now throw SkipToContainerError instead
+   * of attempting api.anthropic.com directly (Architect Q1 verdict). The
+   * field is retained on the request shape so existing callers (legacy
+   * `dispatch.ts` resolver path) still type-check during Commit B → C
+   * transition; Commit C drops the resolver indirection entirely.
    */
   oauthToken?: string | null;
 }
@@ -68,66 +77,76 @@ export interface ChatBifrostResponse {
   model: string;
   inputTokens: number;
   outputTokens: number;
-  /** Which failover tier handled the call. `oauth` = direct Anthropic via
-   *  CHAT_FASTPATH_OAUTH_TOKEN; `bifrost` = the gateway. Used by the
-   *  dispatch metrics surface (`recordFastpath('hit-oauth' | 'hit-bifrost')`). */
+  /**
+   * Which TransportSpec variant actually served the request. Used by
+   * dispatch.ts for the per-mode `recordFastpath('hit-api_key' |
+   * 'hit-bifrost-env')` metric.
+   */
+  transportMode: 'api_key' | 'bifrost-env';
+  /**
+   * @deprecated Pre-Phase-4 dual-tier label. After Commit C, dispatch reads
+   * `transportMode` directly. Retained one release for back-compat — maps
+   * `'api_key' | 'bifrost-env'` → `'bifrost'` since neither is the now-
+   * removed Anthropic-direct OAuth tier.
+   */
   via: 'oauth' | 'bifrost';
 }
 
 /**
- * Single-turn chat completion. Two-tier failover:
- *   1. Anthropic-direct via OAuth token (when `CHAT_FASTPATH_OAUTH_TOKEN`
- *      or `CLAUDE_CODE_OAUTH_TOKEN` is set on the droplet).
- *   2. Bifrost gateway (always — `openrouter-anthropic` upstream chain).
+ * Resolve a fast-path transport spec, then dispatch a single chat completion
+ * over the chosen path. The four-variant switch is exhaustive (TS `never`
+ * check on `default`). Throws:
  *
- * Tier 1 transient/auth failures (network error, 401/403/429/5xx, empty
- * content) fall through to Tier 2 with a warning log. Both tiers throw on
- * exhaustion so the caller can escalate to the container path.
+ *   - `CredentialsExhaustedError` when the workspace OAuth pool is exhausted.
+ *     Dispatch translates this to `reason='credentials-failure'`. NO fetch
+ *     is made.
+ *   - `SkipToContainerError` when the workspace resolves to OAuth mode. NO
+ *     fetch is made — dispatch returns `reason='oauth-mode-container-only'`
+ *     so the channel falls through to the container path which handles
+ *     OAuth correctly via the Claude SDK.
+ *   - `Error("<status>: <body>")` on non-2xx upstream responses (caller
+ *     classifies via `classifyChatErrorFromError`).
  *
- * Returns `via: 'oauth' | 'bifrost'` so the dispatch metrics can surface
- * which tier handled the call.
+ * On `credit_exhausted` / `auth_invalid` upstream classification AND when
+ * the transport is `api_key` with a known providerId, fires a
+ * fire-and-forget `reportLLMCooldown` before re-throwing. The throw itself
+ * surfaces as a generic Error message — dispatch's `classifyChatErrorFromError`
+ * re-extracts the status/body for its own routing.
  */
 export async function chatComplete(
   req: ChatBifrostRequest,
 ): Promise<ChatBifrostResponse> {
+  const transport = await resolveChatTransport({
+    workspaceId: req.workspaceId,
+    userId: req.userId,
+  });
+
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
     ...(req.history ?? []),
     { role: 'user', content: req.userMessage },
   ];
 
-  // ─── Tier 1: OAuth-direct Anthropic ─────────────────────────────────────
-  // Per-call token (resolved per-workspace-user) takes precedence; falls
-  // back to the droplet-wide env token; Tier 1 stays inert when both are
-  // empty.
-  const tier1Token = req.oauthToken ?? FASTPATH_OAUTH_TOKEN;
-  if (tier1Token) {
-    try {
-      return await chatCompleteAnthropicDirect(
-        tier1Token,
-        req.system,
-        messages,
-      );
-    } catch (err) {
-      // Log + fall through to Bifrost. Don't escalate to container yet — the
-      // gateway absorbs Anthropic-direct outages via the openrouter-anthropic
-      // upstream.
-      console.warn(
-        `[chat-fastpath] OAuth tier failed, falling over to Bifrost: ${(err as Error).message}`,
+  switch (transport.kind) {
+    case 'exhausted':
+      throw new CredentialsExhaustedError(transport.workspaceId);
+    case 'skip-to-container':
+      throw new SkipToContainerError(transport.workspaceId, transport.reason);
+    case 'api_key':
+    case 'bifrost-env':
+      return await dispatchFetch(transport, req.system, messages);
+    default: {
+      // TS exhaustiveness check — if a new TransportSpec variant is added
+      // without updating this switch, the line below fails to type-check.
+      const _exhaustive: never = transport;
+      throw new Error(
+        `unreachable transport: ${(_exhaustive as { kind?: string })?.kind ?? '<unknown>'}`,
       );
     }
   }
-
-  // ─── Tier 2: Bifrost gateway ────────────────────────────────────────────
-  return chatCompleteBifrost(req.system, messages);
 }
 
-/**
- * Tier 1 — call `https://api.anthropic.com/v1/messages` directly with a
- * personal/workspace OAuth token. Mirrors the Bifrost-tier request shape
- * so the response decoder is identical.
- */
-async function chatCompleteAnthropicDirect(
-  oauthToken: string,
+async function dispatchFetch(
+  transport: Extract<TransportSpec, { kind: 'api_key' | 'bifrost-env' }>,
   system: string,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
 ): Promise<ChatBifrostResponse> {
@@ -136,16 +155,9 @@ async function chatCompleteAnthropicDirect(
 
   let res: Response;
   try {
-    res = await fetch(ANTHROPIC_DIRECT_URL, {
+    res = await fetch(transport.url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        // OAuth tokens (`sk-ant-oat01-...`) authenticate via Authorization
-        // bearer header, NOT `x-api-key`. Workspace API keys (`sk-ant-...`)
-        // would use `x-api-key` instead; we only configure OAuth here.
-        authorization: `Bearer ${oauthToken}`,
-      },
+      headers: transport.headers,
       body: JSON.stringify({
         model: DEFAULT_MODEL,
         max_tokens: 1024,
@@ -160,8 +172,35 @@ async function chatCompleteAnthropicDirect(
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
+    const classification = classifyChatError({ status: res.status, body });
+
+    // Fire-and-forget cooldown report on credit_exhausted / auth_invalid
+    // when we know which LLMProvider row to mark. Only api_key transports
+    // surface a providerId (bifrost-env is shared/system).
+    if (
+      classification.shouldReportCooldown &&
+      transport.kind === 'api_key' &&
+      transport.providerId
+    ) {
+      const reason: 'usage_limit_exceeded' | 'auth_error' =
+        classification.kind === 'credit_exhausted'
+          ? 'usage_limit_exceeded'
+          : 'auth_error';
+      void Promise.resolve().then(() =>
+        reportLLMCooldown({
+          providerId: transport.providerId!,
+          workspaceId: transport.workspaceId,
+          reason,
+        }).catch(() => {
+          /* fire-and-forget; cooldown failure must not block the throw */
+        }),
+      );
+    }
+
     throw new Error(
-      `Anthropic-direct ${res.status}: ${body.slice(0, 200) || res.statusText}`,
+      `${transport.kind === 'api_key' ? 'Anthropic-direct' : 'Bifrost'} ${res.status}: ${
+        body.slice(0, 200) || res.statusText
+      }`,
     );
   }
 
@@ -177,78 +216,17 @@ async function chatCompleteAnthropicDirect(
     .join('');
 
   if (!text.trim()) {
-    throw new Error('Anthropic-direct returned empty content');
-  }
-
-  return {
-    text,
-    model: data.model || DEFAULT_MODEL,
-    inputTokens: data.usage?.input_tokens ?? 0,
-    outputTokens: data.usage?.output_tokens ?? 0,
-    via: 'oauth',
-  };
-}
-
-/**
- * Tier 2 — Bifrost gateway. Bifrost's `openrouter-anthropic` provider
- * load-balances across upstream Anthropic + OpenRouter so this single
- * call absorbs the same failover chain as container-spawned agent runs.
- */
-async function chatCompleteBifrost(
-  system: string,
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-): Promise<ChatBifrostResponse> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
-
-  let res: Response;
-  try {
-    res = await fetch(`${BIFROST_URL}/anthropic/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        ...(BIFROST_VK ? { 'x-bf-vk': BIFROST_VK } : {}),
-      },
-      body: JSON.stringify({
-        model: DEFAULT_MODEL,
-        max_tokens: 1024,
-        system,
-        messages,
-      }),
-      signal: ctrl.signal,
-    });
-  } finally {
-    clearTimeout(t);
-  }
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
     throw new Error(
-      `Bifrost ${res.status}: ${body.slice(0, 200) || res.statusText}`,
+      `${transport.kind === 'api_key' ? 'Anthropic-direct' : 'Bifrost'} returned empty content`,
     );
   }
 
-  const data = (await res.json()) as {
-    content?: Array<{ type: string; text?: string }>;
-    model?: string;
-    usage?: { input_tokens?: number; output_tokens?: number };
-  };
-
-  const text = (data.content ?? [])
-    .filter((b) => b.type === 'text' && typeof b.text === 'string')
-    .map((b) => b.text as string)
-    .join('');
-
-  if (!text.trim()) {
-    throw new Error('Bifrost returned empty content');
-  }
-
   return {
     text,
     model: data.model || DEFAULT_MODEL,
     inputTokens: data.usage?.input_tokens ?? 0,
     outputTokens: data.usage?.output_tokens ?? 0,
+    transportMode: transport.kind,
     via: 'bifrost',
   };
 }
