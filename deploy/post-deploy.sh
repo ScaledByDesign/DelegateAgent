@@ -9,6 +9,7 @@
 #   3. Caddy env vars listed in deploy/caddy/required-env.list   → sync from /opt/delegate-agent/.env → /etc/caddy/secrets.env → restart caddy if changed
 #   4. Caddyfile changes                                         → copy, validate, reload
 #   5. Docker compose stacks under deploy/*/docker-compose.yml   → up -d --build
+#   6. Agent-runner container (container/Dockerfile + sources)   → container/build.sh
 #
 # Idempotent: tracks content hashes in /var/lib/delegate-agent/hashes/
 # so unchanged files don't trigger spurious restarts.
@@ -280,5 +281,49 @@ for compose_path in deploy/*/docker-compose.yml; do
   fi
 done
 shopt -u nullglob
+
+# ─── 6. Agent-runner container image ─────────────────────────────────────────
+# The host-side orchestrator code (re)deploys via git pull + npm run build.
+# The agent-runner that runs INSIDE each spawned container is a separate
+# Docker image (`delegateagent:latest`) built from `container/`. Without
+# rebuilding it on relevant source changes, host edits to ContainerInput
+# fields are forward-compatible (older containers ignore them), but
+# container-side changes — like the Phase 4 heartbeat poster in
+# container/agent-runner/src/index.ts — never reach running tasks.
+#
+# Hash inputs the build consumes (Dockerfile, build script, agent-runner
+# src/ + package*.json, skills/) so unchanged container code skips rebuilds.
+# Tracks the marker under HASH_DIR alongside other rebuild hashes.
+if [ -f "$REPO_DIR/container/Dockerfile" ] && [ -x "$REPO_DIR/container/build.sh" ]; then
+  agent_runner_hash=$(
+    {
+      hash_file "$REPO_DIR/container/Dockerfile"
+      hash_file "$REPO_DIR/container/build.sh"
+      hash_file "$REPO_DIR/container/agent-runner/package.json"
+      hash_file "$REPO_DIR/container/agent-runner/package-lock.json"
+      hash_file "$REPO_DIR/container/agent-runner/tsconfig.json"
+      find "$REPO_DIR/container/agent-runner/src" -type f -name '*.ts' -print0 2>/dev/null | \
+        xargs -0 sha256sum 2>/dev/null | sort
+      find "$REPO_DIR/container/skills" -type f -print0 2>/dev/null | \
+        xargs -0 sha256sum 2>/dev/null | sort
+    } | sha256sum | awk '{print $1}'
+  )
+  marker="$HASH_DIR/container-agent-runner"
+  old_hash=$(cat "$marker" 2>/dev/null || true)
+
+  if [ "$agent_runner_hash" = "$old_hash" ]; then
+    log "agent-runner container unchanged — skipping rebuild"
+  else
+    log "rebuilding agent-runner container image (delegateagent:latest)"
+    if (cd "$REPO_DIR" && bash container/build.sh 2>&1 | tail -10); then
+      echo "$agent_runner_hash" > "$marker"
+      log "agent-runner container rebuilt"
+    else
+      warn "agent-runner container build FAILED — running containers keep old image (continuing)"
+    fi
+  fi
+else
+  log "no container/Dockerfile or container/build.sh — skipping agent-runner rebuild"
+fi
 
 log "done"
