@@ -149,6 +149,15 @@ interface PollMessage {
    * heartbeat poster. Optional for back-compat.
    */
   delegationId?: string;
+  /**
+   * Phase 0 of `.omc/plans/agent-path-credential-failover.md`: the Delegate
+   * workspace this message belongs to, emitted by platform poll-handler.ts
+   * for all 4 JID branches. When present, used as the primary workspaceId
+   * for chat fast-path credential resolution. When absent (legacy platform
+   * deploys), gateway falls back to deriving via `/api/agent/context/[taskId]`
+   * for task JIDs only. Optional + nullable for back-compat.
+   */
+  workspaceId?: string | null;
 }
 
 interface PollResponse {
@@ -698,6 +707,12 @@ export class DelegateChannel implements Channel {
         jid,
         text: typeof msg.text === 'string' ? msg.text : '',
         senderName: msg.sender ?? msg.role ?? 'User',
+        // Phase 0 of agent-path-credential-failover plan: forward the
+        // platform-emitted workspaceId + requesting user id so the chat
+        // fast-path can resolve per-workspace credentials. Both optional —
+        // gateway falls back gracefully when absent.
+        workspaceId: msg.workspaceId ?? null,
+        requestingUserId: msg.requestingUserId,
       };
       void dispatchChatFastPath(inboundForChat).then(async (result) => {
         if (result.handled) {
