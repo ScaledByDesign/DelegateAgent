@@ -746,8 +746,31 @@ export class DelegateChannel implements Channel {
           reason: result.reason,
           textLen: inboundForChat.text.length,
         });
+        // Plan §5 Phase 5.3 semantics: `credentials-failure` is the only
+        // skip reason that does NOT fall through to the container. Container
+        // would resolve the same exhausted credential — fall-through adds
+        // latency without recovering. Surface the user-visible error
+        // directly and short-circuit.
+        if (result.reason === 'credentials-failure') {
+          const userMsg =
+            result.userMessage ?? 'Workspace LLM credits exhausted — contact admin';
+          try {
+            await this.sendMessage(jid, userMsg);
+            console.log(`[chat] fastpath credentials-failure surfaced jid=${jid}`);
+          } catch (err) {
+            console.warn(
+              `[chat] fastpath credentials-failure send error jid=${jid}:`,
+              (err as Error).message,
+            );
+            captureSentryError(err, { jid, action: 'chat-fastpath-credentials-failure' });
+          }
+          return;
+        }
         // Route to DelegateAgent orchestrator (NewMessage format) — only
-        // when fast-path doesn't handle it.
+        // when fast-path doesn't handle it. bifrost-error and
+        // oauth-mode-container-only intentionally fall through (container
+        // can resolve the OAuth case correctly; bifrost-error retries the
+        // full path).
         recordChannelMessageDelivered('delegate');
         this.opts.onMessage(jid, {
           id: msg.id,
