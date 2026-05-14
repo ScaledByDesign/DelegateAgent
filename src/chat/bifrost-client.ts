@@ -52,6 +52,15 @@ export interface ChatBifrostRequest {
   userMessage: string;
   /** Optional prior turns for conversational context. */
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /**
+   * Per-call OAuth token for Tier 1. Resolved by the chat dispatch from the
+   * inbound JID's workspace + user via Delegate's `/api/agent/integrations/llm-keys`
+   * picker. When set, takes precedence over the droplet-wide env token.
+   * Null/undefined → fall back to CHAT_FASTPATH_OAUTH_TOKEN env, then
+   * Bifrost-only. Lets each chat call ride on the requesting user's
+   * personal/workspace Anthropic OAuth token instead of a shared droplet token.
+   */
+  oauthToken?: string | null;
 }
 
 export interface ChatBifrostResponse {
@@ -87,10 +96,14 @@ export async function chatComplete(
   ];
 
   // ─── Tier 1: OAuth-direct Anthropic ─────────────────────────────────────
-  if (FASTPATH_OAUTH_TOKEN) {
+  // Per-call token (resolved per-workspace-user) takes precedence; falls
+  // back to the droplet-wide env token; Tier 1 stays inert when both are
+  // empty.
+  const tier1Token = req.oauthToken ?? FASTPATH_OAUTH_TOKEN;
+  if (tier1Token) {
     try {
       return await chatCompleteAnthropicDirect(
-        FASTPATH_OAUTH_TOKEN,
+        tier1Token,
         req.system,
         messages,
       );

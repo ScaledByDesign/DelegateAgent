@@ -768,7 +768,67 @@ export class DelegateChannel implements Channel {
   }
 }
 
+// ─── Chat fastpath context resolver ─────────────────────────────────────
+// Plumbs per-JID workspace-user Anthropic OAuth tokens into the chat
+// fastpath's Tier 1 (Anthropic-direct) failover. Cached in-memory for
+// 5 minutes per JID to avoid hitting the endpoint on every reply.
+//
+// The endpoint runs the 4-tier picker (personal user → workspace default →
+// system → none) and returns the OAuth token if the winning tier is OAuth.
+// Falls back to null silently — chat fastpath then goes straight to Tier 2
+// (Bifrost gateway).
+import { setChatContextResolver } from '../chat/index.js';
+
+const CHAT_CRED_CACHE_TTL_MS = 5 * 60_000;
+const chatCredCache = new Map<
+  string,
+  { oauthToken: string | null; expiresAt: number }
+>();
+
+async function resolveChatFastpathCreds(
+  jid: string,
+): Promise<{ system: string; oauthToken: string | null } | null> {
+  const now = Date.now();
+  const cached = chatCredCache.get(jid);
+  let oauthToken: string | null = null;
+  if (cached && cached.expiresAt > now) {
+    oauthToken = cached.oauthToken;
+  } else if (DELEGATE_AGENT_TOKEN) {
+    try {
+      const res = await fetch(
+        `${DELEGATE_URL}/api/agent/chat-fastpath-credentials?jid=${encodeURIComponent(jid)}`,
+        {
+          headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
+          signal: AbortSignal.timeout(3000),
+        },
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          data?: { oauthToken?: string | null };
+        };
+        oauthToken = data?.data?.oauthToken ?? null;
+        chatCredCache.set(jid, {
+          oauthToken,
+          expiresAt: now + CHAT_CRED_CACHE_TTL_MS,
+        });
+      }
+    } catch (err) {
+      // Resolver is best-effort — fall back to gateway-only on failure.
+      console.warn(
+        `[chat-fastpath-creds] resolution failed for ${jid}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  // System prompt is left empty here — the existing inline preamble in the
+  // poll-handler-wrapped user message provides task context. Future versions
+  // may upgrade this to fetch task title/description for a richer system.
+  return { system: '', oauthToken };
+}
+
 // ─── Self-register at module load (DelegateAgent barrel-import pattern) ─────
+
+setChatContextResolver(resolveChatFastpathCreds);
 
 registerChannel('delegate', (opts: ChannelOpts) => {
   if (!DELEGATE_AGENT_TOKEN) {

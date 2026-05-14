@@ -35,10 +35,21 @@ function splitWrappedContext(text: string): SplitContext {
   };
 }
 
-/** Optional callback for a richer system prompt (task title, description). */
+/**
+ * Optional callback for richer chat context — task title/description for the
+ * system prompt PLUS a per-JID Anthropic OAuth token for the fastpath's Tier 1
+ * failover. The host-side implementation resolves the token via Delegate's
+ * `/api/agent/integrations/llm-keys` (which runs the 4-tier picker: personal
+ * user → workspace default → system → none) using the workspace + user IDs
+ * derived from the JID. Returning `oauthToken: null` makes the fastpath skip
+ * Tier 1 and go straight to Bifrost.
+ */
 export type ChatContextResolver = (
   jid: string,
-) => Promise<{ system: string } | null> | { system: string } | null;
+) =>
+  | Promise<{ system: string; oauthToken?: string | null } | null>
+  | { system: string; oauthToken?: string | null }
+  | null;
 
 let contextResolver: ChatContextResolver | null = null;
 
@@ -86,10 +97,16 @@ export async function dispatchChatFastPath(
   let system = split.systemPrefix
     ? `${FALLBACK_SYSTEM_PROMPT}\n\n--- TASK CONTEXT ---\n${split.systemPrefix}`
     : FALLBACK_SYSTEM_PROMPT;
+  // Per-JID OAuth token resolved by the host-side context resolver
+  // (workspace user → workspace default → system tier). Undefined when no
+  // resolver is registered; null when the picker found nothing usable —
+  // both cases fall back to the env-token / Bifrost path in chatComplete.
+  let oauthToken: string | null | undefined;
   if (contextResolver) {
     try {
       const ctx = await contextResolver(inbound.jid);
       if (ctx?.system) system = ctx.system;
+      if (ctx && "oauthToken" in ctx) oauthToken = ctx.oauthToken;
     } catch {
       // Context resolver failed — log via console only, fall back to
       // generic system prompt rather than escalating.
@@ -101,6 +118,7 @@ export async function dispatchChatFastPath(
     const reply = await chatComplete({
       system,
       userMessage: userText,
+      oauthToken,
     });
     // Tier-aware metric — `hit-oauth` when direct Anthropic served the call,
     // `hit-bifrost` when the gateway tier handled it (incl. failovers from
