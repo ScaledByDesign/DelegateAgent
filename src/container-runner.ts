@@ -75,6 +75,19 @@ export interface ContainerInput {
    */
   requestingUserId?: string;
   /**
+   * Phase 4 of `.omc/plans/stuck-delegation-spawn-failure.md` ("Bug D"): the
+   * in-flight `TaskDelegation.id` the container is processing, when known.
+   * The container's `agent-runner` reads this on startup and POSTs
+   * /api/agent/heartbeat every 60s so the Delegate UI's status pill can
+   * flip from OFFLINE → LIVE. Undefined for non-delegation traffic (chat,
+   * scheduled tasks, workflow phases without a delegation row) — the
+   * heartbeat poster simply no-ops in that case.
+   *
+   * The container protocol is JSON-over-stdin: adding a field is forward-
+   * compatible (older containers ignore unknown fields).
+   */
+  delegationId?: string;
+  /**
    * Phase 2.5b' — workflow run artifacts root (host path). When set,
    * `buildVolumeMounts` adds a writable mount at `/workspace/artifacts`
    * and `buildContainerArgs` injects `WORKFLOW_ARTIFACTS_DIR=/workspace/artifacts`

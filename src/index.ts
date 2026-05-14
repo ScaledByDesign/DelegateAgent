@@ -320,6 +320,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
   }
 
+  // Phase 4.3 of `.omc/plans/stuck-delegation-spawn-failure.md` (Bug D):
+  // resolve the most-recent inbound `delegation_id` so the container's
+  // agent-runner can POST /api/agent/heartbeat every 60s. Same resolution
+  // pattern as `requestingUserId` above — last-write-wins from newest message.
+  let delegationId: string | undefined;
+  for (let i = missedMessages.length - 1; i >= 0; i--) {
+    if (missedMessages[i].delegation_id) {
+      delegationId = missedMessages[i].delegation_id;
+      break;
+    }
+  }
+
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
   const previousCursor = lastAgentTimestamp[chatJid] || '';
@@ -409,6 +421,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       }
     },
     requestingUserId,
+    delegationId,
   );
 
   await channel.setTyping?.(chatJid, false);
@@ -443,6 +456,7 @@ async function runAgent(
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   requestingUserId?: string,
+  delegationId?: string,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
@@ -517,6 +531,11 @@ async function runAgent(
         // channels this is undefined and the picker correctly falls back
         // to workspace-default credentials.
         requestingUserId,
+        // Phase 4 of `.omc/plans/stuck-delegation-spawn-failure.md` (Bug D):
+        // delegationId passes through to ContainerInput so the in-container
+        // agent-runner can POST /api/agent/heartbeat every 60s. Undefined
+        // for non-delegation traffic (chat, scheduled tasks, etc.).
+        delegationId,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),

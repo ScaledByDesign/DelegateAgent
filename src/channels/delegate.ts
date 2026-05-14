@@ -140,6 +140,15 @@ interface PollMessage {
    * Optional for back-compat with older Delegate deploys that don't emit it.
    */
   requestingUserId?: string;
+  /**
+   * Phase 4.3 of `.omc/plans/stuck-delegation-spawn-failure.md`: the Delegate
+   * `TaskDelegation.id` this message belongs to, when known. Surfaced as a
+   * top-level field by the channel poll route from `agent_messages.metadata
+   * .delegationId`. Plumbed through `NewMessage.delegation_id` → `runAgent`
+   * → `runContainerAgent` → `ContainerInput.delegationId` → in-container
+   * heartbeat poster. Optional for back-compat.
+   */
+  delegationId?: string;
 }
 
 interface PollResponse {
@@ -737,6 +746,11 @@ export class DelegateChannel implements Channel {
           // Phase 5: surface the Delegate user id so the orchestrator can
           // route per-user OAuth credential resolution in the container.
           requesting_user_id: msg.requestingUserId,
+          // Phase 4.3: surface the in-flight TaskDelegation.id (Bug D — Phase 4
+          // of .omc/plans/stuck-delegation-spawn-failure.md). The orchestrator
+          // plumbs this through to runContainerAgent → ContainerInput so the
+          // in-container agent-runner can POST /api/agent/heartbeat every 60s.
+          delegation_id: msg.delegationId,
         });
       });
       delivered++;

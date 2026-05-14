@@ -66,6 +66,16 @@ export interface NewMessage {
    * which correctly falls back to workspace-default credentials.
    */
   requesting_user_id?: string;
+  /**
+   * Phase 4.3 of `.omc/plans/stuck-delegation-spawn-failure.md` ("Bug D"):
+   * the in-flight `TaskDelegation.id` this message advances. Plumbed by the
+   * Delegate channel from the poll response (`agent_messages.metadata
+   * .delegationId`) so the orchestrator can pass it through to
+   * `runContainerAgent` → `ContainerInput.delegationId` for the in-container
+   * heartbeat poster. Undefined for non-Delegate channels and for
+   * non-delegation messages on the Delegate channel.
+   */
+  delegation_id?: string;
 }
 
 export interface ScheduledTask {
