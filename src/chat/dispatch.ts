@@ -49,9 +49,12 @@ function splitWrappedContext(text: string): SplitContext {
   };
 }
 
-// ─── Sentry breadcrumb helper (optional — Sentry SDK may not be installed) ───
+// ─── Sentry breadcrumb + tag helper (optional — Sentry SDK may not be installed) ───
 
-let Sentry: { addBreadcrumb?: (b: unknown) => void } | null = null;
+let Sentry: {
+  addBreadcrumb?: (b: unknown) => void;
+  setTag?: (key: string, value: string | number | boolean) => void;
+} | null = null;
 try {
   Sentry =
     (globalThis as { __SENTRY__?: typeof Sentry }).__SENTRY__ ||
@@ -71,6 +74,20 @@ function breadcrumb(message: string, data: Record<string, unknown>): void {
     });
   } catch {
     /* never let Sentry throw */
+  }
+  // Plan §9 follow-up #4 — set `chatFastpathMode` as a Sentry tag so the
+  // Sentry UI can filter/group by mode (api_key / bifrost-env / exhausted /
+  // skip-to-container / unknown) without parsing breadcrumb JSON. Tag sticks
+  // to the current async scope so any downstream `captureException` within
+  // the same dispatch lifecycle inherits it. Internal-only ("Bifrost" terms
+  // here are fine per §10.13 invariant I8 — Sentry tags are ops/internal).
+  const mode = data?.mode;
+  if (typeof mode === 'string' && Sentry?.setTag) {
+    try {
+      Sentry.setTag('chatFastpathMode', mode);
+    } catch {
+      /* never let Sentry throw */
+    }
   }
 }
 
