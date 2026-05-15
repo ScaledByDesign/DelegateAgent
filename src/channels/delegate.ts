@@ -753,16 +753,22 @@ export class DelegateChannel implements Channel {
         // directly and short-circuit.
         if (result.reason === 'credentials-failure') {
           const userMsg =
-            result.userMessage ?? 'Workspace LLM credits exhausted — contact admin';
+            result.userMessage ??
+            'Workspace LLM credits exhausted — contact admin';
           try {
             await this.sendMessage(jid, userMsg);
-            console.log(`[chat] fastpath credentials-failure surfaced jid=${jid}`);
+            console.log(
+              `[chat] fastpath credentials-failure surfaced jid=${jid}`,
+            );
           } catch (err) {
             console.warn(
               `[chat] fastpath credentials-failure send error jid=${jid}:`,
               (err as Error).message,
             );
-            captureSentryError(err, { jid, action: 'chat-fastpath-credentials-failure' });
+            captureSentryError(err, {
+              jid,
+              action: 'chat-fastpath-credentials-failure',
+            });
           }
           return;
         }

@@ -117,7 +117,10 @@ const cache = new Map<string, CacheEntry>();
 const warnCount = new Map<string, number>();
 const WARN_CAP_PER_WORKSPACE = 5;
 
-function cacheKey(workspaceId: string, userId: string | null | undefined): string {
+function cacheKey(
+  workspaceId: string,
+  userId: string | null | undefined,
+): string {
   return `${workspaceId}::${userId ?? ''}`;
 }
 

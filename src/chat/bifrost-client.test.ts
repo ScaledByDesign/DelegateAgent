@@ -19,10 +19,9 @@ import {
 } from 'vitest';
 
 vi.mock('./credential-resolver.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('./credential-resolver.js')>(
-      './credential-resolver.js',
-    );
+  const actual = await vi.importActual<
+    typeof import('./credential-resolver.js')
+  >('./credential-resolver.js');
   return {
     ...actual,
     resolveChatTransport: vi.fn(),

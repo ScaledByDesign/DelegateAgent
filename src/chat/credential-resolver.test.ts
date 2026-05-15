@@ -69,7 +69,10 @@ describe('resolveChatTransport — functional branches', () => {
     });
     const { resolveChatTransport, _clearCacheForTests } = await importFresh();
     _clearCacheForTests();
-    const spec = await resolveChatTransport({ workspaceId: 'w1', userId: 'u1' });
+    const spec = await resolveChatTransport({
+      workspaceId: 'w1',
+      userId: 'u1',
+    });
     expect(spec.kind).toBe('skip-to-container');
     if (spec.kind === 'skip-to-container') {
       expect(spec.workspaceId).toBe('w1');
@@ -85,7 +88,10 @@ describe('resolveChatTransport — functional branches', () => {
     });
     const { resolveChatTransport, _clearCacheForTests } = await importFresh();
     _clearCacheForTests();
-    const spec = await resolveChatTransport({ workspaceId: 'w1', userId: 'u1' });
+    const spec = await resolveChatTransport({
+      workspaceId: 'w1',
+      userId: 'u1',
+    });
     expect(spec.kind).toBe('exhausted');
     if (spec.kind === 'exhausted') expect(spec.workspaceId).toBe('w1');
   });
@@ -100,7 +106,10 @@ describe('resolveChatTransport — functional branches', () => {
     });
     const { resolveChatTransport, _clearCacheForTests } = await importFresh();
     _clearCacheForTests();
-    const spec = await resolveChatTransport({ workspaceId: 'w1', userId: 'u1' });
+    const spec = await resolveChatTransport({
+      workspaceId: 'w1',
+      userId: 'u1',
+    });
     expect(spec.kind).toBe('api_key');
     if (spec.kind === 'api_key') {
       expect(spec.url).toBe(
@@ -125,7 +134,10 @@ describe('resolveChatTransport — functional branches', () => {
     });
     const { resolveChatTransport, _clearCacheForTests } = await importFresh();
     _clearCacheForTests();
-    const spec = await resolveChatTransport({ workspaceId: 'w1', userId: 'u1' });
+    const spec = await resolveChatTransport({
+      workspaceId: 'w1',
+      userId: 'u1',
+    });
     expect(spec.kind).toBe('api_key');
     if (spec.kind === 'api_key') {
       expect(spec.url).toBe('http://bifrost.test/anthropic/v1/messages');
@@ -140,7 +152,10 @@ describe('resolveChatTransport — functional branches', () => {
     resolveMock.mockResolvedValue(null);
     const { resolveChatTransport, _clearCacheForTests } = await importFresh();
     _clearCacheForTests();
-    const spec = await resolveChatTransport({ workspaceId: 'w1', userId: 'u1' });
+    const spec = await resolveChatTransport({
+      workspaceId: 'w1',
+      userId: 'u1',
+    });
     expect(spec.kind).toBe('bifrost-env');
     if (spec.kind === 'bifrost-env') {
       expect(spec.url).toBe('http://bifrost.test/anthropic/v1/messages');
