@@ -224,8 +224,7 @@ export async function loadDagWorkflowForGroup(
   }
 
   // ── HTTP fetch ─────────────────────────────────────────────────────────
-  const baseUrl =
-    process.env.DELEGATE_API_BASE ?? 'https://delegate.ws';
+  const baseUrl = process.env.DELEGATE_API_BASE ?? 'https://delegate.ws';
   const token = process.env.DELEGATE_AGENT_TOKEN ?? '';
   const url = `${baseUrl}/api/agent/workflows/dag/${encodeURIComponent(name)}?workspaceId=${encodeURIComponent(workspaceId)}`;
 
