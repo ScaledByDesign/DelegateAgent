@@ -742,6 +742,50 @@ export class DelegateChannel implements Channel {
         workspaceId: msg.workspaceId ?? null,
         requestingUserId: msg.requestingUserId,
       };
+
+      // Task-JID hard gate — per memory `feedback_chat_fastpath_not_for_agent_execution`:
+      // task JIDs MUST always go to the container path (BMAD prompt + skills +
+      // MCP server + tools). The chat fast-path is for conversational JIDs only
+      // (delegate:conv:*, delegate:agent:*, delegate:main, channel-native JIDs
+      // from WhatsApp/Telegram/etc).
+      //
+      // Also gate on msg.delegationId — any inbound that already carries an
+      // in-flight TaskDelegation belongs to the container path regardless of JID
+      // shape (defensive against legacy or aliased JIDs).
+      //
+      // Contract change from previous behaviour: previously a task JID with a
+      // short/ambiguous text (e.g. "hi") could be routed to the Bifrost direct
+      // path by classifyForFastPath(). That round-trip bypassed the container,
+      // BMAD stage prompt, and tools. This gate closes that gap entirely with
+      // zero Bifrost latency cost for task JIDs.
+      const isTaskJid = jid.startsWith('delegate:task:');
+      const hasDelegationId = Boolean(msg.delegationId);
+      if (isTaskJid || hasDelegationId) {
+        sentryBreadcrumb('chat.fastpath.gated', {
+          jid,
+          reason: isTaskJid ? 'task-jid-no-fastpath' : 'delegation-id-no-fastpath',
+          delegationId: msg.delegationId ?? null,
+        });
+        // Hand off directly to container path (same shape as the post-fastpath
+        // fall-through below). DO NOT call dispatchChatFastPath at all —
+        // zero Bifrost round-trip for task JIDs.
+        recordChannelMessageDelivered('delegate');
+        this.opts.onMessage(jid, {
+          id: msg.id,
+          chat_jid: jid,
+          sender: msg.sender ?? msg.role ?? 'user',
+          sender_name: msg.sender ?? msg.role ?? 'User',
+          content: msg.text,
+          timestamp: msg.timestamp,
+          is_from_me: false,
+          is_bot_message: false,
+          requesting_user_id: msg.requestingUserId,
+          delegation_id: msg.delegationId,
+        });
+        delivered++;
+        continue; // skip rest of loop iteration — fastpath not called
+      }
+
       void dispatchChatFastPath(inboundForChat).then(async (result) => {
         if (result.handled) {
           console.log(
