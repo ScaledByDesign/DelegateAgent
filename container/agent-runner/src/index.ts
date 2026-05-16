@@ -1059,6 +1059,96 @@ async function main(): Promise<void> {
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     log(`Agent error: ${errorMessage}`);
+
+    // ── In-container cooldown hook (2026-05-16) ──────────────────────────
+    // When the SDK throws because Anthropic returned 402 (credit_exhausted)
+    // or 401 (auth_invalid) for the credential the picker just handed us,
+    // report it back to Delegate so the picker excludes this row on the
+    // next dispatch. Env vars are injected at container spawn by
+    // container-runner.ts:498-499. Without this, the same dead credential
+    // gets re-served on every retry — observed on smoke task
+    // cmndofiid00017 (2026-05-16): 5× credit_exhausted in 12 min on the
+    // same personal key.
+    //
+    // We classify here (not in the SDK error) because the SDK error text
+    // is what surfaces all the way back to the user via the channel reply,
+    // and we want to report cooldown BEFORE that propagates so the next
+    // dispatch (often within seconds) picks the next-tier credential.
+    //
+    // Fire-and-forget with a 3s timeout — cooldown report failure must
+    // NOT block the agent's own failure surfacing. The Delegate-side
+    // reply-text classifier is the redundant backstop (lib/delegation/
+    // settle-from-reply-text.ts emits cooldown when it matches the same
+    // patterns), so a missed in-container report still gets caught.
+    try {
+      const lower = errorMessage.toLowerCase();
+      const isCreditExhausted =
+        lower.includes('credit balance') ||
+        lower.includes('credit_balance') ||
+        lower.includes('insufficient credits') ||
+        lower.includes('quota exceeded') ||
+        /\b402\b/.test(lower);
+      const isAuthInvalid =
+        lower.includes('invalid x-api-key') ||
+        lower.includes('invalid api key') ||
+        lower.includes('authentication_error') ||
+        /\b401\b/.test(lower);
+
+      const providerId = process.env.DELEGATE_LLM_PROVIDER_ID;
+      const workspaceId = process.env.DELEGATE_LLM_WORKSPACE_ID;
+      const delegateUrl = process.env.DELEGATE_URL || 'https://delegate.ws';
+      const delegateToken =
+        process.env.DELEGATE_AGENT_TOKEN || process.env.DELEGATE_API_KEY;
+
+      if (
+        (isCreditExhausted || isAuthInvalid) &&
+        providerId &&
+        workspaceId &&
+        delegateToken
+      ) {
+        const reason = isCreditExhausted ? 'usage_limit_exceeded' : 'auth_error';
+        log(
+          `Reporting cooldown to Delegate (providerId=${providerId}, reason=${reason})`,
+        );
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(() => ctrl.abort(), 3000);
+        try {
+          const res = await fetch(
+            `${delegateUrl.replace(/\/$/, '')}/api/agent/integrations/llm-keys/cooldown`,
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                Authorization: `Bearer ${delegateToken}`,
+              },
+              body: JSON.stringify({
+                providerId,
+                workspaceId,
+                reason,
+                anthropicErrorCode: isCreditExhausted ? '402' : '401',
+              }),
+              signal: ctrl.signal,
+            },
+          );
+          if (!res.ok) {
+            log(
+              `Cooldown report failed: status=${res.status} (non-fatal, will still exit)`,
+            );
+          } else {
+            log(`Cooldown report acked (${res.status})`);
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+    } catch (reportErr) {
+      // Non-fatal — Delegate's reply-text classifier is the redundant
+      // backstop. Just log and continue to the exit path.
+      log(
+        `Cooldown report threw (non-fatal): ${reportErr instanceof Error ? reportErr.message : String(reportErr)}`,
+      );
+    }
+
     writeOutput({
       status: 'error',
       result: null,
