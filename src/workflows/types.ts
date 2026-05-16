@@ -7,6 +7,21 @@
  * pointing at the bad field so the loader can surface useful errors.
  */
 
+/** Optional user-defined pipeline step entry (Tier-1 §1B of
+ *  .omc/plans/workflow-driven-task-dispatch.md). Variable-length array.
+ *  DA passes this through to Delegate verbatim; Delegate's
+ *  `lib/delegation/workflow-types.ts:workflowStepEntrySchema` is the
+ *  authoritative validator. DA only checks the field is an array of objects. */
+export interface WorkflowStepEntry {
+  stage?: string;
+  label?: string;
+  agent_role?: string;
+  agent_profile_id?: string;
+  system_prompt?: string;
+  goals?: string[];
+  instructions?: string;
+}
+
 export interface WorkflowConfig {
   name: string;
   description: string;
@@ -15,6 +30,8 @@ export interface WorkflowConfig {
   on_result_found: string;
   launch_template: string;
   phase_order: string[];
+  /** Optional — user-defined pipeline steps for outer BMAD axis. */
+  stages?: WorkflowStepEntry[];
 }
 
 export interface Phase {
@@ -142,6 +159,9 @@ const WORKFLOW_REQUIRED_KEYS = new Set([
   'phase_order',
 ]);
 
+/** Optional top-level keys — accepted but not required. */
+const WORKFLOW_OPTIONAL_KEYS = new Set(['stages']);
+
 const PHASE_REQUIRED_KEYS = new Set([
   'id',
   'name',
@@ -169,7 +189,7 @@ export function validateWorkflowConfig(
   const obj = raw as Record<string, unknown>;
   // Reject entirely unknown top-level keys — schema drift should fail fast.
   for (const k of Object.keys(obj)) {
-    if (!WORKFLOW_REQUIRED_KEYS.has(k)) {
+    if (!WORKFLOW_REQUIRED_KEYS.has(k) && !WORKFLOW_OPTIONAL_KEYS.has(k)) {
       throw new WorkflowSchemaError(file, k, 'unknown field for workflow.yaml');
     }
   }
@@ -185,6 +205,27 @@ export function validateWorkflowConfig(
       allowEmpty: false,
     }),
   };
+
+  // Optional `stages:` — pass-through, light validation. Delegate-side
+  // `workflowStepEntrySchema` is the authoritative validator (Zod). Here we
+  // only verify shape so a malformed YAML still fails loudly at load time.
+  if ('stages' in obj && obj.stages !== undefined && obj.stages !== null) {
+    const stages = obj.stages;
+    if (!Array.isArray(stages)) {
+      throw new WorkflowSchemaError(file, 'stages', 'must be an array');
+    }
+    for (let i = 0; i < stages.length; i++) {
+      const entry = stages[i];
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        throw new WorkflowSchemaError(
+          file,
+          `stages[${i}]`,
+          'each step must be a YAML mapping',
+        );
+      }
+    }
+    cfg.stages = stages as WorkflowStepEntry[];
+  }
   // phase_order entries must be unique
   const seen = new Set<string>();
   for (let i = 0; i < cfg.phase_order.length; i++) {
