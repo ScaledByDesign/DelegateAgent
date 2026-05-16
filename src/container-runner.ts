@@ -631,6 +631,21 @@ async function buildContainerArgs(
     oauthHardFail ? 'oauth' : resolvedMode,
   );
 
+  // ── Model selection ────────────────────────────────────────────────────
+  // The claude CLI defaults to `claude-sonnet-4-6` but many OAuth tokens
+  // don't grant access to it yet — the CLI then returns the silent
+  // "selected model... may not exist" trap wrapped in `status: success`.
+  // Pick precedence:
+  //   1. Host env CLAUDE_AGENT_MODEL (operator override)
+  //   2. Delegate dispatcher injection via the request envelope (future:
+  //      AgentProfile.delegateAgentModel — needs llm-keys API extension)
+  //   3. Hardcoded OAuth-safe fallback `claude-sonnet-4-5`
+  // The agent-runner reads CLAUDE_AGENT_MODEL inside the container and
+  // threads to query()'s `model` option (container/agent-runner/src/index.ts).
+  const agentModel =
+    process.env.CLAUDE_AGENT_MODEL || 'claude-sonnet-4-5';
+  args.push('-e', `CLAUDE_AGENT_MODEL=${agentModel}`);
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
