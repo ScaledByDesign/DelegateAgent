@@ -177,6 +177,14 @@ export class DelegateChannel implements Channel {
   private seenIds = new Map<string, Set<string>>();
   /** JID → agentProfileId, populated from group metadata during connect() */
   private agentProfileIds = new Map<string, string>();
+  /**
+   * Phase 4 (agent-system-consolidation): latest known delegation ID per JID.
+   * Forwarded as x-delegation-id header on every poll so the poll handler can
+   * bump lastHeartbeatAt as a side-effect — replacing the container-side
+   * setInterval heartbeat poster. Populated from msg.delegationId each time a
+   * message is received that carries one; cleared when delegation completes.
+   */
+  private activeDelegationIds = new Map<string, string>();
   private connected = false;
   /** Consecutive poll failure count per JID — for Sentry throttling */
   private pollFailures = new Map<string, number>();
@@ -528,6 +536,7 @@ export class DelegateChannel implements Channel {
     this.lastSeen.clear();
     this.seenIds.clear();
     this.pollFailures.clear();
+    this.activeDelegationIds.clear();
     this.connected = false;
     sentryBreadcrumb('channel.disconnect', {
       messagesDelivered: this.messagesDelivered,
@@ -624,10 +633,21 @@ export class DelegateChannel implements Channel {
       `&since=${encodeURIComponent(since)}` +
       `&limit=20`;
 
+    // Phase 4 (agent-system-consolidation): include active delegation ID as
+    // x-delegation-id header so the poll handler bumps lastHeartbeatAt as a
+    // side-effect — replacing the container-side setInterval heartbeat poster.
+    const pollHeaders: Record<string, string> = {
+      Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+    };
+    const activeDelegationId = this.activeDelegationIds.get(jid);
+    if (activeDelegationId) {
+      pollHeaders['x-delegation-id'] = activeDelegationId;
+    }
+
     let data: PollResponse;
     try {
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
+        headers: pollHeaders,
         signal: AbortSignal.timeout(5_000),
       });
 
@@ -695,6 +715,14 @@ export class DelegateChannel implements Channel {
       if (seen.size > SEEN_IDS_CAP) {
         const first = seen.values().next().value;
         if (first !== undefined) seen.delete(first);
+      }
+
+      // Phase 4 (agent-system-consolidation): track the latest delegation ID
+      // for this JID so future polls include x-delegation-id header, enabling
+      // the poll handler's heartbeat side-effect. Safe to update on every
+      // message — the delegation ID is stable for the run duration.
+      if (msg.delegationId) {
+        this.activeDelegationIds.set(jid, msg.delegationId);
       }
 
       // ── Chat fast-path ────────────────────────────────────────────────

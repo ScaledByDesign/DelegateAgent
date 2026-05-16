@@ -35,84 +35,31 @@ interface ContainerInput {
   assistantName?: string;
   script?: string;
   /**
-   * Phase 4 of `.omc/plans/stuck-delegation-spawn-failure.md` (Bug D): the
-   * Delegate `TaskDelegation.id` this container is processing. When set, the
-   * runner starts a 60s heartbeat poster to /api/agent/heartbeat so the UI
-   * status pill flips OFFLINE → LIVE and silent-stuck-delegation alerts
-   * (Phase 2 cron) don't false-positive on healthy in-flight work. Forward-
-   * compatible: older host builds simply don't set this and the poster
-   * stays no-op.
+   * The Delegate `TaskDelegation.id` this container is processing.
+   * Previously used by the in-container heartbeat poster (removed Phase 4 of
+   * agent-system-consolidation). Retained in ContainerInput for back-compat
+   * with host builds that still include it; heartbeat is now a poll side-effect
+   * via the host channel's x-delegation-id header.
    */
   delegationId?: string;
 }
 
-// ─── Heartbeat poster (Phase 4 — Bug D) ─────────────────────────────────────
-// Posts to $DELEGATE_URL/api/agent/heartbeat every 60s with {delegationId}.
-// First post fires immediately so `last_heartbeat_at` is non-NULL within
-// ~one round-trip of spawn (AC4 acceptance bar). Cleanup wires SIGTERM /
-// SIGINT / beforeExit so the interval never outlives the process.
-
-let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-
-function startHeartbeat(delegationId: string): void {
-  const base = (process.env.DELEGATE_URL || 'https://delegate.ws').replace(
-    /\/$/,
-    '',
-  );
-  const url = `${base}/api/agent/heartbeat`;
-  // Host injects via OneCLI / credentials proxy. Falls back to
-  // DELEGATE_AGENT_TOKEN for parity with the host-side bearer chain.
-  const bearer =
-    process.env.DELEGATE_API_TOKEN || process.env.DELEGATE_AGENT_TOKEN || '';
-  if (!bearer) {
-    log(
-      '[heartbeat] DELEGATE_API_TOKEN missing — skipping heartbeat poster',
-    );
-    return;
-  }
-  const post = async (): Promise<void> => {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${bearer}`,
-        },
-        body: JSON.stringify({ delegationId }),
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!res.ok) {
-        log(`[heartbeat] non-2xx ${res.status} for ${delegationId}`);
-      }
-    } catch (err) {
-      log(
-        `[heartbeat] post failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  };
-  // Fire-and-forget the first beat so last_heartbeat_at is non-NULL ASAP.
-  void post();
-  heartbeatInterval = setInterval(post, 60_000);
-  log(`[heartbeat] started for delegation=${delegationId}`);
-}
-
-function stopHeartbeat(): void {
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
-}
+// ─── Heartbeat (Phase 4 agent-system-consolidation) ──────────────────────────
+// The dedicated heartbeat poster has been removed. Heartbeat writes are now a
+// side-effect of every authenticated poll in the platform's poll-handler.ts —
+// the host-side channel (src/channels/delegate.ts) includes x-delegation-id on
+// poll requests, and the poll route bumps lastHeartbeatAt on every auth success.
+//
+// Checkpoint writes (combined heartbeat+checkpoint POSTs) still reach
+// /api/agent/heartbeat — that endpoint is deprecated but preserved for
+// back-compat (D11). Container code that posts checkpoints should continue
+// using that path until the full migration is complete.
 
 process.on('SIGTERM', () => {
-  stopHeartbeat();
   process.exit(0);
 });
 process.on('SIGINT', () => {
-  stopHeartbeat();
   process.exit(0);
-});
-process.on('beforeExit', () => {
-  stopHeartbeat();
 });
 
 interface ContainerOutput {
@@ -904,12 +851,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Phase 4 (Bug D): kick off the heartbeat poster for delegation traffic.
-  // No-op for chat / scheduled tasks where delegationId is unset.
-  if (containerInput.delegationId) {
-    startHeartbeat(containerInput.delegationId);
-  }
-
   // Credentials are injected by the host's credential proxy via ANTHROPIC_BASE_URL.
   // No real secrets exist in the container environment.
   const sdkEnv: Record<string, string | undefined> = {
@@ -991,7 +932,6 @@ async function main(): Promise<void> {
       // idle timer and cause a 30-min delay before the next _close).
       if (queryResult.closedDuringQuery) {
         log('Close sentinel consumed during query, exiting');
-        stopHeartbeat();
         break;
       }
 
@@ -1004,7 +944,6 @@ async function main(): Promise<void> {
       const nextMessage = await waitForIpcMessage();
       if (nextMessage === null) {
         log('Close sentinel received, exiting');
-        stopHeartbeat();
         break;
       }
 
@@ -1014,7 +953,6 @@ async function main(): Promise<void> {
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     log(`Agent error: ${errorMessage}`);
-    stopHeartbeat();
     writeOutput({
       status: 'error',
       result: null,
