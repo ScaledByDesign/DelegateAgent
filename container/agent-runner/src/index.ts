@@ -657,6 +657,17 @@ async function runQuery(
           // which doesn't exist on glibc-based node:22-slim. Point at the global bin.
           pathToClaudeCodeExecutable:
             process.env.CLAUDE_CODE_EXECUTABLE_PATH || '/usr/local/bin/claude',
+          // User-selectable model via env, threaded from Delegate dispatcher.
+          // Read order (Delegate side picks):
+          //   1. AgentProfile.delegateAgentModel (per-agent override)
+          //   2. WorkspaceSettings.agentModel (workspace default — future)
+          //   3. dispatcher fallback (claude-sonnet-4-5 — broad OAuth support)
+          // When unset, SDK uses the CLI's built-in default (claude-sonnet-4-6),
+          // which fails when the picked OAuth token doesn't grant access to it
+          // (the silent "status:success, result:'model may not exist'" trap).
+          ...(process.env.CLAUDE_AGENT_MODEL
+            ? { model: process.env.CLAUDE_AGENT_MODEL }
+            : {}),
           cwd: '/workspace/group',
           additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
           resume: sessionId,
