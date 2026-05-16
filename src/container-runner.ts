@@ -349,6 +349,19 @@ async function buildContainerArgs(
    * The companion writable mount is added by `buildVolumeMounts(artifactsDir)`.
    */
   workflowArtifactsContainerPath?: string,
+  /**
+   * In-flight `TaskDelegation.id` the container is processing. When set,
+   * exposed as `DELEGATE_DELEGATION_ID` so the agent-runner's heartbeat
+   * poster can include it in POST `/api/agent/heartbeat` calls every 60s.
+   * Without this the Delegate UI shows "no heartbeat yet" indefinitely
+   * because `/api/agent/heartbeat` requires `{delegationId}` in body.
+   *
+   * Originally declared on `ContainerInput.delegationId` (line 89) per
+   * `.omc/plans/stuck-delegation-spawn-failure.md` Phase 4 "Bug D" but
+   * never threaded through here — observed live 2026-05-16 on task
+   * cmndofiid00017fvp3dx0dgi3.
+   */
+  delegationId?: string,
 ): Promise<{
   args: string[];
   oauthHardFail: boolean;
@@ -363,6 +376,14 @@ async function buildContainerArgs(
   // Inject workspace context for per-workspace credential resolution
   if (workspaceId) {
     args.push('-e', `DELEGATE_WORKSPACE_ID=${workspaceId}`);
+  }
+
+  // Heartbeat plumbing — the agent-runner posts `/api/agent/heartbeat`
+  // every 60s with this id so the Delegate UI's status pill flips
+  // OFFLINE → LIVE and the orphan reaper can distinguish stuck work from
+  // live work. Without this env the heartbeat poster has nothing to send.
+  if (delegationId) {
+    args.push('-e', `DELEGATE_DELEGATION_ID=${delegationId}`);
   }
 
   // Phase 2.5b' — workflow artifacts root inside the container. Set only
@@ -743,6 +764,9 @@ export async function runContainerAgent(
     // it at /workspace/artifacts via buildVolumeMounts above; this exposes
     // the container-side path as WORKFLOW_ARTIFACTS_DIR for prompts/skills.
     input.artifactsDir ? '/workspace/artifacts' : undefined,
+    // Thread the in-flight delegationId through so the heartbeat poster
+    // in the agent-runner has something to send to /api/agent/heartbeat.
+    input.delegationId,
   );
   const containerArgs = buildResult.args;
   const containerMode = buildResult.resolvedMode;
