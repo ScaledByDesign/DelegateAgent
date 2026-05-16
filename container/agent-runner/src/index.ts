@@ -91,6 +91,58 @@ const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
 
+// ─── Stage Handoff (Phase 5 agent-system-consolidation) ─────────────────────
+// When the host dispatches a next-stage delegation to a still-alive container,
+// the AgentMessage content is prefixed with a magic header carrying the new
+// stage's metadata. Wire format MUST match
+// `lib/delegation/dispatch-to-droplet.ts:formatStageHandoffHeader`.
+//
+// On detection we end the current SDK session (the outer loop will clear
+// sessionId and start fresh) so BMAD stages stay context-isolated per Critic
+// iter-1 §13.IV — DEV must not see QA verdicts; REVIEW must not see DEV's
+// internal monologue. Container process + filesystem isolation persists; only
+// the SDK session resets.
+const STAGE_HANDOFF_HEADER_START = '__DELEGATE_STAGE_HANDOFF__';
+const STAGE_HANDOFF_HEADER_END = '__END__';
+
+interface StageHandoffEnvelope {
+  newStage: string;
+  newDelegationId: string;
+  freshSessionId: true;
+}
+
+/** Returns { envelope, cleanedPrompt } when the magic header is present at
+ *  the start of `text`, or null otherwise. Defensive: malformed JSON between
+ *  the markers is treated as "no handoff" so a fluky prefix can't crash us. */
+export function parseStageHandoffHeader(
+  text: string,
+): { envelope: StageHandoffEnvelope; cleanedPrompt: string } | null {
+  if (!text.startsWith(STAGE_HANDOFF_HEADER_START)) return null;
+  const startLen = STAGE_HANDOFF_HEADER_START.length;
+  const endIdx = text.indexOf(STAGE_HANDOFF_HEADER_END, startLen);
+  if (endIdx === -1) return null;
+  const jsonStr = text.slice(startLen, endIdx);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    typeof (parsed as { newStage?: unknown }).newStage !== 'string' ||
+    typeof (parsed as { newDelegationId?: unknown }).newDelegationId !== 'string' ||
+    (parsed as { freshSessionId?: unknown }).freshSessionId !== true
+  ) {
+    return null;
+  }
+  // Strip header + optional trailing newlines that dispatch adds after END.
+  const afterEnd = endIdx + STAGE_HANDOFF_HEADER_END.length;
+  const cleanedPrompt = text.slice(afterEnd).replace(/^\r?\n\r?\n?/, '');
+  return { envelope: parsed as StageHandoffEnvelope, cleanedPrompt };
+}
+
 /**
  * Push-based async iterable for streaming user messages to the SDK.
  * Keeps the iterable alive until end() is called, preventing isSingleUserTurn.
@@ -493,6 +545,12 @@ function drainIpcInput(): string[] {
 /**
  * Wait for a new IPC message or _close sentinel.
  * Returns the messages as a single string, or null if _close.
+ *
+ * Phase 5: when any drained message carries the stage-handoff magic header,
+ * the cleaned prompt is returned alone (later same-batch messages are
+ * appended after the cleaned prompt). The caller is responsible for noticing
+ * the handoff via `parseStageHandoffHeader`; we do NOT consume the header
+ * here so the outer loop's session-reset logic stays in one place.
  */
 function waitForIpcMessage(): Promise<string | null> {
   return new Promise((resolve) => {
@@ -529,6 +587,10 @@ async function runQuery(
   newSessionId?: string;
   lastAssistantUuid?: string;
   closedDuringQuery: boolean;
+  /** Phase 5 — set when an in-flight IPC message carried the stage-handoff
+   *  magic header. The outer loop clears sessionId and re-enters runQuery
+   *  with this prompt so the SDK starts a brand-new session. */
+  stageHandoffPrompt?: string;
 }> {
   const stream = new MessageStream();
   stream.push(prompt);
@@ -536,6 +598,7 @@ async function runQuery(
   // Poll IPC for follow-up messages and _close sentinel during the query
   let ipcPolling = true;
   let closedDuringQuery = false;
+  let stageHandoffPrompt: string | undefined;
   const pollIpcDuringQuery = () => {
     if (!ipcPolling) return;
     if (shouldClose()) {
@@ -547,6 +610,20 @@ async function runQuery(
     }
     const messages = drainIpcInput();
     for (const text of messages) {
+      // Phase 5 — stage handoff. End the current SDK session so the outer
+      // loop re-enters with a fresh sessionId; queue any messages collected
+      // BEFORE the handoff (rare but possible) as the handoff prompt's prefix.
+      const handoff = parseStageHandoffHeader(text);
+      if (handoff) {
+        log(
+          `Stage-handoff received: newStage=${handoff.envelope.newStage} ` +
+            `newDelegationId=${handoff.envelope.newDelegationId} — ending session`,
+        );
+        stageHandoffPrompt = handoff.cleanedPrompt;
+        stream.end();
+        ipcPolling = false;
+        return;
+      }
       log(`Piping IPC message into active query (${text.length} chars)`);
       stream.push(text);
     }
@@ -769,9 +846,9 @@ async function runQuery(
 
   ipcPolling = false;
   log(
-    `Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`,
+    `Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}, stageHandoff: ${stageHandoffPrompt ? 'yes' : 'no'}`,
   );
-  return { newSessionId, lastAssistantUuid, closedDuringQuery };
+  return { newSessionId, lastAssistantUuid, closedDuringQuery, stageHandoffPrompt };
 }
 
 interface ScriptResult {
@@ -927,6 +1004,19 @@ async function main(): Promise<void> {
         resumeAt = queryResult.lastAssistantUuid;
       }
 
+      // Phase 5 — stage handoff. The current SDK session was ended cleanly
+      // because an in-flight IPC message carried the stage-handoff header.
+      // Clear sessionId + resumeAt so the next runQuery starts a brand-new
+      // Claude SDK session (BMAD context isolation), and feed in the cleaned
+      // prompt (already stripped of the magic header by parseStageHandoffHeader).
+      if (queryResult.stageHandoffPrompt) {
+        log('Stage-handoff: minting fresh SDK session for next stage');
+        sessionId = undefined;
+        resumeAt = undefined;
+        prompt = queryResult.stageHandoffPrompt;
+        continue;
+      }
+
       // If _close was consumed during the query, exit immediately.
       // Don't emit a session-update marker (it would reset the host's
       // idle timer and cause a 30-min delay before the next _close).
@@ -945,6 +1035,22 @@ async function main(): Promise<void> {
       if (nextMessage === null) {
         log('Close sentinel received, exiting');
         break;
+      }
+
+      // Phase 5 — stage handoff arriving while idle. Same session-reset
+      // logic as the mid-query path above. The header may be the entire
+      // text (single message) or the prefix when multiple messages were
+      // drained together (join order preserves dispatch order).
+      const idleHandoff = parseStageHandoffHeader(nextMessage);
+      if (idleHandoff) {
+        log(
+          `Stage-handoff (idle): newStage=${idleHandoff.envelope.newStage} ` +
+            `newDelegationId=${idleHandoff.envelope.newDelegationId} — fresh SDK session`,
+        );
+        sessionId = undefined;
+        resumeAt = undefined;
+        prompt = idleHandoff.cleanedPrompt;
+        continue;
       }
 
       log(`Got new message (${nextMessage.length} chars), starting new query`);
