@@ -639,11 +639,20 @@ async function buildContainerArgs(
   //   1. Host env CLAUDE_AGENT_MODEL (operator override)
   //   2. Delegate dispatcher injection via the request envelope (future:
   //      AgentProfile.delegateAgentModel — needs llm-keys API extension)
-  //   3. Hardcoded OAuth-safe fallback `claude-sonnet-4-5`
+  //   3. Hardcoded fallback `claude-haiku-4-5-20251001`
+  // Why haiku as the fallback and not sonnet/opus: the workspace-OAuth
+  // tokens currently in rotation hit `rate_limit_error` on every premium
+  // model (verified 2026-05-16 via /v1/messages probe — haiku was the
+  // ONLY tier accepting the request without a 429). The CLI wraps that
+  // as "selected model... may not exist or you may not have access" and
+  // bubbles `status: success` back to the dispatcher, masking the
+  // failure. Haiku is the safe default; operators with Sonnet/Opus
+  // budget should set CLAUDE_AGENT_MODEL on the host OR per-agent via
+  // AgentProfile.delegateAgentModel (future llm-keys API extension).
   // The agent-runner reads CLAUDE_AGENT_MODEL inside the container and
   // threads to query()'s `model` option (container/agent-runner/src/index.ts).
   const agentModel =
-    process.env.CLAUDE_AGENT_MODEL || 'claude-sonnet-4-5';
+    process.env.CLAUDE_AGENT_MODEL || 'claude-haiku-4-5-20251001';
   args.push('-e', `CLAUDE_AGENT_MODEL=${agentModel}`);
 
   // Runtime-specific args for host gateway resolution
