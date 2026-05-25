@@ -112,7 +112,7 @@ interface VolumeMount {
   readonly: boolean;
 }
 
-function buildVolumeMounts(
+async function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
   /**
@@ -123,7 +123,7 @@ function buildVolumeMounts(
    * Undefined for all channel-driven invocations.
    */
   artifactsDir?: string,
-): VolumeMount[] {
+): Promise<VolumeMount[]> {
   const mounts: VolumeMount[] = [];
   const projectRoot = process.cwd();
   const groupDir = resolveGroupFolderPath(group.folder);
@@ -230,6 +230,40 @@ function buildVolumeMounts(
       fs.cpSync(srcDir, dstDir, { recursive: true });
     }
   }
+
+  // Sync workspace-authored skills (Delegate "Agent Command Center → Settings →
+  // Skills") into the SAME .claude/skills/ dir, so the agent can `cat`/load them
+  // exactly like the baked-in skills above. Only workspace-GLOBAL skills resolve
+  // here — the container has a workspaceId but no Delegate agentProfileId, so
+  // per-agent `assignedTo` skills are delivered inline in the dispatch prompt by
+  // Delegate (lib/agent-dispatch.ts), not as files. Best-effort: a fetch failure
+  // never blocks the spawn. See memory agent_skill_dual_system_2026_05_25.
+  if (group.workspaceId) {
+    try {
+      const { fetchSkillsFromDelegate } = await import('./skills-client.js');
+      const dbSkills = await fetchSkillsFromDelegate(group.workspaceId);
+      for (const skill of dbSkills) {
+        // Sanitize key to a safe dir name; skip anything that escapes.
+        const safeKey = skill.key.replace(/[^a-zA-Z0-9._-]/g, '-');
+        if (!safeKey || safeKey.startsWith('.')) continue;
+        const dstDir = path.join(skillsDst, safeKey);
+        fs.mkdirSync(dstDir, { recursive: true });
+        fs.writeFileSync(path.join(dstDir, 'SKILL.md'), skill.markdown);
+      }
+      if (dbSkills.length > 0) {
+        logger.info(
+          { folder: group.folder, count: dbSkills.length },
+          'Workspace DB skills written to .claude/skills/',
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { folder: group.folder, error: (err as Error).message },
+        'Workspace DB skill sync failed (non-fatal; skills still delivered inline)',
+      );
+    }
+  }
+
   mounts.push({
     hostPath: groupSessionsDir,
     containerPath: '/home/node/.claude',
@@ -853,7 +887,7 @@ export async function runContainerAgent(
     };
   }
 
-  const mounts = buildVolumeMounts(group, input.isMain, input.artifactsDir);
+  const mounts = await buildVolumeMounts(group, input.isMain, input.artifactsDir);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `delegate-agent-${safeName}-${Date.now()}`;
   // Main group uses the default OneCLI agent; others use their own agent.
