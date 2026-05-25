@@ -496,7 +496,11 @@ async function buildContainerArgs(
   // the dead row to Delegate, advancing the next dispatch past it.
   let pickedCredentialId: string | undefined;
   let pickedWorkspaceId: string | undefined;
-  let pickedFallbacks: { provider: string; key: string; baseUrl: string | null }[] = [];
+  let pickedFallbacks: {
+    provider: string;
+    key: string;
+    baseUrl: string | null;
+  }[] = [];
 
   // Tier 1: Per-workspace keys from Delegate API (preferred for multi-tenant SaaS)
   if (workspaceId) {
@@ -989,6 +993,15 @@ export async function runContainerAgent(
     let parseBuffer = '';
     let newSessionId: string | undefined;
     let outputChain = Promise.resolve();
+    // Set when a streamed OUTPUT marker carries a credit/rate-limit failure that
+    // the claude-cli mis-reported as `status:success` (e.g. result text
+    // "API Error: 402 …"). The close handler reads this to force the cooldown +
+    // cascade path even though the marker claimed success. We also stop the
+    // container immediately so it doesn't linger idle until IDLE_TIMEOUT.
+    let streamedCreditReason:
+      | 'usage_limit_exceeded'
+      | 'rate_limit_unknown'
+      | null = null;
 
     container.stdout.on('data', (data) => {
       const chunk = data.toString();
@@ -1068,11 +1081,35 @@ export async function runContainerAgent(
                 newSessionId = parsed.newSessionId;
               }
               hadStreamingOutput = true;
+              // Credit/rate-limit mis-reported as success: the claude-cli can
+              // return subtype=success with the upstream error embedded in the
+              // result text ("API Error: 402 …"). Detect it here so we don't
+              // treat it as a real result, and so the container is reaped now
+              // instead of lingering idle until IDLE_TIMEOUT (which starves the
+              // queue — observed 2026-05-25, 5 hung containers).
+              if (!streamedCreditReason && typeof parsed.result === 'string') {
+                const r = detectCredentialFailure(parsed.result);
+                if (r) {
+                  streamedCreditReason = r;
+                  logger.warn(
+                    { group: group.name, containerName, reason: r },
+                    'Streamed OUTPUT carried a credit/rate-limit error mis-reported as success — stopping container for cooldown/cascade',
+                  );
+                  // Stop now; the close handler runs cooldown + cascade.
+                  try {
+                    stopContainer(containerName);
+                  } catch {
+                    container.kill('SIGKILL');
+                  }
+                }
+              }
               // Activity detected — reset the hard timeout
               resetTimeout();
               // Call onOutput for all markers (including null results)
               // so idle timers start even for "silent" query completions.
-              if (onOutput) {
+              // Suppress the bogus "success" result when it's actually a credit
+              // failure — don't hand the agent a result of "API Error: 402…".
+              if (onOutput && !streamedCreditReason) {
                 outputChain = outputChain.then(() => onOutput(parsed));
               }
             } catch (err) {
@@ -1153,7 +1190,11 @@ export async function runContainerAgent(
       //      with CLAUDE_AGENT_MODEL forced to the fallback model (Bifrost
       //      routes it via the gateway). Resolve the outer promise with that
       //      retry's result so the task completes instead of failing.
-      const creditReason = detectCredentialFailure(`${stdout}\n${stderr}`);
+      // Prefer the streamed-OUTPUT detection (catches the claude-cli
+      // "status:success + API Error: 402" case where the error is NOT in
+      // stdout/stderr); fall back to scanning raw stdout/stderr.
+      const creditReason =
+        streamedCreditReason ?? detectCredentialFailure(`${stdout}\n${stderr}`);
       if (creditReason && pickedCredentialId && pickedWorkspaceId) {
         logger.warn(
           {
@@ -1191,7 +1232,11 @@ export async function runContainerAgent(
             },
             'Primary credential exhausted — cascading in-run to funded fallback model via gateway',
           );
-          finalize('error', code, `credit_exhausted → cascade to ${forceModel}`);
+          finalize(
+            'error',
+            code,
+            `credit_exhausted → cascade to ${forceModel}`,
+          );
           // Re-run the same task once with the fallback model forced.
           runContainerAgent(group, input, onProcess, onOutput, onEvent, {
             forceModel,
@@ -1206,6 +1251,21 @@ export async function runContainerAgent(
             });
           return;
         }
+      }
+
+      // Streamed credit failure with no usable fallback to cascade to: resolve
+      // as an explicit error (cooldown already fired above) instead of letting
+      // the mis-reported `status:success` marker surface "API Error: 402…" as a
+      // successful result.
+      if (streamedCreditReason && !timedOut) {
+        finalize('error', code, `credit_exhausted: ${streamedCreditReason}`);
+        resolve({
+          status: 'error',
+          result: null,
+          newSessionId,
+          error: `Credit/rate-limit exhausted (${streamedCreditReason}); no funded fallback available.`,
+        });
+        return;
       }
 
       if (timedOut) {
