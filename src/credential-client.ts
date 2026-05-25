@@ -32,12 +32,24 @@ const DELEGATE_AGENT_TOKEN =
  * Back-compat: if upstream Delegate omits `mode` (pre-Phase-3 deploys), the
  * field is normalised to `'api_key'` so existing callers keep working unchanged.
  */
+/**
+ * Funded fallback credential the container retries against when the primary
+ * Claude credential returns a 402/429. Ordered by the AI Models waterfall.
+ * Bifrost does not fall back on 4xx, so this cascade lives in the container.
+ */
+export interface LLMFallbackCredential {
+  provider: string; // "openai" | "gemini" | …
+  key: string;
+  baseUrl: string | null;
+}
+
 export type ResolvedLLMKeys =
   | {
       mode: 'oauth';
       oauthToken: string;
       providerId: string;
       openaiKey?: string;
+      fallbacks?: LLMFallbackCredential[];
       pickedScope: 'personal' | 'workspace';
     }
   | {
@@ -48,6 +60,7 @@ export type ResolvedLLMKeys =
       openaiKey?: string;
       systemAnthropicKey?: string;
       systemAnthropicBaseUrl?: string | null;
+      fallbacks?: LLMFallbackCredential[];
       pickedScope: 'personal' | 'workspace' | 'system';
     }
   | { mode: 'oauth'; oauthToken: null; pickedScope: 'exhausted' };
@@ -116,6 +129,20 @@ export async function resolveLLMKeysFromDelegate(
       return { mode: 'oauth', oauthToken: null, pickedScope: 'exhausted' };
     }
 
+    // Normalize the funded fallback bundle (OpenAI/Gemini) if present. Older
+    // Delegate deploys omit it → undefined (no in-run cascade, cooldown-only).
+    const fallbacks: LLMFallbackCredential[] | undefined = Array.isArray(
+      payload.fallbacks,
+    )
+      ? payload.fallbacks
+          .filter((f: any) => f && typeof f.provider === 'string' && typeof f.key === 'string')
+          .map((f: any) => ({
+            provider: f.provider as string,
+            key: f.key as string,
+            baseUrl: (f.baseUrl ?? null) as string | null,
+          }))
+      : undefined;
+
     // OAuth success: token present.
     if (isOauthMode && payload.oauthToken) {
       return {
@@ -123,6 +150,7 @@ export async function resolveLLMKeysFromDelegate(
         oauthToken: payload.oauthToken as string,
         providerId: payload.providerId as string,
         openaiKey: payload.openaiKey,
+        fallbacks,
         pickedScope:
           payload.pickedScope === 'personal' ? 'personal' : 'workspace',
       };
@@ -137,6 +165,7 @@ export async function resolveLLMKeysFromDelegate(
       openaiKey: payload.openaiKey,
       systemAnthropicKey: payload.systemAnthropicKey,
       systemAnthropicBaseUrl: payload.systemAnthropicBaseUrl,
+      fallbacks,
       pickedScope: payload.pickedScope ?? 'system',
     };
   } catch (e) {

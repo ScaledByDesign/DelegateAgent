@@ -29,6 +29,7 @@ import {
 import { OneCLI } from '@onecli-sh/sdk';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
+import { reportLLMCooldown } from './cooldown-client.js';
 import {
   recordContainerStart,
   recordContainerEnd,
@@ -362,11 +363,23 @@ async function buildContainerArgs(
    * cmndofiid00017fvp3dx0dgi3.
    */
   delegationId?: string,
+  /**
+   * In-run cascade override: forces CLAUDE_AGENT_MODEL to a funded fallback
+   * model (routed via the gateway) instead of the default. Set only on the
+   * single retry after a primary credit/429 failure.
+   */
+  forceModel?: string,
 ): Promise<{
   args: string[];
   oauthHardFail: boolean;
   credentialsResolved: boolean;
   resolvedMode: 'api_key' | 'oauth' | 'none';
+  /** LLMProvider row id of the picked credential (for cooldown attribution). */
+  pickedCredentialId?: string;
+  /** Workspace owning the picked credential (cooldown payload). */
+  pickedWorkspaceId?: string;
+  /** Ordered funded fallback bundle (OpenAI/Gemini) for the in-run cascade. */
+  pickedFallbacks?: { provider: string; key: string; baseUrl: string | null }[];
 }> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
@@ -478,6 +491,12 @@ async function buildContainerArgs(
   // sentinel short-circuits Tier 2 (OneCLI) and Tier 3 (static Bifrost) so the
   // caller surfaces `oauth_token_missing` upstream instead.
   let oauthHardFail = false;
+  // Picked-credential attribution for post-run cooldown (credit_exhausted /
+  // rate_limit). Threaded out so runContainerAgent's close handler can report
+  // the dead row to Delegate, advancing the next dispatch past it.
+  let pickedCredentialId: string | undefined;
+  let pickedWorkspaceId: string | undefined;
+  let pickedFallbacks: { provider: string; key: string; baseUrl: string | null }[] = [];
 
   // Tier 1: Per-workspace keys from Delegate API (preferred for multi-tenant SaaS)
   if (workspaceId) {
@@ -488,6 +507,18 @@ async function buildContainerArgs(
         workspaceId,
         requestingUserId,
       );
+      // `providerId` is present on the oauth + api_key union branches (not the
+      // exhausted/no-cred branches) — narrow with `in` before reading.
+      if (keys && 'providerId' in keys && keys.providerId) {
+        pickedCredentialId = keys.providerId;
+        pickedWorkspaceId = workspaceId;
+      }
+      // Funded fallback bundle (OpenAI/Gemini) for the in-run cascade. Threaded
+      // out so the close handler can re-spawn once against a funded model
+      // (routed through the gateway by Bifrost) on a primary 402/429.
+      if (keys && 'fallbacks' in keys && Array.isArray(keys.fallbacks)) {
+        pickedFallbacks = keys.fallbacks;
+      }
 
       // Phase 5 branch A — OAuth picked AND token present.
       // Inject ONLY CLAUDE_CODE_OAUTH_TOKEN. Deliberately skip
@@ -672,8 +703,10 @@ async function buildContainerArgs(
   // AgentProfile.delegateAgentModel (future llm-keys API extension).
   // The agent-runner reads CLAUDE_AGENT_MODEL inside the container and
   // threads to query()'s `model` option (container/agent-runner/src/index.ts).
+  // In-run cascade: `forceModel` (a funded fallback model routed via the
+  // gateway) takes precedence on the retry after a primary 402/429.
   const agentModel =
-    process.env.CLAUDE_AGENT_MODEL || 'claude-haiku-4-5-20251001';
+    forceModel || process.env.CLAUDE_AGENT_MODEL || 'claude-haiku-4-5-20251001';
   args.push('-e', `CLAUDE_AGENT_MODEL=${agentModel}`);
 
   // Runtime-specific args for host gateway resolution
@@ -699,7 +732,15 @@ async function buildContainerArgs(
 
   args.push(CONTAINER_IMAGE);
 
-  return { args, oauthHardFail, credentialsResolved, resolvedMode };
+  return {
+    args,
+    oauthHardFail,
+    credentialsResolved,
+    resolvedMode,
+    pickedCredentialId,
+    pickedWorkspaceId,
+    pickedFallbacks,
+  };
 }
 
 /**
@@ -714,12 +755,73 @@ export interface AgentToolCallEvent {
   durationMs?: number;
 }
 
+/**
+ * Detect an LLM credit/rate-limit failure in container output. The agent's
+ * claude-cli surfaces these as text in stdout/stderr (e.g. Anthropic
+ * "Credit balance is too low", OpenRouter 402 "requires more credits",
+ * or a 429 rate_limit/usage_limit). Returns the matching cooldown reason so
+ * the picked credential row can be cooled — advancing the NEXT dispatch past
+ * it. Returns null when no credit/rate-limit signature is present.
+ *
+ * NOTE: this gives cross-dispatch rotation. True in-run cascade (retry the
+ * same task against a funded fallback provider) is a follow-up that consumes
+ * the ordered `fallbacks[]` the llm-keys route now returns.
+ */
+export function detectCredentialFailure(
+  text: string,
+): 'usage_limit_exceeded' | 'rate_limit_unknown' | null {
+  const t = text.toLowerCase();
+  // 402 / credit-exhaustion (Anthropic + OpenRouter phrasings).
+  if (
+    t.includes('credit balance is too low') ||
+    t.includes('requires more credits') ||
+    t.includes('insufficient_quota') ||
+    t.includes('insufficient credit')
+  ) {
+    return 'usage_limit_exceeded';
+  }
+  // 429 rate-limit / usage-limit.
+  if (
+    t.includes('usage_limit_exceeded') ||
+    t.includes('rate_limit_error') ||
+    t.includes('rate limit') ||
+    t.includes('429')
+  ) {
+    return 'rate_limit_unknown';
+  }
+  return null;
+}
+
+/**
+ * Map a funded fallback provider to the model id to request through the
+ * Bifrost gateway. The container keeps ANTHROPIC_BASE_URL pointed at the
+ * gateway; Bifrost translates and routes `gpt-4o` → OpenAI, `gemini-*` →
+ * Gemini. claude-cli external-model support (code.claude.com model-config)
+ * lets the agent-runner target these via CLAUDE_AGENT_MODEL.
+ */
+export function fallbackModelForProvider(provider: string): string | null {
+  switch (provider) {
+    case 'openai':
+      return 'gpt-4o';
+    case 'gemini':
+      return 'gemini-2.0-flash';
+    case 'openrouter':
+      return 'openrouter/openai/gpt-4o-mini';
+    default:
+      return null;
+  }
+}
+
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onEvent?: (event: AgentToolCallEvent) => void,
+  // Internal: set on the single in-run cascade retry after a primary 402/429.
+  // Forces CLAUDE_AGENT_MODEL to a funded fallback model (routed via the
+  // gateway) and suppresses a second cascade. Not part of the public contract.
+  __cascade?: { forceModel: string },
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
 
@@ -767,9 +869,15 @@ export async function runContainerAgent(
     // Thread the in-flight delegationId through so the heartbeat poster
     // in the agent-runner has something to send to /api/agent/heartbeat.
     input.delegationId,
+    // In-run cascade retry: force the funded fallback model.
+    __cascade?.forceModel,
   );
   const containerArgs = buildResult.args;
   const containerMode = buildResult.resolvedMode;
+  // Picked-credential attribution for post-run cooldown on credit/429.
+  const pickedCredentialId = buildResult.pickedCredentialId;
+  const pickedWorkspaceId = buildResult.pickedWorkspaceId;
+  const pickedFallbacks = buildResult.pickedFallbacks ?? [];
 
   // Phase 5 (credential-mode-toggle plan): short-circuit before spawn when
   // OAuth mode was configured but the token is missing/expired. This
@@ -1035,6 +1143,70 @@ export async function runContainerAgent(
     container.on('close', (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
+
+      // Credit/rate-limit handling. Two responses, both gated on detecting a
+      // credit-exhaustion / rate-limit signature in the run output:
+      //   1. Cooldown the picked credential row (cross-dispatch rotation) so
+      //      the NEXT dispatch's picker skips it (cooldown_until > now()).
+      //   2. In-run cascade: if a funded fallback (OpenAI/Gemini) is available
+      //      and this is NOT already a cascade retry, re-run the SAME task once
+      //      with CLAUDE_AGENT_MODEL forced to the fallback model (Bifrost
+      //      routes it via the gateway). Resolve the outer promise with that
+      //      retry's result so the task completes instead of failing.
+      const creditReason = detectCredentialFailure(`${stdout}\n${stderr}`);
+      if (creditReason && pickedCredentialId && pickedWorkspaceId) {
+        logger.warn(
+          {
+            group: group.name,
+            containerName,
+            providerId: pickedCredentialId,
+            workspaceId: pickedWorkspaceId,
+            reason: creditReason,
+          },
+          'Container hit credit/rate-limit — reporting cooldown so next dispatch rotates',
+        );
+        reportLLMCooldown({
+          providerId: pickedCredentialId,
+          workspaceId: pickedWorkspaceId,
+          reason: creditReason,
+        }).catch(() => {
+          /* reported best-effort; cooldown-client logs its own failures */
+        });
+      }
+
+      // In-run cascade — only when we detected a credit failure, have a funded
+      // fallback, and haven't already cascaded (single retry, no loops).
+      if (creditReason && !__cascade && pickedFallbacks.length > 0) {
+        const fb = pickedFallbacks[0];
+        const forceModel = fallbackModelForProvider(fb.provider);
+        if (forceModel) {
+          clearTimeout(timeout);
+          logger.warn(
+            {
+              group: group.name,
+              containerName,
+              fallbackProvider: fb.provider,
+              forceModel,
+              reason: creditReason,
+            },
+            'Primary credential exhausted — cascading in-run to funded fallback model via gateway',
+          );
+          finalize('error', code, `credit_exhausted → cascade to ${forceModel}`);
+          // Re-run the same task once with the fallback model forced.
+          runContainerAgent(group, input, onProcess, onOutput, onEvent, {
+            forceModel,
+          })
+            .then(resolve)
+            .catch(() => {
+              resolve({
+                status: 'error',
+                result: null,
+                error: `Primary credential exhausted; cascade retry to ${forceModel} failed.`,
+              });
+            });
+          return;
+        }
+      }
 
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');

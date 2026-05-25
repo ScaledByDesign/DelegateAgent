@@ -15,15 +15,32 @@ Single Node.js process with skill-based channel system. Channels (WhatsApp, Tele
 | `src/ipc.ts` | IPC watcher and task processing |
 | `src/router.ts` | Message formatting and outbound routing |
 | `src/config.ts` | Trigger pattern, paths, intervals |
-| `src/container-runner.ts` | Spawns agent containers with mounts |
+| `src/container-runner.ts` | Spawns agent containers with mounts; credential injection, credit/429 cooldown report + in-run model cascade |
+| `src/credential-client.ts` | Resolves LLM keys + funded `fallbacks[]` from Delegate (`/api/agent/integrations/llm-keys`) |
+| `src/cooldown-client.ts` | Reports credit/429 cooldown back to Delegate so the next dispatch rotates |
 | `src/task-scheduler.ts` | Runs scheduled tasks |
 | `src/db.ts` | SQLite operations |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/` | Skills loaded inside agent containers (browser, status, formatting) |
 
-## Secrets / Credentials / Proxy (OneCLI)
+## Secrets / Credentials / Proxy
 
-API keys, secret keys, OAuth tokens, and auth credentials are managed by the OneCLI gateway — which handles secret injection into containers at request time, so no keys or tokens are ever passed to containers directly. Run `onecli --help`.
+**Delegate deployment (live path):** LLM credentials are resolved per-dispatch from Delegate's
+`GET /api/agent/integrations/llm-keys` (`src/credential-client.ts`) and injected into the agent
+container as `-e ANTHROPIC_API_KEY` / `-e ANTHROPIC_BASE_URL` (or `CLAUDE_CODE_OAUTH_TOKEN` for
+OAuth mode). `ANTHROPIC_BASE_URL` points at the Bifrost gateway, which routes the requested model
+to a healthy upstream. On a credit (402) / rate-limit (429), `src/container-runner.ts` reports a
+cooldown (`src/cooldown-client.ts`) so the next dispatch rotates, AND re-runs the task once with
+`CLAUDE_AGENT_MODEL` forced to a funded fallback model (the in-run cascade).
+
+> **Definitive end-to-end reference** (Delegate `LLMProvider` rows → AI Models ordering → Bifrost →
+> models → waterfall + this container's failover), with mermaid diagrams:
+> **`../docs/architecture/llm-provider-engine.md`** in the Delegate repo. Read it before changing
+> `container-runner.ts` / `credential-client.ts` / `cooldown-client.ts`.
+
+**OneCLI (Tier 2, optional):** when no per-workspace key resolves and the OneCLI gateway is
+installed, it can inject secrets at request time. This is a fallback tier, not the primary path on
+the Delegate deployment. Run `onecli --help`.
 
 ## Skills
 
