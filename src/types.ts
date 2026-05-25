@@ -41,6 +41,7 @@ export interface RegisteredGroup {
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
   workspaceId?: string; // Delegate workspace for per-workspace credential resolution
+  agentProfileId?: string; // Step/stage agent — lets the container fetch per-agent assigned skills
 }
 
 export interface NewMessage {

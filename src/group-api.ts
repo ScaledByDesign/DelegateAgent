@@ -246,6 +246,24 @@ export function startGroupAPI(
           }
           const existing = getAllRegisteredGroups();
           if (existing[data.jid]) {
+            // Group already registered. Refresh the mutable routing fields so a
+            // re-registration with a rotated step/stage agent (per-task groups are
+            // re-ensured each dispatch) doesn't keep stale skill scoping. Other
+            // fields (folder, trigger) are immutable for an existing group.
+            const prev = existing[data.jid];
+            const refreshed: import('./types.js').RegisteredGroup = {
+              ...prev,
+              workspaceId: data.workspaceId ?? prev.workspaceId,
+              agentProfileId: data.agentProfileId ?? prev.agentProfileId,
+            };
+            setRegisteredGroup(data.jid, refreshed);
+            if (registerGroupInMemory) {
+              try {
+                registerGroupInMemory(data.jid, refreshed);
+              } catch {
+                /* non-fatal */
+              }
+            }
             res.writeHead(409);
             res.end(
               JSON.stringify({ ok: true, existing: true, jid: data.jid }),
@@ -262,6 +280,7 @@ export function startGroupAPI(
             containerConfig: data.containerConfig || {},
             requiresTrigger: data.requiresTrigger ?? false,
             workspaceId: data.workspaceId || undefined,
+            agentProfileId: data.agentProfileId || undefined,
           };
           // Always persist to SQLite
           setRegisteredGroup(data.jid, groupRecord);

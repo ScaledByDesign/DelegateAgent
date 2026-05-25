@@ -231,17 +231,20 @@ async function buildVolumeMounts(
     }
   }
 
-  // Sync workspace-authored skills (Delegate "Agent Command Center → Settings →
-  // Skills") into the SAME .claude/skills/ dir, so the agent can `cat`/load them
-  // exactly like the baked-in skills above. Only workspace-GLOBAL skills resolve
-  // here — the container has a workspaceId but no Delegate agentProfileId, so
-  // per-agent `assignedTo` skills are delivered inline in the dispatch prompt by
-  // Delegate (lib/agent-dispatch.ts), not as files. Best-effort: a fetch failure
-  // never blocks the spawn. See memory agent_skill_dual_system_2026_05_25.
+  // Sync workspace-authored skills (Delegate "Skills Marketplace") into the SAME
+  // .claude/skills/ dir, so the agent can `cat`/load them exactly like the baked-in
+  // skills above. Resolves BOTH workspace-global skills AND skills assigned to this
+  // group's step/stage agent (group.agentProfileId, threaded through group
+  // registration). Best-effort: a fetch failure never blocks the spawn; skills are
+  // also delivered inline in the dispatch prompt. See memory
+  // agent_skill_dual_system_2026_05_25 + agent_skill_dispatch_path_coverage_2026_05_25.
   if (group.workspaceId) {
     try {
       const { fetchSkillsFromDelegate } = await import('./skills-client.js');
-      const dbSkills = await fetchSkillsFromDelegate(group.workspaceId);
+      const dbSkills = await fetchSkillsFromDelegate(
+        group.workspaceId,
+        group.agentProfileId,
+      );
       for (const skill of dbSkills) {
         // Sanitize key to a safe dir name; skip anything that escapes.
         const safeKey = skill.key.replace(/[^a-zA-Z0-9._-]/g, '-');
@@ -887,7 +890,11 @@ export async function runContainerAgent(
     };
   }
 
-  const mounts = await buildVolumeMounts(group, input.isMain, input.artifactsDir);
+  const mounts = await buildVolumeMounts(
+    group,
+    input.isMain,
+    input.artifactsDir,
+  );
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `delegate-agent-${safeName}-${Date.now()}`;
   // Main group uses the default OneCLI agent; others use their own agent.
