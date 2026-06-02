@@ -841,11 +841,16 @@ export function detectCredentialFailure(
  * lets the agent-runner target these via CLAUDE_AGENT_MODEL.
  */
 export function fallbackModelForProvider(provider: string): string | null {
+  // CROSS-REPO LOCK-STEP with Delegate's GATEWAY_FUNDED_FALLBACK_MODELS
+  // (lib/bifrost/gateway-funded-models.ts) + the managed-VK allow-list. These
+  // ids MUST match, or the managed-gateway 402-cascade requests a model the VK
+  // rejects (Bifrost 400 "model not allowed"). 2026-06-01: gemini-2.0-flash
+  // (sunset, 404) → gemini-2.5-flash; gpt-4o → gpt-5.4-mini (matches Delegate).
   switch (provider) {
     case 'openai':
-      return 'gpt-4o';
+      return 'gpt-5.4-mini';
     case 'gemini':
-      return 'gemini-2.0-flash';
+      return 'gemini-2.5-flash';
     case 'openrouter':
       return 'openrouter/openai/gpt-4o-mini';
     default:
