@@ -35,13 +35,10 @@ export async function fetchSkillsFromDelegate(
     params.set('workspaceId', workspaceId);
     if (agentProfileId) params.set('agentProfileId', agentProfileId);
 
-    const res = await agentFetch(
-      `/api/agent/integrations/skills?${params}`,
-      {
-        workspaceId,
-        init: { signal: AbortSignal.timeout(10000) },
-      },
-    );
+    const res = await agentFetch(`/api/agent/integrations/skills?${params}`, {
+      workspaceId,
+      init: { signal: AbortSignal.timeout(10000) },
+    });
     if (!res.ok) {
       logger.warn(
         { workspaceId, status: res.status },

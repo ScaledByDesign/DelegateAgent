@@ -205,10 +205,21 @@ export async function resolveTokenFromDelegate(
 ): Promise<string | null> {
   if (!workspaceId || !DELEGATE_AGENT_TOKEN) return null;
   try {
+    // Prefer a per-workspace JWT (carries the `wid` tenant claim the token
+    // route now enforces); fall back to the legacy shared bearer if minting
+    // fails. mintAgentJWT returns null on any error.
+    let authToken = DELEGATE_AGENT_TOKEN;
+    try {
+      const { mintAgentJWT } = await import('./jwt-mint.js');
+      const minted = await mintAgentJWT({ workspaceId });
+      if (minted?.jwt) authToken = minted.jwt;
+    } catch {
+      // keep legacy bearer
+    }
     const res = await fetch(
       `${DELEGATE_URL}/api/agent/integrations/token?provider=${provider}&workspaceId=${workspaceId}`,
       {
-        headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
+        headers: { Authorization: `Bearer ${authToken}` },
         signal: AbortSignal.timeout(5000),
       },
     );
