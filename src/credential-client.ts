@@ -96,20 +96,36 @@ export type ResolvedLLMKeys =
  * @param userId      - The requesting user (Phase 5 per-user override). When
  *                      undefined the picker resolves only workspace-default
  *                      and system tiers.
+ * @param agentJwt    - Per-workspace agent JWT (minted via mintAgentJWT) to
+ *                      present as the Authorization bearer. REQUIRED for the
+ *                      JWT-only credential route as of the platform's Phase 7
+ *                      Sub-step 7.7b cutover — `/api/agent/integrations/llm-keys`
+ *                      hard-rejects the legacy shared bearer with 401
+ *                      (CREDENTIAL_ROUTE_LEGACY_BEARER_REJECTED) unless the
+ *                      platform's `legacy_bearer_acceptance_window_enabled`
+ *                      escape hatch is open. When omitted we fall back to the
+ *                      legacy DELEGATE_AGENT_TOKEN bearer (works only while the
+ *                      escape hatch is active — emits a 401 otherwise).
  */
 export async function resolveLLMKeysFromDelegate(
   workspaceId?: string | null,
   userId?: string | null,
+  agentJwt?: string | null,
 ): Promise<ResolvedLLMKeys | null> {
-  if (!DELEGATE_AGENT_TOKEN) return null;
+  // The JWT-only credential route needs a per-workspace JWT. If neither a
+  // minted JWT nor the legacy bootstrap bearer is available, we cannot auth.
+  if (!agentJwt && !DELEGATE_AGENT_TOKEN) return null;
   try {
     const params = new URLSearchParams();
     if (workspaceId) params.set('workspaceId', workspaceId);
     if (userId) params.set('userId', userId);
+    // Prefer the per-workspace JWT (accepted by the JWT-only route). Fall back
+    // to the legacy shared bearer only when no JWT was minted.
+    const bearer = agentJwt || DELEGATE_AGENT_TOKEN;
     const res = await fetch(
       `${DELEGATE_URL}/api/agent/integrations/llm-keys?${params}`,
       {
-        headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
+        headers: { Authorization: `Bearer ${bearer}` },
         signal: AbortSignal.timeout(5000),
       },
     );

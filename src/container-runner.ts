@@ -492,15 +492,21 @@ async function buildContainerArgs(
     args.push('-e', `FORGETFUL_BEARER=${FORGETFUL_BEARER_ENV}`);
   }
 
-  // Phase 2: Mint a per-workspace JWT for this container. The platform's
-  // dual-accept auth verifies JWT first; legacy bearer remains accepted as
-  // a fallback during the migration window. On any failure, the container
-  // silently falls back to the legacy bearer injected above.
+  // Phase 2 / Phase 7: Mint a per-workspace JWT for this container. The minted
+  // JWT is (a) injected into the container env as DELEGATE_AGENT_JWT, AND (b)
+  // used by the ORCHESTRATOR-SIDE credential resolution below
+  // (resolveLLMKeysFromDelegate) because the platform's
+  // `/api/agent/integrations/llm-keys` route is now JWT-ONLY (Phase 7 Sub-step
+  // 7.7b) and hard-rejects the legacy shared bearer with 401. Without threading
+  // the JWT into the resolver call, Tier-1 per-workspace key resolution 401s
+  // and silently falls back to static/Bifrost credentials.
+  let mintedAgentJwt: string | null = null;
   if (workspaceId) {
     try {
       const { mintAgentJWT } = await import('./jwt-mint.js');
       const minted = await mintAgentJWT({ workspaceId });
       if (minted) {
+        mintedAgentJwt = minted.jwt;
         args.push('-e', `DELEGATE_AGENT_JWT=${minted.jwt}`);
         logger.info(
           {
@@ -544,9 +550,13 @@ async function buildContainerArgs(
     try {
       const { resolveLLMKeysFromDelegate } =
         await import('./credential-client.js');
+      // Pass the minted per-workspace JWT so the JWT-only credential route
+      // (Phase 7 Sub-step 7.7b) accepts the request. Falls back to the legacy
+      // bearer inside the client only when no JWT was minted.
       const keys = await resolveLLMKeysFromDelegate(
         workspaceId,
         requestingUserId,
+        mintedAgentJwt,
       );
       // `providerId` is present on the oauth + api_key union branches (not the
       // exhausted/no-cred branches) — narrow with `in` before reading.

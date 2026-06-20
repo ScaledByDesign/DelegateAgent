@@ -30,8 +30,18 @@ vi.mock('../credential-client.js', () => ({
   resolveLLMKeysFromDelegate: vi.fn(),
 }));
 
+// The resolver now mints a per-workspace JWT (Phase 7 JWT-only credential
+// route) before calling resolveLLMKeysFromDelegate. Mock the mint so tests
+// don't make a real network call to /api/agent/jwt/issue (which would hang
+// for the full 10s AbortController timeout).
+vi.mock('../jwt-mint.js', () => ({
+  mintAgentJWT: vi.fn(),
+}));
+
 import { resolveLLMKeysFromDelegate } from '../credential-client.js';
+import { mintAgentJWT } from '../jwt-mint.js';
 const resolveMock = resolveLLMKeysFromDelegate as unknown as Mock;
+const mintMock = mintAgentJWT as unknown as Mock;
 
 async function importFresh() {
   vi.resetModules();
@@ -48,6 +58,16 @@ beforeEach(() => {
   process.env.BIFROST_URL = 'http://bifrost.test';
   process.env.BIFROST_VK = 'env-vk-default';
   resolveMock.mockReset();
+  mintMock.mockReset();
+  // Default: mint returns a JWT so the resolver threads it into the
+  // credential client. Individual tests may override.
+  mintMock.mockResolvedValue({
+    jwt: 'test.jwt.token',
+    jti: 'test-jti',
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    scope: ['*'],
+    wid: 'ws-1',
+  });
 });
 
 afterEach(() => {
