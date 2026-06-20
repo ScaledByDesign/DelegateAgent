@@ -858,16 +858,46 @@ export function fallbackModelForProvider(provider: string): string | null {
   }
 }
 
+/**
+ * Pick the next usable rung when walking the ordered funded-fallback bundle
+ * during an in-run credit/429 cascade. Starting at `startIndex`, returns the
+ * first rung whose provider maps to a real fallback model (skipping providers
+ * with no model mapping), or `null` if the bundle is exhausted.
+ *
+ * This is the load-bearing decision of the cascade: walking (not just `[0]`)
+ * is what lets an unfunded rung (e.g. OpenAI 429) fall through to a funded
+ * rung (e.g. Gemini) instead of aborting with "no funded fallback available".
+ * Bounded by `fallbacks.length` — the caller advances `startIndex` strictly,
+ * so there is no loop. Exported for unit testing.
+ */
+export function selectNextCascadeRung(
+  fallbacks: { provider: string }[],
+  startIndex: number,
+): { index: number; provider: string; forceModel: string } | null {
+  for (let i = Math.max(0, startIndex); i < fallbacks.length; i++) {
+    const forceModel = fallbackModelForProvider(fallbacks[i].provider);
+    if (forceModel) {
+      return { index: i, provider: fallbacks[i].provider, forceModel };
+    }
+  }
+  return null;
+}
+
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onEvent?: (event: AgentToolCallEvent) => void,
-  // Internal: set on the single in-run cascade retry after a primary 402/429.
-  // Forces CLAUDE_AGENT_MODEL to a funded fallback model (routed via the
-  // gateway) and suppresses a second cascade. Not part of the public contract.
-  __cascade?: { forceModel: string },
+  // Internal: set on an in-run cascade retry after a primary 402/429. Forces
+  // CLAUDE_AGENT_MODEL to a funded fallback model (routed via the gateway) and
+  // records HOW FAR through the ordered `pickedFallbacks` bundle we've walked so
+  // far. `fallbackIndex` is the index of the fallback whose model is being
+  // forced on THIS retry; the close handler resumes the walk at
+  // `fallbackIndex + 1` if this rung also exhausts, so an unfunded rung (e.g.
+  // OpenAI 429) no longer aborts the cascade before a funded rung (e.g. Gemini)
+  // is tried. Not part of the public contract.
+  __cascade?: { forceModel: string; fallbackIndex: number },
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
 
@@ -1261,18 +1291,34 @@ export async function runContainerAgent(
         });
       }
 
-      // In-run cascade — only when we detected a credit failure, have a funded
-      // fallback, and haven't already cascaded (single retry, no loops).
-      if (creditReason && !__cascade && pickedFallbacks.length > 0) {
-        const fb = pickedFallbacks[0];
-        const forceModel = fallbackModelForProvider(fb.provider);
-        if (forceModel) {
+      // In-run cascade — when we detected a credit failure, walk the ordered
+      // `pickedFallbacks` bundle until a rung yields a usable model. Each retry
+      // forces ONE fallback model; if that rung ALSO exhausts (e.g. an unfunded
+      // OpenAI key 429s), the next close handler resumes the walk at the next
+      // index rather than aborting. Bounded by the bundle length (no infinite
+      // loop) — `fallbackIndex` strictly increases and we stop at the end.
+      //
+      // Why a walk and not just `[0]`: the bundle is ordered [openai, gemini].
+      // When OpenAI is unfunded but Gemini is funded, the old single-shot
+      // `[0]`-only cascade gave up at the OpenAI rung ("no funded fallback
+      // available") and never reached the funded Gemini rung. (Observed live
+      // 2026-06-20.)
+      if (creditReason && pickedFallbacks.length > 0) {
+        // Resume index: first rung on the initial failure, next rung on a
+        // cascade-retry failure. `selectNextCascadeRung` skips rungs whose
+        // provider has no model mapping and stops at the bundle's end.
+        const startIndex = __cascade ? __cascade.fallbackIndex + 1 : 0;
+        const rung = selectNextCascadeRung(pickedFallbacks, startIndex);
+        if (rung) {
+          const { index: nextIndex, provider, forceModel } = rung;
           clearTimeout(timeout);
           logger.warn(
             {
               group: group.name,
               containerName,
-              fallbackProvider: fb.provider,
+              fallbackProvider: provider,
+              fallbackIndex: nextIndex,
+              fallbackCount: pickedFallbacks.length,
               forceModel,
               reason: creditReason,
             },
@@ -1281,11 +1327,13 @@ export async function runContainerAgent(
           finalize(
             'error',
             code,
-            `credit_exhausted → cascade to ${forceModel}`,
+            `credit_exhausted → cascade to ${forceModel} (rung ${nextIndex + 1}/${pickedFallbacks.length})`,
           );
-          // Re-run the same task once with the fallback model forced.
+          // Re-run the same task with this fallback model forced, recording the
+          // rung so a subsequent exhaustion resumes at the next rung.
           runContainerAgent(group, input, onProcess, onOutput, onEvent, {
             forceModel,
+            fallbackIndex: nextIndex,
           })
             .then(resolve)
             .catch(() => {
@@ -1297,6 +1345,8 @@ export async function runContainerAgent(
             });
           return;
         }
+        // No remaining rung maps to a model — fall through to the explicit
+        // "no funded fallback available" error below.
       }
 
       // Streamed credit failure with no usable fallback to cascade to: resolve
