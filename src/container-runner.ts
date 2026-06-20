@@ -686,6 +686,27 @@ async function buildContainerArgs(
       credentialsResolved = true;
       resolvedTier = 'static';
       resolvedMode = 'api_key';
+      // Funded-fallback bundle for the static (no-workspace) path. The static
+      // key is the platform gateway VK, so the same gateway-routed openai +
+      // gemini rungs are reachable through it on a primary credit/429 — the
+      // in-run cascade re-runs with CLAUDE_AGENT_MODEL forced to each rung's
+      // model (still over this VK + ANTHROPIC_BASE_URL). Without this, a static
+      // dispatch (e.g. the Main Agent) had an EMPTY bundle and aborted at the
+      // first credit error with "no funded fallback available" even though
+      // Gemini was funded. The key/baseUrl mirror the primary; only `provider`
+      // is consumed by the cascade (→ fallbackModelForProvider).
+      pickedFallbacks = [
+        {
+          provider: 'openai',
+          key: BIFROST_KEY,
+          baseUrl: `${containerBifrostUrl}/anthropic`,
+        },
+        {
+          provider: 'gemini',
+          key: BIFROST_KEY,
+          baseUrl: `${containerBifrostUrl}/anthropic`,
+        },
+      ];
       recordCredentialAttempt('static', 'success');
       logger.warn(
         { containerName },
