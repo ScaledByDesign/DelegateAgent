@@ -506,13 +506,15 @@ async function runAgent(
   // Hephaestus Port 4 — wire the agent-runner's stdout EVENT markers into the
   // chat event-emitter. Fire-and-forget: `enqueueEvent` swallows non-task JIDs
   // and never throws.
+  // JWT migration: pass group.workspaceId so the emitter can mint a
+  // per-workspace JWT for outbound channel/event POSTs.
   const onEvent = (event: {
     eventType: string;
     payload: unknown;
     agentMessageId?: string;
     durationMs?: number;
   }) => {
-    enqueueEvent(chatJid, event);
+    enqueueEvent(chatJid, event, group.workspaceId);
   };
 
   try {

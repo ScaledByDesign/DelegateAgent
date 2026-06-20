@@ -1,6 +1,14 @@
 // ─── DelegateAgent Context File Generators ───
 // Generates SOUL.md, AGENTS.md, TOOLS.md, MEMORY.md for droplet /opt/delegate-agent/context/
 // Used by cloud-init generation AND hot-patch client.
+//
+// JWT migration note: The curl examples in `generateToolsMd` (Memory API,
+// Task API, Web Access, Completion Callback) run INSIDE the container where
+// DELEGATE_AGENT_JWT is already injected alongside DELEGATE_API_TOKEN by
+// container-runner.ts. These doc-strings intentionally use DELEGATE_API_TOKEN
+// (the in-container alias) rather than the host-side DELEGATE_AGENT_TOKEN.
+// Do NOT change the curl commands here — the in-container agent-runner reads
+// DELEGATE_AGENT_JWT when available and falls back to DELEGATE_API_TOKEN.
 
 export interface SkillSummary {
   key: string;

@@ -139,7 +139,9 @@ describe('DelegateChannel — lastSeen cursor initialization', () => {
 //     with a single message, then advancing fake timers past the poll interval.
 
 vi.mock('../chat/index.js', () => ({
-  dispatchChatFastPath: vi.fn().mockResolvedValue({ handled: false, reason: 'too-long' }),
+  dispatchChatFastPath: vi
+    .fn()
+    .mockResolvedValue({ handled: false, reason: 'too-long' }),
   setChatContextResolver: vi.fn(),
 }));
 
@@ -152,12 +154,14 @@ import { dispatchChatFastPath } from '../chat/index.js';
 import { recordChannelMessageDelivered } from '../metrics.js';
 
 /** Build a minimal poll response with one inbound message. */
-function makePollResponse(overrides: {
-  jid?: string;
-  id?: string;
-  text?: string;
-  delegationId?: string;
-} = {}) {
+function makePollResponse(
+  overrides: {
+    jid?: string;
+    id?: string;
+    text?: string;
+    delegationId?: string;
+  } = {},
+) {
   return {
     ok: true,
     json: async () => ({
@@ -197,7 +201,10 @@ describe('DelegateChannel — fastpath JID gate', () => {
 
     expect(dispatchChatFastPath).not.toHaveBeenCalled();
     expect(onMessage).toHaveBeenCalledTimes(1);
-    const [calledJid, payload] = onMessage.mock.calls[0] as [string, Record<string, unknown>];
+    const [calledJid, payload] = onMessage.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
     expect(calledJid).toBe(jid);
     expect(payload).toMatchObject({ chat_jid: jid, content: 'hi' });
   });
@@ -265,16 +272,19 @@ describe('DelegateChannel — fastpath JID gate', () => {
     const onMessage = vi.fn();
     const channel = new DelegateChannel(makeOpts({ onMessage }));
 
-    global.fetch = vi.fn().mockResolvedValue(
-      makePollResponse({ jid, delegationId: 'abc' }),
-    );
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(makePollResponse({ jid, delegationId: 'abc' }));
 
     callStartPoll(channel, jid);
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(dispatchChatFastPath).not.toHaveBeenCalled();
     expect(onMessage).toHaveBeenCalledTimes(1);
-    const [calledJid, payload] = onMessage.mock.calls[0] as [string, Record<string, unknown>];
+    const [calledJid, payload] = onMessage.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
     expect(calledJid).toBe(jid);
     expect(payload).toMatchObject({ delegation_id: 'abc' });
   });

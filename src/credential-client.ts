@@ -151,7 +151,10 @@ export async function resolveLLMKeysFromDelegate(
       payload.fallbacks,
     )
       ? payload.fallbacks
-          .filter((f: any) => f && typeof f.provider === 'string' && typeof f.key === 'string')
+          .filter(
+            (f: any) =>
+              f && typeof f.provider === 'string' && typeof f.key === 'string',
+          )
           .map((f: any) => ({
             provider: f.provider as string,
             key: f.key as string,

@@ -4,6 +4,18 @@ import * as path from 'path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// ─── JWT mint mock ───────────────────────────────────────────────────────────
+// agentFetch (used by loadDagWorkflowForGroup) calls mintAgentJWT which hits
+// globalThis.fetch. Without this mock the JWT mint call would consume the
+// vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(...) responses that the
+// remote-fetch tests below set up for the actual DAG API call.
+// Returning null here causes agentFetch to fall back to the legacy bearer
+// (DELEGATE_AGENT_TOKEN), leaving globalThis.fetch fully available for test
+// assertions.
+vi.mock('../jwt-mint.js', () => ({
+  mintAgentJWT: vi.fn().mockResolvedValue(null),
+}));
+
 import {
   _loadDagFromDir,
   _resetDagWorkflowCache,

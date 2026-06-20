@@ -9,12 +9,8 @@
 // failure must never block the container from starting — the same skills are
 // also delivered inline in the dispatch system prompt by Delegate).
 
-import { getEnvWithFallback } from './config.js';
 import { logger } from './logger.js';
-
-const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
-const DELEGATE_AGENT_TOKEN =
-  getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
+import { agentFetch } from './delegate-fetch.js';
 
 export interface DelegateSkill {
   key: string;
@@ -25,22 +21,25 @@ export interface DelegateSkill {
 /**
  * Resolve the skills assigned to an agent (or global skills) for a workspace.
  * Returns [] on any error or when unconfigured — never throws.
+ *
+ * Mints a per-workspace JWT via agentFetch (falls back to legacy bearer on
+ * any mint failure so skill resolution never blocks container start).
  */
 export async function fetchSkillsFromDelegate(
   workspaceId?: string | null,
   agentProfileId?: string | null,
 ): Promise<DelegateSkill[]> {
-  if (!workspaceId || !DELEGATE_AGENT_TOKEN) return [];
+  if (!workspaceId) return [];
   try {
     const params = new URLSearchParams();
     params.set('workspaceId', workspaceId);
     if (agentProfileId) params.set('agentProfileId', agentProfileId);
 
-    const res = await fetch(
-      `${DELEGATE_URL}/api/agent/integrations/skills?${params}`,
+    const res = await agentFetch(
+      `/api/agent/integrations/skills?${params}`,
       {
-        headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
-        signal: AbortSignal.timeout(10000),
+        workspaceId,
+        init: { signal: AbortSignal.timeout(10000) },
       },
     );
     if (!res.ok) {

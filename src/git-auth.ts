@@ -2,6 +2,14 @@
 // Provides per-operation token injection for git commands.
 // Tokens are NEVER embedded in URLs or persisted to .git/config.
 // Uses GIT_ASKPASS + env var pattern for secure credential passing.
+//
+// JWT migration note: The curl doc-string in `configureWorktreeGitAuth`
+// runs INSIDE the container where DELEGATE_AGENT_JWT is already injected
+// alongside DELEGATE_AGENT_TOKEN (both are set by container-runner.ts during
+// the Phase 2 migration window). The in-container credential-helper script
+// uses the legacy DELEGATE_AGENT_TOKEN bearer for the /api/agent/integrations/token
+// endpoint, which is fine — that route is legacy-bearer-accepting. Do NOT
+// change the behavior of the in-container curl calls here.
 
 import * as fs from 'fs';
 import * as path from 'path';

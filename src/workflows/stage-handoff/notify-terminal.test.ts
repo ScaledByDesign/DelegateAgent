@@ -14,6 +14,17 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// ─── JWT mint mock ───────────────────────────────────────────────────────────
+// notifyDelegationTerminal calls mintAgentJWT (globalThis.fetch internally).
+// The tests use an injectable deps.fetch seam for the actual POST, but
+// mintAgentJWT bypasses that seam and hits globalThis.fetch separately.
+// Mocking mintAgentJWT to return null causes the implementation to fall back to
+// DELEGATE_AGENT_TOKEN, so the injectable deps.fetch receives the correct
+// bearer and the test assertions on fetchFn.mock.calls remain accurate.
+vi.mock('../../jwt-mint.js', () => ({
+  mintAgentJWT: vi.fn().mockResolvedValue(null),
+}));
+
 import { _closeDatabase, _initTestDatabase, _getDb } from '../../db.js';
 import { SqliteWorkflowStore } from '../store/sqlite-workflow-store.js';
 import {

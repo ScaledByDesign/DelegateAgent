@@ -22,16 +22,13 @@ import { classifyChatErrorFromError } from './error-classifier.js';
 import { classifyForFastPath } from './heuristic.js';
 import type { ChatDispatchResult, ChatInbound } from './types.js';
 import { recordFastpath } from '../metrics.js';
+import { agentFetch } from '../delegate-fetch.js';
 
 // Marker the Delegate poll-handler emits when wrapping a user message with
 // task context (see app/api/agent/channel/poll/poll-handler.ts ~L666). When
 // present we extract just the post-marker portion as the actual user
 // message and treat the preamble as additional system context.
 const USER_MESSAGE_DELIMITER = '\n━━━━━━━━━━━━━━━━━━━━━━━━\nUSER MESSAGE:\n';
-
-const DELEGATE_URL = (
-  process.env.DELEGATE_URL || 'https://delegate.ws'
-).replace(/\/$/, '');
 
 interface SplitContext {
   userText: string;
@@ -142,21 +139,10 @@ const workspaceCache = new Map<
   { workspaceId: string | null; expiresAt: number }
 >();
 
-function envAgentToken(): string {
-  return (
-    process.env.DELEGATE_AGENT_TOKEN ||
-    process.env.DELEGATE_API_KEY ||
-    process.env.NANOCLAW_TOKEN ||
-    ''
-  );
-}
-
 export async function resolveWorkspaceForJid(
   jid: string,
 ): Promise<string | null> {
   if (!jid.startsWith('delegate:task:')) return null;
-  const token = envAgentToken();
-  if (!token) return null;
   const taskId = jid.slice('delegate:task:'.length);
   if (!taskId) return null;
 
@@ -165,12 +151,12 @@ export async function resolveWorkspaceForJid(
   if (cached && cached.expiresAt > now) return cached.workspaceId;
 
   try {
-    const res = await fetch(
-      `${DELEGATE_URL}/api/agent/context/${encodeURIComponent(taskId)}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(5000),
-      },
+    // JWT migration: agentFetch handles bearer injection (JWT or legacy fallback).
+    // workspaceId is unknown at this point (that's why we're calling this
+    // endpoint), so we pass undefined and let agentFetch use the legacy bearer.
+    const res = await agentFetch(
+      `/api/agent/context/${encodeURIComponent(taskId)}`,
+      { init: { signal: AbortSignal.timeout(5000) } },
     );
     if (!res.ok) {
       workspaceCache.set(taskId, {

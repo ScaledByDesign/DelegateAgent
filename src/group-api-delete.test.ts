@@ -71,9 +71,7 @@ function request(
         res.on('data', (chunk: Buffer) => {
           body += chunk.toString();
         });
-        res.on('end', () =>
-          resolve({ status: res.statusCode || 0, body }),
-        );
+        res.on('end', () => resolve({ status: res.statusCode || 0, body }));
       },
     );
     req.on('error', reject);
@@ -114,9 +112,13 @@ describe('DELETE /api/groups/:jid', () => {
 
     expect(getAllRegisteredGroups()[jid]).toBeTruthy();
 
-    const r = await request('DELETE', `/api/groups/${encodeURIComponent(jid)}`, {
-      token: TEST_TOKEN,
-    });
+    const r = await request(
+      'DELETE',
+      `/api/groups/${encodeURIComponent(jid)}`,
+      {
+        token: TEST_TOKEN,
+      },
+    );
     expect(r.status).toBe(200);
     const json = JSON.parse(r.body);
     expect(json.ok).toBe(true);
@@ -130,9 +132,13 @@ describe('DELETE /api/groups/:jid', () => {
     const jid = 'delegate:task:does-not-exist';
     deregisteredInMemory.length = 0;
 
-    const r = await request('DELETE', `/api/groups/${encodeURIComponent(jid)}`, {
-      token: TEST_TOKEN,
-    });
+    const r = await request(
+      'DELETE',
+      `/api/groups/${encodeURIComponent(jid)}`,
+      {
+        token: TEST_TOKEN,
+      },
+    );
     expect(r.status).toBe(200);
     const json = JSON.parse(r.body);
     expect(json.ok).toBe(true);
@@ -145,9 +151,13 @@ describe('DELETE /api/groups/:jid', () => {
     const jid = 'delegate:main';
     seedGroup(jid);
 
-    const r = await request('DELETE', `/api/groups/${encodeURIComponent(jid)}`, {
-      token: TEST_TOKEN,
-    });
+    const r = await request(
+      'DELETE',
+      `/api/groups/${encodeURIComponent(jid)}`,
+      {
+        token: TEST_TOKEN,
+      },
+    );
     expect(r.status).toBe(409);
     const json = JSON.parse(r.body);
     expect(json.reason).toBe('always_on');
@@ -162,9 +172,13 @@ describe('DELETE /api/groups/:jid', () => {
     const jid = 'delegate:agent:user-xyz';
     seedGroup(jid);
 
-    const r = await request('DELETE', `/api/groups/${encodeURIComponent(jid)}`, {
-      token: TEST_TOKEN,
-    });
+    const r = await request(
+      'DELETE',
+      `/api/groups/${encodeURIComponent(jid)}`,
+      {
+        token: TEST_TOKEN,
+      },
+    );
     expect(r.status).toBe(409);
     expect(getAllRegisteredGroups()[jid]).toBeTruthy();
 

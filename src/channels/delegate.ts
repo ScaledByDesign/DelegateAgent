@@ -21,6 +21,8 @@ import type { Channel } from '../types.js';
 import { dispatchChatFastPath } from '../chat/index.js';
 import { getEnvWithFallback } from '../config.js';
 import { fetchWithRetry5xx } from '../retry-fetch.js';
+import { agentFetch } from '../delegate-fetch.js';
+import { mintAgentJWT } from '../jwt-mint.js';
 import {
   recordChannelPollError,
   recordChannelMessageDelivered,
@@ -194,6 +196,13 @@ export class DelegateChannel implements Channel {
    * message is received that carries one; cleared when delegation completes.
    */
   private activeDelegationIds = new Map<string, string>();
+  /**
+   * JWT migration: latest known workspaceId per JID, populated from
+   * msg.workspaceId during poll. Used by sendMessage/notifyTerminal/
+   * notifyFailure/forwardProgressEvents to mint per-workspace JWTs via
+   * agentFetch (falls back to legacy bearer when absent).
+   */
+  private workspaceIds = new Map<string, string>();
   private connected = false;
   /** Consecutive poll failure count per JID — for Sentry throttling */
   private pollFailures = new Map<string, number>();
@@ -325,19 +334,19 @@ export class DelegateChannel implements Channel {
     if (!cleanText) return; // Only progress events, no user-visible content
 
     try {
-      const res = await fetch(`${DELEGATE_URL}/api/agent/channel/reply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+      const res = await agentFetch('/api/agent/channel/reply', {
+        workspaceId: this.workspaceIds.get(jid),
+        init: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jid,
+            text: cleanText,
+            ...(agentProfileId ? { agentProfileId } : {}),
+            metadata: { source: 'delegate-agent' },
+          }),
+          signal: AbortSignal.timeout(10_000),
         },
-        body: JSON.stringify({
-          jid,
-          text: cleanText,
-          ...(agentProfileId ? { agentProfileId } : {}),
-          metadata: { source: 'delegate-agent' },
-        }),
-        signal: AbortSignal.timeout(10_000),
       });
 
       const latencyMs = Date.now() - startTime;
@@ -388,6 +397,19 @@ export class DelegateChannel implements Channel {
     if (!DELEGATE_AGENT_TOKEN) return;
 
     const agentProfileId = this.agentProfileIds.get(jid);
+    const workspaceId = this.workspaceIds.get(jid);
+
+    // Mint a per-workspace JWT; fall back to legacy bearer on failure.
+    let bearer = DELEGATE_AGENT_TOKEN;
+    if (workspaceId) {
+      try {
+        const minted = await mintAgentJWT({ workspaceId });
+        if (minted) bearer = minted.jwt;
+      } catch {
+        /* fall back to legacy bearer */
+      }
+    }
+
     // 3-attempt retry on 5XX/network errors (Vercel cold start, transient DB
     // hiccup). Defense in depth alongside the Delegate-side Inngest fan-out
     // — the route itself can still 5XX during cold-isolate startup, and a
@@ -398,7 +420,7 @@ export class DelegateChannel implements Channel {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+          Authorization: `Bearer ${bearer}`,
         },
         body: JSON.stringify({
           jid,
@@ -445,24 +467,24 @@ export class DelegateChannel implements Channel {
 
     const agentProfileId = this.agentProfileIds.get(jid);
     try {
-      const res = await fetch(`${DELEGATE_URL}/api/agent/channel/reply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+      const res = await agentFetch('/api/agent/channel/reply', {
+        workspaceId: this.workspaceIds.get(jid),
+        init: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jid,
+            ...(agentProfileId ? { agentProfileId } : {}),
+            metadata: {
+              source: 'delegate-agent',
+              terminal: true,
+              agentStatus: 'error',
+              failureReason: reason,
+              ...(detail ? { failureDetail: detail.slice(0, 500) } : {}),
+            },
+          }),
+          signal: AbortSignal.timeout(10_000),
         },
-        body: JSON.stringify({
-          jid,
-          ...(agentProfileId ? { agentProfileId } : {}),
-          metadata: {
-            source: 'delegate-agent',
-            terminal: true,
-            agentStatus: 'error',
-            failureReason: reason,
-            ...(detail ? { failureDetail: detail.slice(0, 500) } : {}),
-          },
-        }),
-        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok && res.status !== 404) {
         const errText = await res.text().catch(() => '');
@@ -514,18 +536,18 @@ export class DelegateChannel implements Channel {
     }>,
   ): Promise<void> {
     try {
-      await fetch(`${DELEGATE_URL}/api/agent/channel/progress`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+      await agentFetch('/api/agent/channel/progress', {
+        workspaceId: this.workspaceIds.get(jid),
+        init: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jid,
+            ...(agentProfileId ? { agentProfileId } : {}),
+            events,
+          }),
+          signal: AbortSignal.timeout(5_000),
         },
-        body: JSON.stringify({
-          jid,
-          ...(agentProfileId ? { agentProfileId } : {}),
-          events,
-        }),
-        signal: AbortSignal.timeout(5_000),
       });
     } catch {
       // Best-effort — don't fail the main message flow
@@ -574,6 +596,7 @@ export class DelegateChannel implements Channel {
     this.seenIds.clear();
     this.pollFailures.clear();
     this.activeDelegationIds.clear();
+    this.workspaceIds.clear();
     this.connected = false;
     sentryBreadcrumb('channel.disconnect', {
       messagesDelivered: this.messagesDelivered,
@@ -660,7 +683,9 @@ export class DelegateChannel implements Channel {
     // smooths the request rate across the window. Set DELEGATE_POLL_JITTER=0 to
     // restore deterministic lock-step (useful for repro/tests).
     const jitterEnabled = process.env.DELEGATE_POLL_JITTER !== '0';
-    const offset = jitterEnabled ? Math.floor(Math.random() * POLL_INTERVAL) : 0;
+    const offset = jitterEnabled
+      ? Math.floor(Math.random() * POLL_INTERVAL)
+      : 0;
 
     const arm = (): void => {
       // Guard against a teardown that landed during the jitter delay.
@@ -707,6 +732,7 @@ export class DelegateChannel implements Channel {
     this.pollFailures.delete(jid);
     this.agentProfileIds.delete(jid);
     this.activeDelegationIds.delete(jid);
+    this.workspaceIds.delete(jid);
     this.scheduleCursorSave();
   }
 
@@ -715,8 +741,8 @@ export class DelegateChannel implements Channel {
     const seen = this.seenIds.get(jid)!;
     const startTime = Date.now();
 
-    const url =
-      `${DELEGATE_URL}/api/agent/channel/poll` +
+    const pollPath =
+      `/api/agent/channel/poll` +
       `?jid=${encodeURIComponent(jid)}` +
       `&since=${encodeURIComponent(since)}` +
       `&limit=20`;
@@ -724,19 +750,23 @@ export class DelegateChannel implements Channel {
     // Phase 4 (agent-system-consolidation): include active delegation ID as
     // x-delegation-id header so the poll handler bumps lastHeartbeatAt as a
     // side-effect — replacing the container-side setInterval heartbeat poster.
-    const pollHeaders: Record<string, string> = {
-      Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
-    };
+    // JWT migration: extra headers (x-delegation-id) are merged; Authorization
+    // is injected by agentFetch using the per-workspace JWT (falls back to
+    // legacy DELEGATE_AGENT_TOKEN if no workspaceId or mint fails).
+    const extraPollHeaders: Record<string, string> = {};
     const activeDelegationId = this.activeDelegationIds.get(jid);
     if (activeDelegationId) {
-      pollHeaders['x-delegation-id'] = activeDelegationId;
+      extraPollHeaders['x-delegation-id'] = activeDelegationId;
     }
 
     let data: PollResponse;
     try {
-      const res = await fetch(url, {
-        headers: pollHeaders,
-        signal: AbortSignal.timeout(5_000),
+      const res = await agentFetch(pollPath, {
+        workspaceId: this.workspaceIds.get(jid),
+        init: {
+          headers: extraPollHeaders,
+          signal: AbortSignal.timeout(5_000),
+        },
       });
 
       if (!res.ok) {
@@ -811,6 +841,11 @@ export class DelegateChannel implements Channel {
       // message — the delegation ID is stable for the run duration.
       if (msg.delegationId) {
         this.activeDelegationIds.set(jid, msg.delegationId);
+      }
+
+      // JWT migration: cache workspaceId per JID for use in outbound calls.
+      if (msg.workspaceId) {
+        this.workspaceIds.set(jid, msg.workspaceId);
       }
 
       // ── Chat fast-path ────────────────────────────────────────────────
@@ -1001,12 +1036,13 @@ async function resolveChatFastpathCreds(
     oauthToken = cached.oauthToken;
   } else if (DELEGATE_AGENT_TOKEN) {
     try {
-      const res = await fetch(
-        `${DELEGATE_URL}/api/agent/chat-fastpath-credentials?jid=${encodeURIComponent(jid)}`,
-        {
-          headers: { Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}` },
-          signal: AbortSignal.timeout(3000),
-        },
+      // JWT migration: agentFetch mints a per-workspace JWT when workspaceId
+      // is available. For this helper the JID is module-scoped — no per-JID
+      // workspaceId is in scope here, so we pass undefined and let agentFetch
+      // fall back to legacy DELEGATE_AGENT_TOKEN bearer automatically.
+      const res = await agentFetch(
+        `/api/agent/chat-fastpath-credentials?jid=${encodeURIComponent(jid)}`,
+        { init: { signal: AbortSignal.timeout(3000) } },
       );
       if (res.ok) {
         const data = (await res.json()) as {
