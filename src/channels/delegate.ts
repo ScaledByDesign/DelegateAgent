@@ -53,6 +53,13 @@ const CURSOR_SAVE_DEBOUNCE_MS = 10_000; // Write at most every 10s
 const CURSOR_STALENESS_MS = 60 * 60 * 1000; // 1 hour — ignore cursor files older than this
 const SEEN_IDS_CAP = 200; // Reduced from 2000 for file storage efficiency
 
+/** Sentinel stored in `pollers` while a JID is waiting out its jitter delay
+ * (the first poll hasn't fired yet, so there's no interval handle). Lets
+ * `pollers.has(jid)` / `stopPoll(jid)` treat the JID as "polling" during the
+ * delay so groupSync doesn't double-arm it. */
+const JITTER_PENDING = 'jitter-pending' as const;
+type PollerSlot = ReturnType<typeof setInterval> | typeof JITTER_PENDING;
+
 interface CursorStore {
   cursors: Record<string, string>; // jid -> lastSeen ISO timestamp
   seenIds: Record<string, string[]>; // jid -> last 200 message IDs
@@ -170,7 +177,9 @@ export class DelegateChannel implements Channel {
   name = 'delegate';
 
   private opts: ChannelOpts;
-  private pollers = new Map<string, ReturnType<typeof setInterval>>();
+  private pollers = new Map<string, PollerSlot>();
+  /** Pending jitter-delay timers per JID (cleared on stopPoll / disconnect) */
+  private jitterTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Last-seen ISO timestamp per JID — used as the `since` cursor */
   private lastSeen = new Map<string, string>();
   /** Deduplication: set of message IDs we have already routed */
@@ -259,6 +268,23 @@ export class DelegateChannel implements Channel {
           }
           this.startPoll(jid);
           console.log(`[delegate] Dynamic group detected — now polling ${jid}`);
+        }
+
+        // Disarm pass: stop polling any JID that has disappeared from the
+        // registry. This is how terminal-task deregister propagates — Delegate
+        // DELETEs delegate:task:<id> (on terminal status or via prune), the
+        // group-API drops it from the in-memory map, and within one sync cycle
+        // (~10s) we stop its poller and free its per-JID state. Without this the
+        // registry could only ever grow, which is exactly how 491 stale task
+        // JIDs accumulated into the poll flood (2026-06-20). Always-on control
+        // JIDs (delegate:main, delegate:agent:*) are never disarmed, even if a
+        // transient registry read omits them.
+        for (const jid of [...this.pollers.keys()]) {
+          if (this.isAlwaysOnJid(jid)) continue;
+          if (currentGroups[jid]) continue; // still registered
+          this.stopPoll(jid);
+          sentryBreadcrumb('channel.poll.deregistered', { jid });
+          console.log(`[delegate] Group deregistered — stopped polling ${jid}`);
         }
       } catch {}
     }, 10_000); // Check every 10 seconds
@@ -514,10 +540,21 @@ export class DelegateChannel implements Channel {
     return jid.startsWith('delegate:');
   }
 
+  /** Control JIDs that must never be disarmed by the groupSync disarm pass:
+   * the aggregate main channel and per-agent solo channels. Only per-entity
+   * JIDs (delegate:task:*, delegate:conv:*) are eligible for deregister. */
+  private isAlwaysOnJid(jid: string): boolean {
+    return jid === 'delegate:main' || jid.startsWith('delegate:agent:');
+  }
+
   async disconnect(): Promise<void> {
-    for (const interval of this.pollers.values()) {
-      clearInterval(interval);
+    for (const slot of this.pollers.values()) {
+      if (slot !== JITTER_PENDING) clearInterval(slot);
     }
+    for (const t of this.jitterTimers.values()) {
+      clearTimeout(t);
+    }
+    this.jitterTimers.clear();
     if (this.groupSyncInterval) {
       clearInterval(this.groupSyncInterval);
       this.groupSyncInterval = null;
@@ -615,11 +652,62 @@ export class DelegateChannel implements Channel {
     }
     this.pollFailures.set(jid, 0);
 
-    const interval = setInterval(() => {
-      void this.poll(jid);
-    }, POLL_INTERVAL);
+    // Jitter the steady-state poll phase: stagger the FIRST poll by a random
+    // 0..POLL_INTERVAL offset, then settle into the regular interval. Without
+    // this, every JID armed in the same connect()/groupSync tick fires in
+    // lock-step, so N JIDs produce one sub-second burst of N requests every
+    // cycle (the "poll slamming" shape, 2026-06-20). Spreading the first fire
+    // smooths the request rate across the window. Set DELEGATE_POLL_JITTER=0 to
+    // restore deterministic lock-step (useful for repro/tests).
+    const jitterEnabled = process.env.DELEGATE_POLL_JITTER !== '0';
+    const offset = jitterEnabled ? Math.floor(Math.random() * POLL_INTERVAL) : 0;
 
-    this.pollers.set(jid, interval);
+    const arm = (): void => {
+      // Guard against a teardown that landed during the jitter delay.
+      if (!this.pollers.has(jid) || this.pollers.get(jid) !== JITTER_PENDING) {
+        return;
+      }
+      void this.poll(jid);
+      const interval = setInterval(() => {
+        void this.poll(jid);
+      }, POLL_INTERVAL);
+      this.pollers.set(jid, interval);
+    };
+
+    if (offset === 0) {
+      const interval = setInterval(() => {
+        void this.poll(jid);
+      }, POLL_INTERVAL);
+      this.pollers.set(jid, interval);
+    } else {
+      // Mark the slot as pending so stopPoll() and has()-checks treat the JID as
+      // "polling" during the jitter delay (prevents a duplicate arm from groupSync).
+      this.pollers.set(jid, JITTER_PENDING);
+      const t = setTimeout(arm, offset);
+      this.jitterTimers.set(jid, t);
+    }
+  }
+
+  /** Stop polling a JID and drop all its per-JID state. Called by the groupSync
+   * disarm pass when a JID disappears from the registry (terminal-task
+   * deregister via DELETE /api/groups/:jid, 2026-06-20). Idempotent. */
+  private stopPoll(jid: string): void {
+    const slot = this.pollers.get(jid);
+    if (slot && slot !== JITTER_PENDING) {
+      clearInterval(slot);
+    }
+    this.pollers.delete(jid);
+    const jt = this.jitterTimers.get(jid);
+    if (jt) {
+      clearTimeout(jt);
+      this.jitterTimers.delete(jid);
+    }
+    this.lastSeen.delete(jid);
+    this.seenIds.delete(jid);
+    this.pollFailures.delete(jid);
+    this.agentProfileIds.delete(jid);
+    this.activeDelegationIds.delete(jid);
+    this.scheduleCursorSave();
   }
 
   private async poll(jid: string): Promise<void> {
@@ -763,7 +851,9 @@ export class DelegateChannel implements Channel {
       if (isTaskJid || hasDelegationId) {
         sentryBreadcrumb('chat.fastpath.gated', {
           jid,
-          reason: isTaskJid ? 'task-jid-no-fastpath' : 'delegation-id-no-fastpath',
+          reason: isTaskJid
+            ? 'task-jid-no-fastpath'
+            : 'delegation-id-no-fastpath',
           delegationId: msg.delegationId ?? null,
         });
         // Hand off directly to container path (same shape as the post-fastpath

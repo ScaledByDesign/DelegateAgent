@@ -24,6 +24,7 @@ import {
   getAllRegisteredGroups,
   setRegisteredGroup,
   getRegisteredGroup,
+  deleteRegisteredGroup,
   getAllTasks,
   setRegisteredAgent,
   getRegisteredAgent,
@@ -151,6 +152,7 @@ export function startGroupAPI(
     jid: string,
     group: import('./types.js').RegisteredGroup,
   ) => void,
+  deregisterGroupInMemory?: (jid: string) => void,
 ): void {
   const PORT = parseInt(process.env.GROUP_API_PORT || '3001', 10);
   // Canonical: DELEGATE_AGENT_TOKEN. Legacy fallback: DELEGATE_API_KEY (deprecated)
@@ -312,6 +314,49 @@ export function startGroupAPI(
           res.end(JSON.stringify({ error: err.message }));
         }
       });
+      return;
+    }
+
+    // ─── Deregister a group: DELETE /api/groups/:jid ───
+    // Delegate calls this when a delegated task reaches terminal status (or via a
+    // one-time prune) so the per-task `delegate:task:<id>` group is removed from
+    // the registry instead of accumulating forever. Without removal the delegate
+    // channel's groupSync re-arms every registered JID on every cycle, so N stale
+    // terminal tasks = N permanent poll loops (the 491-JID poll flood, 2026-06-20).
+    //
+    // Removing the SQLite row is the source-of-truth delete; the optional
+    // `deregisterGroupInMemory` callback drops it from the live in-memory map so
+    // the channel's groupSync disarm pass stops the running poller within ~10s.
+    // Idempotent (unknown jid → 200 existed:false) so prune/retry is safe.
+    // Always-on control JIDs (delegate:main, delegate:agent:*) are refused — a
+    // bad DELETE must never disarm the control channel.
+    const groupDeleteMatch = req.url?.match(/^\/api\/groups\/(.+)$/);
+    if (req.method === 'DELETE' && groupDeleteMatch) {
+      const jid = decodeURIComponent(groupDeleteMatch[1]);
+      if (jid === 'delegate:main' || /^delegate:agent:/.test(jid)) {
+        res.writeHead(409);
+        res.end(JSON.stringify({ ok: false, reason: 'always_on', jid }));
+        return;
+      }
+      try {
+        const existed = deleteRegisteredGroup(jid);
+        if (existed && deregisterGroupInMemory) {
+          try {
+            deregisterGroupInMemory(jid);
+          } catch (err: any) {
+            logger.warn(
+              { jid, err: err?.message },
+              'in-memory deregisterGroup failed (non-fatal)',
+            );
+          }
+        }
+        logger.info({ jid, existed }, 'Group deregistered via API');
+        res.writeHead(200);
+        res.end(JSON.stringify({ ok: true, jid, existed }));
+      } catch (err: any) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ ok: false, error: err?.message }));
+      }
       return;
     }
 

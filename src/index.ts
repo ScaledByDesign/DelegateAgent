@@ -977,7 +977,12 @@ async function main(): Promise<void> {
     },
   });
   startSessionCleanup();
-  startGroupAPI(registerGroup);
+  startGroupAPI(registerGroup, (jid: string) => {
+    // In-memory twin of deleteRegisteredGroup: drop the JID from the live map so
+    // the delegate channel's groupSync disarm pass stops the running poller
+    // within ~10s (DELETE /api/groups/:jid → terminal-task deregister, 2026-06-20).
+    delete registeredGroups[jid];
+  });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
