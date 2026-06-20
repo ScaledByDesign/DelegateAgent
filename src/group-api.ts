@@ -228,8 +228,11 @@ export function startGroupAPI(
 
     if (req.method === 'GET' && req.url === '/api/groups') {
       const groups = getAllRegisteredGroups();
+      // Include the jid (the registry KEY) in each object — Object.values alone
+      // drops it, leaving callers unable to address a group for DELETE/prune.
+      const withJid = Object.entries(groups).map(([jid, g]) => ({ jid, ...g }));
       res.writeHead(200);
-      res.end(JSON.stringify({ groups: Object.values(groups) }));
+      res.end(JSON.stringify({ groups: withJid }));
       return;
     }
 
