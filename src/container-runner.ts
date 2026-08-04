@@ -763,22 +763,23 @@ async function buildContainerArgs(
   //   1. Host env CLAUDE_AGENT_MODEL (operator override)
   //   2. Delegate dispatcher injection via the request envelope (future:
   //      AgentProfile.delegateAgentModel — needs llm-keys API extension)
-  //   3. Hardcoded fallback `claude-haiku-4-5-20251001`
-  // Why haiku as the fallback and not sonnet/opus: the workspace-OAuth
-  // tokens currently in rotation hit `rate_limit_error` on every premium
-  // model (verified 2026-05-16 via /v1/messages probe — haiku was the
-  // ONLY tier accepting the request without a 429). The CLI wraps that
-  // as "selected model... may not exist or you may not have access" and
-  // bubbles `status: success` back to the dispatcher, masking the
-  // failure. Haiku is the safe default; operators with Sonnet/Opus
-  // budget should set CLAUDE_AGENT_MODEL on the host OR per-agent via
-  // AgentProfile.delegateAgentModel (future llm-keys API extension).
+  //   3. Hardcoded fallback `claude-sonnet-4-6`
+  // Why sonnet and NOT haiku (changed 2026-08-04): Claude Code CLI sends
+  // `thinking: adaptive`, which haiku-class models reject with a 400
+  // ("Invalid Anthropic Messages API request" at the gateway) — this
+  // produced 1,900+ gateway errors before being caught. The CLI must run
+  // on sonnet/opus-class models only. The old haiku rationale (2026-05-16
+  // workspace-OAuth 429s on premium models) is obsolete: the live path is
+  // the Bifrost VK on the flat-rate CliRelay subscription, where sonnet
+  // has ~zero marginal cost while haiku actually routes to paid OpenRouter.
+  // Operators can still override via CLAUDE_AGENT_MODEL on the host OR
+  // per-agent via AgentProfile.delegateAgentModel (future llm-keys ext).
   // The agent-runner reads CLAUDE_AGENT_MODEL inside the container and
   // threads to query()'s `model` option (container/agent-runner/src/index.ts).
   // In-run cascade: `forceModel` (a funded fallback model routed via the
   // gateway) takes precedence on the retry after a primary 402/429.
   const agentModel =
-    forceModel || process.env.CLAUDE_AGENT_MODEL || 'claude-haiku-4-5-20251001';
+    forceModel || process.env.CLAUDE_AGENT_MODEL || 'claude-sonnet-4-6';
   args.push('-e', `CLAUDE_AGENT_MODEL=${agentModel}`);
 
   // Runtime-specific args for host gateway resolution
