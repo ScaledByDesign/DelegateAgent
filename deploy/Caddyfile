@@ -144,7 +144,12 @@ agent.delegate.ws {
 	# Exposed via basic_auth so Prometheus on the core droplet can scrape
 	# across the public internet without depending on group-api or its token.
 	handle /node-metrics {
-		basic_auth {
+		# Core-droplet Prometheus (142.93.182.155) scrapes without basic auth —
+		# the admin-password rotation on 2026-07-30 broke its stored creds and
+		# no-data made the service-down alerts fire while everything was healthy.
+		# Everyone else still needs the admin password.
+		@node_not_scraper not remote_ip 142.93.182.155
+		basic_auth @node_not_scraper {
 			admin {$CADDY_ADMIN_HASH}
 		}
 		rewrite * /metrics
@@ -154,7 +159,8 @@ agent.delegate.ws {
 	# Per-container metrics: cAdvisor v0.55.1 in a docker container, host
 	# port 127.0.0.1:8081. Same basic_auth pattern as /node-metrics.
 	handle /cadvisor-metrics {
-		basic_auth {
+		@cadvisor_not_scraper not remote_ip 142.93.182.155
+		basic_auth @cadvisor_not_scraper {
 			admin {$CADDY_ADMIN_HASH}
 		}
 		rewrite * /metrics
