@@ -102,6 +102,14 @@ vi.mock('./credential-client.js', () => ({
   resolveLLMKeysFromDelegate,
 }));
 
+// The skills-client is dynamic-imported inside buildVolumeMounts when
+// group.workspaceId is set. Without this mock the real `agentFetch` runs and
+// the network call (10s AbortSignal.timeout) exceeds waitForSpawn's ~50ms
+// budget, making spawn appear never invoked.
+vi.mock('./skills-client.js', () => ({
+  fetchSkillsFromDelegate: vi.fn().mockResolvedValue([]),
+}));
+
 function createFakeProcess() {
   const proc = new EventEmitter() as EventEmitter & {
     stdin: PassThrough;

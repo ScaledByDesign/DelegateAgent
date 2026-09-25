@@ -30,6 +30,7 @@
 
 import { logger } from '../../logger.js';
 import { getEnvWithFallback } from '../../config.js';
+import { mintAgentJWT } from '../../jwt-mint.js';
 import type { IWorkflowStore } from '../store/IWorkflowStore.js';
 
 export interface NotifyDeps {
@@ -116,6 +117,18 @@ export async function notifyDelegationTerminal(
     return true;
   }
 
+  // JWT migration: mint a per-workspace JWT when workspace_id is available;
+  // fall back to legacy bearer on any mint failure.
+  let bearer = token;
+  if (row.workspace_id) {
+    try {
+      const minted = await mintAgentJWT({ workspaceId: row.workspace_id });
+      if (minted) bearer = minted.jwt;
+    } catch {
+      /* fall back to legacy bearer */
+    }
+  }
+
   const baseUrl = process.env.DELEGATE_URL || 'https://delegate.ws';
   const url = `${baseUrl.replace(/\/$/, '')}/api/agent/channel/reply`;
 
@@ -149,7 +162,7 @@ export async function notifyDelegationTerminal(
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${bearer}`,
         },
         body,
         signal: controller.signal,

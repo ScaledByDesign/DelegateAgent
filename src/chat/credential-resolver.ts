@@ -185,7 +185,22 @@ export async function resolveChatTransport(opts: {
     return cached.spec;
   }
 
-  const resolved = await resolveLLMKeysFromDelegate(ws, uid);
+  // Mint a per-workspace JWT for this resolution. The credential route
+  // (/api/agent/integrations/llm-keys) is JWT-only as of the platform's
+  // Phase 7 Sub-step 7.7b cutover; the legacy shared bearer is hard-rejected
+  // with 401. mintAgentJWT returns null on any error, in which case
+  // resolveLLMKeysFromDelegate falls back to the legacy bearer internally
+  // (which only succeeds while the platform's escape-hatch window is open).
+  let fastPathJwt: string | null = null;
+  try {
+    const { mintAgentJWT } = await import('../jwt-mint.js');
+    const minted = await mintAgentJWT({ workspaceId: ws });
+    if (minted) fastPathJwt = minted.jwt;
+  } catch {
+    /* fall back to legacy bearer inside resolveLLMKeysFromDelegate */
+  }
+
+  const resolved = await resolveLLMKeysFromDelegate(ws, uid, fastPathJwt);
 
   if (!resolved) {
     // Don't cache null results — could be a transient Delegate outage. We

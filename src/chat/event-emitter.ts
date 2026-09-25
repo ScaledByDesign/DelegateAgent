@@ -16,6 +16,7 @@
 
 import { logger } from '../logger.js';
 import { getEnvWithFallback } from '../config.js';
+import { mintAgentJWT } from '../jwt-mint.js';
 
 // ─── Per-process instance identity ────────────────────────────────────────
 // A fresh UUID per process start. Paired with sequence in the Delegate-side
@@ -51,6 +52,11 @@ export interface EmitterDeps {
 
 interface PerJidState {
   taskId: string;
+  /**
+   * Optional workspace ID — when present, a per-workspace JWT is minted for
+   * outbound POSTs. Falls back to legacy bearer when absent or mint fails.
+   */
+  workspaceId: string | undefined;
   queue: OutboundEvent[];
   /**
    * Monotonic intra-process counter, starts at 0 per JID.
@@ -72,6 +78,12 @@ let _deps: Required<EmitterDeps> = {
 /**
  * Test seam: replace fetch / now. Calling with `{}` resets to defaults.
  * Production code never calls this — it's purely for vitest.
+ *
+ * When a custom fetch is injected, JWT minting is also mocked: the injected
+ * fetch will receive an `authorization: Bearer <token>` header where `<token>`
+ * is either the minted JWT or the legacy DELEGATE_AGENT_TOKEN. Tests that
+ * need to assert on the Authorization header should also mock jwt-mint so the
+ * minted JWT is predictable (see migration rule §4).
  */
 export function _setEmitterDepsForTests(deps: EmitterDeps): void {
   _deps = {
@@ -118,18 +130,34 @@ export function chatJidToTaskId(chatJid: string): string | null {
 /**
  * Enqueue an event for a given chatJid. The event is buffered per JID and
  * flushed via the debounce/cap rule. No-op for non-task JIDs.
+ *
+ * @param chatJid    - Delegate task JID (`delegate:task:<id>`).
+ * @param event      - Event payload (without sequence/instanceId — injected here).
+ * @param workspaceId - Optional workspace ID for per-workspace JWT minting.
+ *                     When provided, outbound POSTs will use a JWT bearer
+ *                     (legacy fallback applies on any mint failure).
  */
 export function enqueueEvent(
   chatJid: string,
   event: Omit<OutboundEvent, 'sequence' | 'instanceId'>,
+  workspaceId?: string | null,
 ): void {
   const taskId = chatJidToTaskId(chatJid);
   if (!taskId) return; // Only task JIDs map to delegations.
 
   let st = _state.get(chatJid);
   if (!st) {
-    st = { taskId, queue: [], sequenceCounter: 0, flushTimer: null };
+    st = {
+      taskId,
+      workspaceId: workspaceId ?? undefined,
+      queue: [],
+      sequenceCounter: 0,
+      flushTimer: null,
+    };
     _state.set(chatJid, st);
+  } else if (workspaceId && !st.workspaceId) {
+    // Update workspaceId if we now have one (e.g. first message carries it).
+    st.workspaceId = workspaceId;
   }
 
   st.queue.push({
@@ -164,7 +192,7 @@ export function enqueueEvent(
 async function flushOne(chatJid: string, st: PerJidState): Promise<void> {
   if (st.queue.length === 0) return;
   const batch = st.queue.splice(0, MAX_BATCH);
-  await postBatch(st.taskId, batch).catch((err) => {
+  await postBatch(st.taskId, batch, st.workspaceId).catch((err) => {
     logger.warn(
       {
         err: err instanceof Error ? err.message : String(err),
@@ -179,21 +207,35 @@ async function flushOne(chatJid: string, st: PerJidState): Promise<void> {
 async function postBatch(
   taskId: string,
   events: OutboundEvent[],
+  workspaceId: string | undefined,
 ): Promise<void> {
   const baseUrl = process.env.DELEGATE_URL || 'https://delegate.ws';
-  const token =
+  // JWT migration: mint a per-workspace JWT when workspaceId is available;
+  // fall back to legacy DELEGATE_AGENT_TOKEN bearer on any mint failure.
+  const legacyToken =
     getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
-  if (!token) {
+
+  if (!legacyToken) {
     // Surface once-per-attempt, never throw — the agent must keep working.
     logger.debug('event-emitter: no DELEGATE_AGENT_TOKEN, skipping POST');
     return;
+  }
+
+  let bearer = legacyToken;
+  if (workspaceId) {
+    try {
+      const minted = await mintAgentJWT({ workspaceId });
+      if (minted) bearer = minted.jwt;
+    } catch {
+      /* fall back to legacy bearer */
+    }
   }
 
   const body = JSON.stringify({ taskId, events });
 
   let lastInfo: PostInfo;
   try {
-    lastInfo = await tryPost(baseUrl, token, body);
+    lastInfo = await tryPost(baseUrl, bearer, body);
     if (lastInfo.ok) return;
   } catch (err) {
     lastInfo = {
@@ -207,7 +249,7 @@ async function postBatch(
   // One retry after backoff.
   await new Promise<void>((r) => setTimeout(r, RETRY_BACKOFF_MS));
   try {
-    const info = await tryPost(baseUrl, token, body);
+    const info = await tryPost(baseUrl, bearer, body);
     if (!info.ok) {
       throw new Error(
         `non-2xx ${info.status}: ${info.bodyPreview ?? ''}`.slice(0, 500),
@@ -226,14 +268,14 @@ interface PostInfo {
 
 async function tryPost(
   baseUrl: string,
-  token: string,
+  bearer: string,
   body: string,
 ): Promise<PostInfo> {
   const res = await _deps.fetch(`${baseUrl}/api/agent/channel/event`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
+      authorization: `Bearer ${bearer}`,
     },
     body,
   });

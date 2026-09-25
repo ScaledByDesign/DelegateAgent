@@ -31,6 +31,7 @@
 // Idempotency: server compares `lastEventId` monotonically. Same id → no-op.
 
 import { logger } from '../../logger.js';
+import { mintAgentJWT } from '../../jwt-mint.js';
 import { getEnvWithFallback } from '../../config.js';
 import type {
   IWorkflowStore,
@@ -165,6 +166,15 @@ export async function mirrorWorkflowRunState(
     return true;
   }
 
+  // JWT migration: mint a per-workspace JWT; fall back to legacy bearer.
+  let bearer = token;
+  try {
+    const minted = await mintAgentJWT({ workspaceId: row.workspace_id });
+    if (minted) bearer = minted.jwt;
+  } catch {
+    /* fall back to legacy bearer */
+  }
+
   const baseUrl = process.env.DELEGATE_URL || 'https://delegate.ws';
   const url = `${baseUrl.replace(/\/$/, '')}/api/agent/workflow/runs`;
 
@@ -182,7 +192,7 @@ export async function mirrorWorkflowRunState(
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${bearer}`,
         },
         body,
         signal: controller.signal,

@@ -10,6 +10,18 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// ─── JWT mint mock ───────────────────────────────────────────────────────────
+// postBatch (inside event-emitter) calls mintAgentJWT which hits
+// globalThis.fetch. The tests inject a custom fetch via _setEmitterDepsForTests
+// which only replaces _deps.fetch — mintAgentJWT bypasses that seam and would
+// hit the real network. Mocking mintAgentJWT to return null causes postBatch to
+// fall back to the DELEGATE_AGENT_TOKEN bearer and call _deps.fetch (the mock)
+// exactly once per batch, keeping all call-count assertions correct.
+vi.mock('../jwt-mint.js', () => ({
+  mintAgentJWT: vi.fn().mockResolvedValue(null),
+}));
+
 import {
   chatJidToTaskId,
   enqueueEvent,

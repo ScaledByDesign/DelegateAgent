@@ -140,7 +140,9 @@ function createSchema(database: Database.Database): void {
   // Add agent_profile_id column (migration for per-agent skill scoping — lets the
   // container fetch skills assigned to this group's step/stage agent, not just globals)
   try {
-    database.exec(`ALTER TABLE registered_groups ADD COLUMN agent_profile_id TEXT`);
+    database.exec(
+      `ALTER TABLE registered_groups ADD COLUMN agent_profile_id TEXT`,
+    );
   } catch {
     /* column already exists */
   }
@@ -730,6 +732,13 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     group.workspaceId ?? null,
     group.agentProfileId ?? null,
   );
+}
+
+export function deleteRegisteredGroup(jid: string): boolean {
+  const result = db
+    .prepare('DELETE FROM registered_groups WHERE jid = ?')
+    .run(jid);
+  return result.changes > 0;
 }
 
 export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {

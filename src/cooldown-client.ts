@@ -2,13 +2,17 @@
 // POSTs to /api/agent/integrations/llm-keys/cooldown when the in-container
 // Claude SDK returns a 429 (rate_limit_error / usage_limit_exceeded).
 // Delegate marks the row's cooldown_until + cooldown_count; next picker
-// resolution skips it. Bearer auth via DELEGATE_AGENT_TOKEN (same as
-// resolveLLMKeysFromDelegate).
+// resolution skips it.
+//
+// Auth: mints a per-workspace JWT via agentFetch (falls back to legacy bearer
+// DELEGATE_AGENT_TOKEN if mint fails — matches dual-accept core side).
 
 import { getEnvWithFallback } from './config.js';
 import { fetchWithRetry5xx } from './retry-fetch.js';
+import { mintAgentJWT } from './jwt-mint.js';
 
 const DELEGATE_URL = process.env.DELEGATE_URL || 'https://delegate.ws';
+// Legacy fallback bearer — used when JWT mint fails.
 const DELEGATE_AGENT_TOKEN =
   getEnvWithFallback('DELEGATE_AGENT_TOKEN', ['DELEGATE_API_KEY']) || '';
 
@@ -21,6 +25,9 @@ const DELEGATE_AGENT_TOKEN =
  * `cooldown_until = now() + COOLDOWN_HOURS` and increment `cooldown_count`.
  * The next picker resolution will skip cooling rows automatically via the
  * `WHERE (cooldown_until IS NULL OR cooldown_until <= now())` filter.
+ *
+ * Mints a per-workspace JWT (falls back to legacy DELEGATE_AGENT_TOKEN on
+ * any mint failure — never throws on mint error).
  *
  * @param opts.providerId        - LLMProvider row id (from `ResolvedLLMKeys.providerId`).
  * @param opts.workspaceId       - Workspace that owns the provider row.
@@ -44,6 +51,16 @@ export async function reportLLMCooldown(opts: {
     );
     return false;
   }
+
+  // Mint a per-workspace JWT; fall back to legacy bearer on failure.
+  let bearer = DELEGATE_AGENT_TOKEN;
+  try {
+    const minted = await mintAgentJWT({ workspaceId: opts.workspaceId });
+    if (minted) bearer = minted.jwt;
+  } catch {
+    /* fall back to legacy bearer */
+  }
+
   // 3-attempt retry on 5XX/network errors (Vercel cold start, transient
   // DB hiccup). Cooldown cascades (one bad token → N containers POST 429
   // within seconds) are exactly the burst class that benefits most.
@@ -53,7 +70,7 @@ export async function reportLLMCooldown(opts: {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${DELEGATE_AGENT_TOKEN}`,
+        Authorization: `Bearer ${bearer}`,
       },
       body: JSON.stringify(opts),
       signal: AbortSignal.timeout(5000),

@@ -506,13 +506,15 @@ async function runAgent(
   // Hephaestus Port 4 — wire the agent-runner's stdout EVENT markers into the
   // chat event-emitter. Fire-and-forget: `enqueueEvent` swallows non-task JIDs
   // and never throws.
+  // JWT migration: pass group.workspaceId so the emitter can mint a
+  // per-workspace JWT for outbound channel/event POSTs.
   const onEvent = (event: {
     eventType: string;
     payload: unknown;
     agentMessageId?: string;
     durationMs?: number;
   }) => {
-    enqueueEvent(chatJid, event);
+    enqueueEvent(chatJid, event, group.workspaceId);
   };
 
   try {
@@ -977,7 +979,12 @@ async function main(): Promise<void> {
     },
   });
   startSessionCleanup();
-  startGroupAPI(registerGroup);
+  startGroupAPI(registerGroup, (jid: string) => {
+    // In-memory twin of deleteRegisteredGroup: drop the JID from the live map so
+    // the delegate channel's groupSync disarm pass stops the running poller
+    // within ~10s (DELETE /api/groups/:jid → terminal-task deregister, 2026-06-20).
+    delete registeredGroups[jid];
+  });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {

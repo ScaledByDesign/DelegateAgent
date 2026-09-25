@@ -43,8 +43,7 @@ describe('detectCredentialFailure', () => {
   });
 
   it('returns null for a normal successful run', () => {
-    const text =
-      'agent: OK, I analyzed the feature and produced a plan. Done.';
+    const text = 'agent: OK, I analyzed the feature and produced a plan. Done.';
     expect(detectCredentialFailure(text)).toBeNull();
   });
 
